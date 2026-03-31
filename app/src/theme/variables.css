@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600&display=swap');
+
+:root {
+  --ion-font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
+
+  --ion-color-primary: #0f766e;
+  --ion-color-primary-rgb: 15, 118, 110;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #0d685f;
+  --ion-color-primary-tint: #27847d;
+
+  --ion-color-secondary: #155e75;
+  --ion-color-secondary-rgb: 21, 94, 117;
+  --ion-color-secondary-contrast: #ffffff;
+  --ion-color-secondary-contrast-rgb: 255, 255, 255;
+  --ion-color-secondary-shade: #125364;
+  --ion-color-secondary-tint: #2c6e83;
+
+  --ion-color-tertiary: #0e7490;
+  --ion-color-tertiary-rgb: 14, 116, 144;
+  --ion-color-tertiary-contrast: #ffffff;
+  --ion-color-tertiary-contrast-rgb: 255, 255, 255;
+  --ion-color-tertiary-shade: #0c667f;
+  --ion-color-tertiary-tint: #26829b;
+
+  --ion-color-success: #16a34a;
+  --ion-color-warning: #d97706;
+  --ion-color-danger: #dc2626;
+  --ion-color-medium: #64748b;
+  --ion-color-light: #f1f5f9;
+  --ion-color-dark: #0f172a;
+
+  --app-bg-top: #f6fbfa;
+  --app-bg-bottom: #eef4fa;
+  --app-surface: #ffffff;
+  --app-border: #dbe7ef;
+  --app-text-soft: #475569;
+}
+
+ion-title {
+  font-family: 'Manrope', 'Source Sans 3', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+ion-toolbar {
+  --background: linear-gradient(120deg, #f8fffe 0%, #f1f8ff 100%);
+  --border-color: #d8e8f2;
+}
+
+ion-content.app-content {
+  --background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%);
+}
+
+ion-card.surface-card {
+  --background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  animation: rise-in 220ms ease-out both;
+}
+
+ion-card.hero-card {
+  --background: linear-gradient(145deg, #ffffff 0%, #f7fffd 40%, #f2f9ff 100%);
+  border: 1px solid #cfe4ee;
+  border-radius: 18px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+ion-card ion-card-title {
+  font-family: 'Manrope', 'Source Sans 3', sans-serif;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+ion-item {
+  --background: transparent;
+  --border-color: #d7e4ee;
+}
+
+ion-label {
+  color: #0f172a;
+}
+
+ion-text,
+p {
+  color: var(--app-text-soft);
+}
+
+ion-badge {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 6px 10px;
+}
+
+ion-badge.status-badge {
+  --background: #e2e8f0;
+  --color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+ion-badge.status-pending {
+  --background: #eef2f7;
+  --color: #475569;
+  border-color: #cbd5e1;
+}
+
+ion-badge.status-sent {
+  --background: #e0f2fe;
+  --color: #075985;
+  border-color: #7dd3fc;
+}
+
+ion-badge.status-partial {
+  --background: #fef3c7;
+  --color: #92400e;
+  border-color: #fcd34d;
+}
+
+ion-badge.status-available {
+  --background: #dcfce7;
+  --color: #166534;
+  border-color: #86efac;
+}
+
+ion-badge.status-expired {
+  --background: #fee2e2;
+  --color: #991b1b;
+  border-color: #fca5a5;
+}
+
+ion-badge.status-completed {
+  --background: #ccfbf1;
+  --color: #115e59;
+  border-color: #5eead4;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.muted-note {
+  color: var(--app-text-soft);
+  font-size: 0.92rem;
+}
+
+.section-gap {
+  margin-top: 14px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.dashboard-grid-fab {
+  margin-bottom: 88px;
+}
+
+@media (min-width: 480px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.quick-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 1.45rem;
+  margin-bottom: 10px;
+}
+
+.quick-icon-blue {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.quick-icon-green {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.quick-icon-gold {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.quick-icon-rose {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
