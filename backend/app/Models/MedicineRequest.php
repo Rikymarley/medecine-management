@@ -12,12 +12,19 @@ class MedicineRequest extends Model
         'strength',
         'form',
         'quantity',
+        'expiry_date',
+        'duration_days',
+        'daily_dosage',
+        'notes',
         'generic_allowed',
         'conversion_allowed'
     ];
 
     protected $casts = [
         'quantity' => 'integer',
+        'duration_days' => 'integer',
+        'daily_dosage' => 'integer',
+        'expiry_date' => 'date',
         'generic_allowed' => 'boolean',
         'conversion_allowed' => 'boolean'
     ];

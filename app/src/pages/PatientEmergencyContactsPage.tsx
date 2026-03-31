@@ -1,4 +1,5 @@
 import {
+  IonAlert,
   IonBackButton,
   IonBadge,
   IonButton,
@@ -31,12 +32,14 @@ import {
   addOutline,
   businessOutline,
   callOutline,
-  closeOutline,
+  createOutline,
   flaskOutline,
   medkitOutline,
+  personOutline,
   star,
   starOutline,
-  timeOutline
+  timeOutline,
+  trashOutline
 } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
@@ -47,14 +50,18 @@ const categoryLabel: Record<ApiEmergencyContact['category'], string> = {
   hospital: 'Hopital',
   clinic: 'Clinique',
   laboratory: 'Laboratoire',
-  pharmacy: 'Pharmacie'
+  pharmacy: 'Pharmacie',
+  doctor: 'Medecin',
+  ambulance: 'Ambulance'
 };
 
 const categoryIcon: Record<ApiEmergencyContact['category'], string> = {
   hospital: businessOutline,
   clinic: medkitOutline,
   laboratory: flaskOutline,
-  pharmacy: medkitOutline
+  pharmacy: medkitOutline,
+  doctor: personOutline,
+  ambulance: callOutline
 };
 
 const PatientEmergencyContactsPage: React.FC = () => {
@@ -65,7 +72,11 @@ const PatientEmergencyContactsPage: React.FC = () => {
   const [only24h, setOnly24h] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
   const [form, setForm] = useState({
     name: '',
     phone: '',
@@ -73,6 +84,8 @@ const PatientEmergencyContactsPage: React.FC = () => {
     city: '',
     department: '',
     address: '',
+    available_hours: '',
+    priority: '',
     is_24_7: false,
     is_favorite: false
   });
@@ -100,23 +113,57 @@ const PatientEmergencyContactsPage: React.FC = () => {
     });
   }, [contacts, only24h, onlyFavorites, query, selectedCategory]);
 
-  const createContact = async () => {
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pagedContacts = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, selectedCategory, only24h, onlyFavorites]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const saveContact = async () => {
     if (!token || !form.name.trim() || !form.phone.trim()) {
       return;
     }
     setSaving(true);
     try {
-      await api.createPatientEmergencyContact(token, {
-        name: form.name.trim(),
-        phone: form.phone.trim(),
-        category: form.category,
-        city: form.city.trim() || null,
-        department: form.department.trim() || null,
-        address: form.address.trim() || null,
-        is_24_7: form.is_24_7,
-        is_favorite: form.is_favorite
-      });
+      if (editingId === null) {
+        await api.createPatientEmergencyContact(token, {
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          category: form.category,
+          city: form.city.trim() || null,
+          department: form.department.trim() || null,
+          address: form.address.trim() || null,
+          available_hours: form.available_hours.trim() || null,
+          priority: form.priority.trim() ? Number(form.priority) : null,
+          is_24_7: form.is_24_7,
+          is_favorite: form.is_favorite
+        });
+      } else {
+        await api.updatePatientEmergencyContact(token, editingId, {
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          category: form.category,
+          city: form.city.trim() || null,
+          department: form.department.trim() || null,
+          address: form.address.trim() || null,
+          available_hours: form.available_hours.trim() || null,
+          priority: form.priority.trim() ? Number(form.priority) : null,
+          is_24_7: form.is_24_7,
+          is_favorite: form.is_favorite
+        });
+      }
       setShowAdd(false);
+      setEditingId(null);
       setForm({
         name: '',
         phone: '',
@@ -124,6 +171,8 @@ const PatientEmergencyContactsPage: React.FC = () => {
         city: '',
         department: '',
         address: '',
+        available_hours: '',
+        priority: '',
         is_24_7: false,
         is_favorite: false
       });
@@ -131,6 +180,23 @@ const PatientEmergencyContactsPage: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const startEdit = (contact: ApiEmergencyContact) => {
+    setEditingId(contact.id);
+    setForm({
+      name: contact.name,
+      phone: contact.phone,
+      category: contact.category,
+      city: contact.city ?? '',
+      department: contact.department ?? '',
+      address: contact.address ?? '',
+      available_hours: contact.available_hours ?? '',
+      priority: contact.priority ? String(contact.priority) : '',
+      is_24_7: contact.is_24_7,
+      is_favorite: contact.is_favorite
+    });
+    setShowAdd(true);
   };
 
   const toggleFavorite = async (contact: ApiEmergencyContact) => {
@@ -179,7 +245,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
               <IonChip color={selectedCategory === 'all' ? 'primary' : 'medium'} onClick={() => setSelectedCategory('all')}>
                 Tout
               </IonChip>
-              {(['hospital', 'clinic', 'laboratory', 'pharmacy'] as const).map((category) => (
+              {(['hospital', 'clinic', 'laboratory', 'pharmacy', 'doctor', 'ambulance'] as const).map((category) => (
                 <IonChip
                   key={category}
                   color={selectedCategory === category ? 'primary' : 'medium'}
@@ -215,73 +281,122 @@ const PatientEmergencyContactsPage: React.FC = () => {
               </div>
             ) : (
               <div style={{ display: 'grid', gap: '12px' }}>
-                {filtered.map((contact) => (
-                  <IonCard key={contact.id} className="surface-card" style={{ margin: 0, borderRadius: '16px' }}>
+                {pagedContacts.map((contact) => (
+                  <IonCard
+                    key={contact.id}
+                    className="surface-card"
+                    style={{ margin: 0, borderRadius: '18px', border: '1px solid #c7d6e2' }}
+                  >
                     <IonCardContent>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div
-                            style={{
-                              width: '40px',
-                              height: '40px',
-                              borderRadius: '999px',
-                              display: 'grid',
-                              placeItems: 'center',
-                              background: '#dbeafe',
-                              color: '#1e40af'
-                            }}
-                          >
-                            <IonIcon icon={categoryIcon[contact.category]} />
-                          </div>
-                          <div>
-                            <h3 style={{ margin: 0 }}>{contact.name}</h3>
-                            <IonText color="medium">{categoryLabel[contact.category]}</IonText>
-                          </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div
+                          style={{
+                            width: '80px',
+                            height: '80px',
+                            borderRadius: '999px',
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: '#d9e7fb',
+                            color: '#3b5bcc'
+                          }}
+                        >
+                          <IonIcon icon={categoryIcon[contact.category]} style={{ fontSize: '36px' }} />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                          <IonButton
-                            fill="clear"
-                            color={contact.is_favorite ? 'warning' : 'medium'}
-                            onClick={() => toggleFavorite(contact).catch(() => undefined)}
-                          >
-                            <IonIcon icon={contact.is_favorite ? star : starOutline} />
-                          </IonButton>
-                          <IonButton fill="clear" href={`tel:${contact.phone}`}>
-                            <IonIcon icon={callOutline} />
-                          </IonButton>
-                          <IonButton
-                            fill="clear"
-                            color="danger"
-                            onClick={() => removeContact(contact.id).catch(() => undefined)}
-                          >
-                            <IonIcon icon={closeOutline} />
-                          </IonButton>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 500, color: '#737373' }}>{contact.name}</h3>
+                          <p style={{ margin: 0, fontSize: '1.15rem', fontWeight: 500, color: '#293241' }}>
+                            {categoryLabel[contact.category]}
+                          </p>
                         </div>
                       </div>
-                      <p style={{ marginTop: '10px', marginBottom: '4px' }}>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginTop: '18px' }}>
+                        <IonButton
+                          fill="clear"
+                          style={{ '--color': contact.is_favorite ? '#d97706' : '#a1a1aa' } as any}
+                          onClick={() => toggleFavorite(contact).catch(() => undefined)}
+                        >
+                          <IonIcon icon={contact.is_favorite ? star : starOutline} style={{ fontSize: '20px' }} />
+                        </IonButton>
+                        <IonButton fill="clear" style={{ '--color': '#0f766e' } as any} href={`tel:${contact.phone}`}>
+                          <IonIcon icon={callOutline} style={{ fontSize: '20px' }} />
+                        </IonButton>
+                        <IonButton fill="clear" style={{ '--color': '#0f766e' } as any} onClick={() => startEdit(contact)}>
+                          <IonIcon icon={createOutline} style={{ fontSize: '20px' }} />
+                        </IonButton>
+                        <IonButton
+                          fill="clear"
+                          style={{ '--color': '#dc2626' } as any}
+                          onClick={() => setDeleteTargetId(contact.id)}
+                        >
+                          <IonIcon icon={trashOutline} style={{ fontSize: '20px' }} />
+                        </IonButton>
+                      </div>
+
+                      <p style={{ marginTop: '14px', marginBottom: '6px', fontSize: '1rem', color: '#475569' }}>
                         {contact.phone}
                         {contact.city ? ` · ${contact.city}` : ''}
                         {contact.department ? ` (${contact.department})` : ''}
                       </p>
-                      {contact.address ? <p style={{ marginTop: '2px' }}>{contact.address}</p> : null}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                        {contact.is_24_7 ? <IonBadge color="primary">24/7</IonBadge> : null}
-                        {contact.is_favorite ? <IonBadge color="warning">Favori</IonBadge> : null}
+                      {contact.address ? (
+                        <p style={{ marginTop: '2px', fontSize: '1rem', color: '#475569' }}>{contact.address}</p>
+                      ) : null}
+                      {contact.available_hours ? (
+                        <p style={{ marginTop: '2px', fontSize: '0.95rem', color: '#64748b' }}>
+                          Heures: {contact.available_hours}
+                        </p>
+                      ) : null}
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                        {contact.priority ? (
+                          <IonBadge style={{ '--background': '#334155', '--color': '#fff', fontSize: '0.9rem', padding: '9px 18px' } as any}>
+                            Priorite {contact.priority}
+                          </IonBadge>
+                        ) : null}
+                        {contact.is_24_7 ? (
+                          <IonBadge style={{ '--background': '#0f766e', '--color': '#fff', fontSize: '0.9rem', padding: '9px 18px' } as any}>
+                            24/7
+                          </IonBadge>
+                        ) : null}
+                        {contact.is_favorite ? (
+                          <IonBadge style={{ '--background': '#d97706', '--color': '#111827', fontSize: '0.9rem', padding: '9px 18px' } as any}>
+                            Favori
+                          </IonBadge>
+                        ) : null}
                       </div>
                     </IonCardContent>
                   </IonCard>
                 ))}
               </div>
             )}
+            {filtered.length > pageSize ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '14px' }}>
+                <IonButton fill="outline" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
+                  Precedent
+                </IonButton>
+                <IonText color="medium">
+                  Page {page} / {totalPages}
+                </IonText>
+                <IonButton fill="outline" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
+                  Suivant
+                </IonButton>
+              </div>
+            ) : null}
           </IonCardContent>
         </IonCard>
 
         <IonModal isOpen={showAdd} onDidDismiss={() => setShowAdd(false)}>
           <IonHeader>
             <IonToolbar>
-              <IonTitle>Nouveau contact d'urgence</IonTitle>
+              <IonTitle>{editingId === null ? "Nouveau contact d'urgence" : "Modifier le contact"}</IonTitle>
               <IonButtons slot="end">
-                <IonButton onClick={() => setShowAdd(false)}>Fermer</IonButton>
+                <IonButton
+                  onClick={() => {
+                    setShowAdd(false);
+                    setEditingId(null);
+                  }}
+                >
+                  Fermer
+                </IonButton>
               </IonButtons>
             </IonToolbar>
           </IonHeader>
@@ -307,6 +422,8 @@ const PatientEmergencyContactsPage: React.FC = () => {
                   <IonSelectOption value="clinic">Clinique</IonSelectOption>
                   <IonSelectOption value="laboratory">Laboratoire</IonSelectOption>
                   <IonSelectOption value="pharmacy">Pharmacie</IonSelectOption>
+                  <IonSelectOption value="doctor">Medecin</IonSelectOption>
+                  <IonSelectOption value="ambulance">Ambulance</IonSelectOption>
                 </IonSelect>
               </IonItem>
               <IonItem>
@@ -328,6 +445,24 @@ const PatientEmergencyContactsPage: React.FC = () => {
                 />
               </IonItem>
               <IonItem>
+                <IonLabel position="stacked">Heures disponibles</IonLabel>
+                <IonInput
+                  value={form.available_hours}
+                  placeholder="ex: 08:00 - 18:00"
+                  onIonInput={(e) => setForm((prev) => ({ ...prev, available_hours: e.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Priorite (1-3)</IonLabel>
+                <IonInput
+                  type="number"
+                  min="1"
+                  max="3"
+                  value={form.priority}
+                  onIonInput={(e) => setForm((prev) => ({ ...prev, priority: e.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem>
                 <IonCheckbox
                   checked={form.is_24_7}
                   onIonChange={(e) => setForm((prev) => ({ ...prev, is_24_7: e.detail.checked }))}
@@ -342,16 +477,46 @@ const PatientEmergencyContactsPage: React.FC = () => {
                 <IonLabel style={{ marginLeft: 10 }}>Favori</IonLabel>
               </IonItem>
             </IonList>
-            <IonButton expand="block" onClick={() => createContact().catch(() => undefined)} disabled={saving}>
-              Enregistrer
+            <IonButton expand="block" onClick={() => saveContact().catch(() => undefined)} disabled={saving}>
+              {editingId === null ? 'Enregistrer' : 'Mettre a jour'}
             </IonButton>
           </IonContent>
         </IonModal>
         <IonFab vertical="bottom" horizontal="end" slot="fixed">
-          <IonFabButton color="primary" onClick={() => setShowAdd(true)}>
+          <IonFabButton
+            color="primary"
+            onClick={() => {
+              setEditingId(null);
+              setShowAdd(true);
+            }}
+          >
             <IonIcon icon={addOutline} />
           </IonFabButton>
         </IonFab>
+        <IonAlert
+          isOpen={deleteTargetId !== null}
+          header="Supprimer ce contact ?"
+          message="Cette action est definitive."
+          buttons={[
+            {
+              text: 'Annuler',
+              role: 'cancel',
+              handler: () => setDeleteTargetId(null)
+            },
+            {
+              text: 'Supprimer',
+              role: 'destructive',
+              handler: () => {
+                const id = deleteTargetId;
+                setDeleteTargetId(null);
+                if (id !== null) {
+                  removeContact(id).catch(() => undefined);
+                }
+              }
+            }
+          ]}
+          onDidDismiss={() => setDeleteTargetId(null)}
+        />
       </IonContent>
     </IonPage>
   );

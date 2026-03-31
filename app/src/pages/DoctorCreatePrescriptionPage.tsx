@@ -13,6 +13,9 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonSelect,
+  IonSelectOption,
+  IonTextarea,
   IonText,
   IonTitle,
   IonToggle,
@@ -29,17 +32,31 @@ const emptyMedicine = () => ({
   strength: '',
   form: '',
   quantity: 1,
+  durationDays: '7',
+  dailyDosage: '1',
+  notes: '',
   genericAllowed: true,
   conversionAllowed: false
 });
 
 type DraftMedicine = ReturnType<typeof emptyMedicine>;
 
+const FORM_OPTIONS = ['Comprime', 'Capsule', 'Sirop', 'Injection', 'Pommade', 'Spray', 'Sachet', 'Gouttes'];
+
+const toPositiveInt = (value: unknown): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
+};
+
 const DoctorCreatePrescriptionPage: React.FC = () => {
   const location = useLocation();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [patientName, setPatientName] = useState('');
+  const [selectedPatientUserId, setSelectedPatientUserId] = useState<number | null>(null);
   const [medicines, setMedicines] = useState<DraftMedicine[]>([emptyMedicine()]);
   const [medicineSuggestions, setMedicineSuggestions] = useState<Record<number, ApiMedicine[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +70,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     const prefilledPatient = params.get('patient');
     if (prefilledPatient) {
       setPatientName(prefilledPatient);
+      setSelectedPatientUserId(null);
     }
   }, [location.search]);
 
@@ -119,6 +137,21 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }, 250);
   };
 
+  const adjustQuantity = (index: number, delta: number) => {
+    const current = toPositiveInt(medicines[index]?.quantity) ?? 1;
+    updateMedicine(index, { quantity: Math.max(1, current + delta) });
+  };
+
+  const adjustDuration = (index: number, delta: number) => {
+    const current = toPositiveInt(medicines[index]?.durationDays) ?? 1;
+    updateMedicine(index, { durationDays: String(Math.max(1, current + delta)) });
+  };
+
+  const adjustDailyDosage = (index: number, delta: number) => {
+    const current = toPositiveInt(medicines[index]?.dailyDosage) ?? 1;
+    updateMedicine(index, { dailyDosage: String(Math.max(1, current + delta)) });
+  };
+
   const removeMedicine = (index: number) => {
     setMedicines((prev) => prev.filter((_, idx) => idx !== index));
     setMedicineSuggestions((prev) => {
@@ -148,13 +181,18 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      const resolvedPatientUserId = selectedPatientUserId ?? prescriptions.find((p) => p.patient_name === patientName.trim() && p.patient_user_id)?.patient_user_id ?? undefined;
       const payload = {
         patient_name: patientName.trim(),
+        patient_user_id: resolvedPatientUserId,
         medicine_requests: filtered.map((med) => ({
           name: med.name,
           strength: med.strength || null,
           form: med.form || null,
-          quantity: med.quantity > 0 ? med.quantity : 1,
+          quantity: toPositiveInt(med.quantity) ?? 1,
+          duration_days: toPositiveInt(med.durationDays),
+          daily_dosage: toPositiveInt(med.dailyDosage),
+          notes: med.notes.trim() || null,
           generic_allowed: med.genericAllowed,
           conversion_allowed: med.conversionAllowed
         }))
@@ -162,11 +200,13 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       console.log('[CREATE PRESCRIPTION] payload', payload);
       await api.createPrescription(token, {
         patient_name: payload.patient_name,
+        patient_user_id: payload.patient_user_id,
         medicine_requests: payload.medicine_requests
       });
       console.log('[CREATE PRESCRIPTION] success');
       await loadPrescriptionsFromApi();
       setPatientName('');
+      setSelectedPatientUserId(null);
       setMedicines([emptyMedicine()]);
     } catch (err) {
       console.error('[CREATE PRESCRIPTION] failed', err);
@@ -209,7 +249,10 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
               <IonInput
                 value={patientName}
                 placeholder="Marie Jean"
-                onIonInput={(event) => setPatientName(event.detail.value ?? '')}
+                onIonInput={(event) => {
+                  setPatientName(event.detail.value ?? '');
+                  setSelectedPatientUserId(null);
+                }}
               />
             </IonItem>
             {patientSuggestions.length > 0 ? (
@@ -220,7 +263,11 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                     button
                     detail={false}
                     lines="none"
-                    onClick={() => setPatientName(name)}
+                    onClick={() => {
+                      setPatientName(name);
+                      const matching = prescriptions.find((p) => p.patient_name === name && p.patient_user_id);
+                      setSelectedPatientUserId(matching?.patient_user_id ?? null);
+                    }}
                   >
                     <IonLabel>{name}</IonLabel>
                   </IonItem>
@@ -236,11 +283,12 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
               {medicines.map((med, index) => (
                 <IonCard key={`${index}`} className="surface-card" style={{ marginTop: '12px' }}>
                   <IonCardContent>
+                    <h2 style={{ marginTop: 0, marginBottom: '10px' }}>Medicament {index + 1}</h2>
                     <IonItem>
-                      <IonLabel position="stacked">Nom du medicament</IonLabel>
+                      <IonLabel position="stacked">Nom *</IonLabel>
                       <IonInput
                         value={med.name}
-                        placeholder="Amoxicillin"
+                        placeholder="ex: Amoxicilline"
                         onIonInput={(event) => updateMedicineName(index, event.detail.value ?? '')}
                       />
                     </IonItem>
@@ -273,32 +321,98 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                       </IonList>
                     ) : null}
                     <IonItem>
-                      <IonLabel position="stacked">Dosage</IonLabel>
+                      <IonLabel position="stacked">Dosage *</IonLabel>
                       <IonInput
                         value={med.strength}
-                        placeholder="500mg"
+                        placeholder="ex: 500mg"
                         onIonInput={(event) => updateMedicine(index, { strength: event.detail.value ?? '' })}
                       />
                     </IonItem>
                     <IonItem>
-                      <IonLabel position="stacked">Forme</IonLabel>
-                      <IonInput
+                      <IonLabel position="stacked">Forme *</IonLabel>
+                      <IonSelect
+                        interface="popover"
+                        placeholder="Selectionner la forme"
                         value={med.form}
-                        placeholder="Capsule"
-                        onIonInput={(event) => updateMedicine(index, { form: event.detail.value ?? '' })}
-                      />
+                        onIonChange={(event) => updateMedicine(index, { form: (event.detail.value as string) ?? '' })}
+                      >
+                        {FORM_OPTIONS.map((option) => (
+                          <IonSelectOption key={`${index}-${option}`} value={option}>
+                            {option}
+                          </IonSelectOption>
+                        ))}
+                      </IonSelect>
                     </IonItem>
                     <IonItem>
-                      <IonLabel position="stacked">Quantite</IonLabel>
-                      <IonInput
-                        type="number"
-                        min="1"
-                        value={med.quantity}
-                        placeholder="1"
-                        onIonInput={(event) => {
-                          const value = Number(event.detail.value);
-                          updateMedicine(index, { quantity: Number.isFinite(value) && value > 0 ? value : 1 });
-                        }}
+                      <IonLabel position="stacked">Quantite *</IonLabel>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                        <IonButton fill="outline" onClick={() => adjustQuantity(index, -1)}>
+                          -
+                        </IonButton>
+                        <IonInput
+                          type="number"
+                          min="1"
+                          value={med.quantity}
+                          placeholder="1"
+                          onIonInput={(event) => {
+                            const value = Number(event.detail.value);
+                            updateMedicine(index, { quantity: Number.isFinite(value) && value > 0 ? value : 1 });
+                          }}
+                        />
+                        <IonButton fill="outline" onClick={() => adjustQuantity(index, 1)}>
+                          +
+                        </IonButton>
+                      </div>
+                    </IonItem>
+                    <IonItem>
+                      <IonLabel position="stacked">Duree (jours)</IonLabel>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                        <IonButton fill="outline" onClick={() => adjustDuration(index, -1)}>
+                          -
+                        </IonButton>
+                        <IonInput
+                          type="number"
+                          min="1"
+                          value={med.durationDays}
+                          placeholder="7"
+                          onIonInput={(event) => updateMedicine(index, { durationDays: event.detail.value ?? '' })}
+                        />
+                        <IonButton fill="outline" onClick={() => adjustDuration(index, 1)}>
+                          +
+                        </IonButton>
+                      </div>
+                    </IonItem>
+                    <IonText color="medium" style={{ fontSize: '0.9rem', padding: '0 16px', display: 'block', marginTop: '4px' }}>
+                      Combien de jours ce medicament doit etre pris ?
+                    </IonText>
+                    <IonItem>
+                      <IonLabel position="stacked">Dose journaliere (fois par jour)</IonLabel>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                        <IonButton fill="outline" onClick={() => adjustDailyDosage(index, -1)}>
+                          -
+                        </IonButton>
+                        <IonInput
+                          type="number"
+                          min="1"
+                          value={med.dailyDosage}
+                          placeholder="1"
+                          onIonInput={(event) => updateMedicine(index, { dailyDosage: event.detail.value ?? '' })}
+                        />
+                        <IonButton fill="outline" onClick={() => adjustDailyDosage(index, 1)}>
+                          +
+                        </IonButton>
+                      </div>
+                    </IonItem>
+                    <IonText color="medium" style={{ fontSize: '0.9rem', padding: '0 16px', display: 'block', marginTop: '4px' }}>
+                      Laisser vide pour ne pas programmer de rappel automatique.
+                    </IonText>
+                    <IonItem>
+                      <IonLabel position="stacked">Notes</IonLabel>
+                      <IonTextarea
+                        autoGrow
+                        value={med.notes}
+                        placeholder="Notes specifiques pour ce medicament..."
+                        onIonInput={(event) => updateMedicine(index, { notes: event.detail.value ?? '' })}
                       />
                     </IonItem>
                     <IonItem lines="full">

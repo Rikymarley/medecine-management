@@ -187,6 +187,14 @@ const PharmacyDashboard: React.FC = () => {
                           <IonLabel>
                             <strong>{med.name}</strong> {med.strength} {med.form}
                             <div style={{ fontSize: '0.85rem', marginTop: '4px' }}>
+                              Quantite: {med.quantity ?? 1}
+                              {med.duration_days ? ` · Duree: ${med.duration_days}j` : ''}
+                              {med.daily_dosage ? ` · ${med.daily_dosage}x/j` : ''}
+                            </div>
+                            {med.notes ? (
+                              <div style={{ fontSize: '0.85rem', marginTop: '4px' }}>Notes: {med.notes}</div>
+                            ) : null}
+                            <div style={{ fontSize: '0.85rem', marginTop: '4px' }}>
                               Generique autorise : {med.generic_allowed ? 'Oui' : 'Non'} · Conversion :{' '}
                               {med.conversion_allowed ? 'Oui' : 'Non'}
                             </div>

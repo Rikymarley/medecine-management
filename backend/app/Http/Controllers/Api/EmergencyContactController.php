@@ -12,6 +12,7 @@ class EmergencyContactController extends Controller
     {
         $contacts = EmergencyContact::query()
             ->where('patient_user_id', $request->user()->id)
+            ->orderBy('priority')
             ->orderByDesc('is_favorite')
             ->orderBy('name')
             ->get();
@@ -24,12 +25,14 @@ class EmergencyContactController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30'],
-            'category' => ['required', 'in:hospital,clinic,laboratory,pharmacy'],
+            'category' => ['required', 'in:hospital,clinic,laboratory,pharmacy,doctor,ambulance'],
             'city' => ['nullable', 'string', 'max:120'],
             'department' => ['nullable', 'string', 'max:120'],
             'address' => ['nullable', 'string', 'max:255'],
+            'available_hours' => ['nullable', 'string', 'max:120'],
             'is_24_7' => ['sometimes', 'boolean'],
             'is_favorite' => ['sometimes', 'boolean'],
+            'priority' => ['nullable', 'integer', 'min:1', 'max:3'],
             'notes' => ['nullable', 'string', 'max:1500'],
         ]);
 
@@ -52,12 +55,14 @@ class EmergencyContactController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'phone' => ['sometimes', 'required', 'string', 'max:30'],
-            'category' => ['sometimes', 'required', 'in:hospital,clinic,laboratory,pharmacy'],
+            'category' => ['sometimes', 'required', 'in:hospital,clinic,laboratory,pharmacy,doctor,ambulance'],
             'city' => ['nullable', 'string', 'max:120'],
             'department' => ['nullable', 'string', 'max:120'],
             'address' => ['nullable', 'string', 'max:255'],
+            'available_hours' => ['nullable', 'string', 'max:120'],
             'is_24_7' => ['sometimes', 'boolean'],
             'is_favorite' => ['sometimes', 'boolean'],
+            'priority' => ['nullable', 'integer', 'min:1', 'max:3'],
             'notes' => ['nullable', 'string', 'max:1500'],
         ]);
 

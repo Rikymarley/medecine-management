@@ -45,7 +45,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
             const found = cachedData.find((p) => p.id === targetId) ?? null;
             if (found) {
               setPrescription(found);
-              return;
             }
           }
         } catch {
@@ -106,10 +105,14 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                   {prescription.medicine_requests.map((med) => (
                     <IonItem key={med.id} lines="full">
                       <IonLabel>
-                        <h3>{med.name}</h3>
+                        <h3 style={{ fontWeight: 800 }}>{med.name}</h3>
                         <p>
                           {med.strength || 'Sans dosage'} · {med.form || 'Sans forme'}
                         </p>
+                        <p>Quantite demandee: {med.quantity ?? 1}</p>
+                        <p>Duree: {med.duration_days ?? '-'} jour(s)</p>
+                        <p>Dose journaliere: {med.daily_dosage ?? '-'} fois/jour</p>
+                        <p>Notes: {med.notes ?? '-'}</p>
                         <p>
                           Generique: {med.generic_allowed ? 'Oui' : 'Non'} · Conversion:{' '}
                           {med.conversion_allowed ? 'Oui' : 'Non'}

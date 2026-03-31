@@ -8,6 +8,9 @@ use Illuminate\Support\Carbon;
 class Prescription extends Model
 {
     protected $fillable = [
+        'doctor_user_id',
+        'patient_user_id',
+        'family_member_id',
         'patient_name',
         'doctor_name',
         'status',
@@ -23,9 +26,52 @@ class Prescription extends Model
         return $this->hasMany(MedicineRequest::class);
     }
 
+    public function doctor()
+    {
+        return $this->belongsTo(User::class, 'doctor_user_id');
+    }
+
+    public function patient()
+    {
+        return $this->belongsTo(User::class, 'patient_user_id');
+    }
+
+    public function familyMember()
+    {
+        return $this->belongsTo(FamilyMember::class);
+    }
+
     public function responses()
     {
         return $this->hasMany(PharmacyResponse::class);
+    }
+
+    public function statusLogs()
+    {
+        return $this->hasMany(PrescriptionStatusLog::class);
+    }
+
+    public function changeStatus(
+        string $newStatus,
+        ?int $changedByUserId = null,
+        ?string $reason = null,
+        ?array $metadata = null
+    ): void {
+        $oldStatus = $this->status;
+        if ($oldStatus === $newStatus) {
+            return;
+        }
+
+        $this->update(['status' => $newStatus]);
+
+        $this->statusLogs()->create([
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'changed_by_user_id' => $changedByUserId,
+            'reason' => $reason,
+            'metadata' => $metadata,
+            'changed_at' => now(),
+        ]);
     }
 
     public function refreshStatusFromResponses(int $expireHours = 1): void
@@ -40,9 +86,7 @@ class Prescription extends Model
             : Carbon::parse($this->requested_at);
 
         if ($requestedAt->copy()->addHours($hours)->isPast()) {
-            if ($this->status !== 'expired') {
-                $this->update(['status' => 'expired']);
-            }
+            $this->changeStatus('expired', null, 'auto_expiration_check');
             return;
         }
 
@@ -78,8 +122,6 @@ class Prescription extends Model
             }
         }
 
-        if ($this->status !== $targetStatus) {
-            $this->update(['status' => $targetStatus]);
-        }
+        $this->changeStatus($targetStatus, null, 'auto_response_refresh');
     }
 }

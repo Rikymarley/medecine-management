@@ -11,7 +11,7 @@ class PatientMedicinePurchaseController extends Controller
 {
     public function index(Request $request, Prescription $prescription)
     {
-        if ($prescription->patient_name !== $request->user()->name) {
+        if (!$this->canAccessAsPatient($request, $prescription)) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
@@ -25,7 +25,7 @@ class PatientMedicinePurchaseController extends Controller
 
     public function upsert(Request $request, Prescription $prescription)
     {
-        if ($prescription->patient_name !== $request->user()->name) {
+        if (!$this->canAccessAsPatient($request, $prescription)) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
@@ -69,7 +69,7 @@ class PatientMedicinePurchaseController extends Controller
 
     public function upsertBatch(Request $request, Prescription $prescription)
     {
-        if ($prescription->patient_name !== $request->user()->name) {
+        if (!$this->canAccessAsPatient($request, $prescription)) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
@@ -107,5 +107,16 @@ class PatientMedicinePurchaseController extends Controller
         }
 
         return response()->json(['message' => 'Mise a jour en lot enregistree.']);
+    }
+
+    private function canAccessAsPatient(Request $request, Prescription $prescription): bool
+    {
+        $user = $request->user();
+
+        if ($prescription->patient_user_id !== null) {
+            return (int) $prescription->patient_user_id === (int) $user->id;
+        }
+
+        return $prescription->patient_name === $user->name;
     }
 }

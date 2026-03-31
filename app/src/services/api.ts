@@ -80,6 +80,10 @@ export type ApiMedicineRequest = {
   strength: string | null;
   form: string | null;
   quantity: number;
+  expiry_date: string | null;
+  duration_days: number | null;
+  daily_dosage: number | null;
+  notes: string | null;
   generic_allowed: boolean;
   conversion_allowed: boolean;
 };
@@ -96,6 +100,9 @@ export type ApiPharmacyResponse = {
 
 export type ApiPrescription = {
   id: number;
+  doctor_user_id: number | null;
+  patient_user_id: number | null;
+  family_member_id: number | null;
   patient_name: string;
   doctor_name: string;
   status: string;
@@ -118,12 +125,14 @@ export type ApiEmergencyContact = {
   patient_user_id: number;
   name: string;
   phone: string;
-  category: 'hospital' | 'clinic' | 'laboratory' | 'pharmacy';
+  category: 'hospital' | 'clinic' | 'laboratory' | 'pharmacy' | 'doctor' | 'ambulance';
   city: string | null;
   department: string | null;
   address: string | null;
+  available_hours: string | null;
   is_24_7: boolean;
   is_favorite: boolean;
+  priority: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -134,8 +143,13 @@ export type ApiFamilyMember = {
   patient_user_id: number;
   name: string;
   age: number | null;
-  gender: 'male' | 'female' | 'other' | null;
+  gender: 'male' | 'female' | null;
   relationship: 'parent' | 'spouse' | 'child' | 'sibling' | 'grandparent' | 'other' | null;
+  allergies: string | null;
+  chronic_diseases: string | null;
+  blood_type: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
+  emergency_notes: string | null;
+  primary_caregiver: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -176,11 +190,16 @@ export const api = {
     request<ApiPrescription[]>('/patient/prescriptions', { token }),
   createPrescription: (token: string, payload: {
     patient_name: string;
+    patient_user_id?: number;
     medicine_requests: Array<{
       name: string;
       strength?: string | null;
       form?: string | null;
       quantity?: number;
+      expiry_date?: string | null;
+      duration_days?: number | null;
+      daily_dosage?: number | null;
+      notes?: string | null;
       generic_allowed?: boolean;
       conversion_allowed?: boolean;
     }>;
@@ -199,6 +218,16 @@ export const api = {
     request<ApiPrescription>(`/patient/prescriptions/${prescriptionId}/reopen`, {
       method: 'PATCH',
       token
+    }),
+  assignFamilyMemberToPrescriptionAsPatient: (
+    token: string,
+    prescriptionId: number,
+    family_member_id: number | null
+  ) =>
+    request<ApiPrescription>(`/patient/prescriptions/${prescriptionId}/family-member`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ family_member_id })
     }),
   createPharmacyResponse: (token: string, payload: {
     pharmacy_id: number;
@@ -269,8 +298,10 @@ export const api = {
       city?: string | null;
       department?: string | null;
       address?: string | null;
+      available_hours?: string | null;
       is_24_7?: boolean;
       is_favorite?: boolean;
+      priority?: number | null;
       notes?: string | null;
     }
   ) =>
@@ -289,8 +320,10 @@ export const api = {
       city: string | null;
       department: string | null;
       address: string | null;
+      available_hours: string | null;
       is_24_7: boolean;
       is_favorite: boolean;
+      priority: number | null;
       notes: string | null;
     }>
   ) =>
@@ -313,10 +346,35 @@ export const api = {
       age?: number | null;
       gender?: ApiFamilyMember['gender'];
       relationship?: ApiFamilyMember['relationship'];
+      allergies?: string | null;
+      chronic_diseases?: string | null;
+      blood_type?: ApiFamilyMember['blood_type'];
+      emergency_notes?: string | null;
+      primary_caregiver?: boolean;
     }
   ) =>
     request<ApiFamilyMember>('/patient/family-members', {
       method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updatePatientFamilyMember: (
+    token: string,
+    id: number,
+    payload: Partial<{
+      name: string;
+      age: number | null;
+      gender: ApiFamilyMember['gender'];
+      relationship: ApiFamilyMember['relationship'];
+      allergies: string | null;
+      chronic_diseases: string | null;
+      blood_type: ApiFamilyMember['blood_type'];
+      emergency_notes: string | null;
+      primary_caregiver: boolean;
+    }>
+  ) =>
+    request<ApiFamilyMember>(`/patient/family-members/${id}`, {
+      method: 'PATCH',
       token,
       body: JSON.stringify(payload)
     }),

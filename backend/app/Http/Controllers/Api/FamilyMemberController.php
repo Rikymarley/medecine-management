@@ -23,9 +23,20 @@ class FamilyMemberController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'age' => ['nullable', 'integer', 'min:0', 'max:130'],
-            'gender' => ['nullable', 'in:male,female,other'],
+            'gender' => ['nullable', 'in:male,female'],
             'relationship' => ['nullable', 'in:parent,spouse,child,sibling,grandparent,other'],
+            'allergies' => ['nullable', 'string', 'max:255'],
+            'chronic_diseases' => ['nullable', 'string', 'max:255'],
+            'blood_type' => ['nullable', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'],
+            'emergency_notes' => ['nullable', 'string', 'max:1500'],
+            'primary_caregiver' => ['sometimes', 'boolean'],
         ]);
+
+        if (($data['primary_caregiver'] ?? false) === true) {
+            FamilyMember::query()
+                ->where('patient_user_id', $request->user()->id)
+                ->update(['primary_caregiver' => false]);
+        }
 
         $member = FamilyMember::create([
             ...$data,
@@ -44,9 +55,21 @@ class FamilyMemberController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'age' => ['nullable', 'integer', 'min:0', 'max:130'],
-            'gender' => ['nullable', 'in:male,female,other'],
+            'gender' => ['nullable', 'in:male,female'],
             'relationship' => ['nullable', 'in:parent,spouse,child,sibling,grandparent,other'],
+            'allergies' => ['nullable', 'string', 'max:255'],
+            'chronic_diseases' => ['nullable', 'string', 'max:255'],
+            'blood_type' => ['nullable', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'],
+            'emergency_notes' => ['nullable', 'string', 'max:1500'],
+            'primary_caregiver' => ['sometimes', 'boolean'],
         ]);
+
+        if (($data['primary_caregiver'] ?? false) === true) {
+            FamilyMember::query()
+                ->where('patient_user_id', $request->user()->id)
+                ->where('id', '!=', $familyMember->id)
+                ->update(['primary_caregiver' => false]);
+        }
 
         $familyMember->update($data);
 

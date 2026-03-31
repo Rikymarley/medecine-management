@@ -1,6 +1,7 @@
 import {
   IonBackButton,
   IonBadge,
+  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -29,6 +30,8 @@ const PatientPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 12;
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
 
   const loadPrescriptions = useCallback(async () => {
@@ -72,6 +75,17 @@ const PatientPrescriptionsPage: React.FC = () => {
       (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime()
     );
   }, [prescriptions]);
+  const totalPages = Math.max(1, Math.ceil(sortedPrescriptions.length / pageSize));
+  const pagedPrescriptions = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedPrescriptions.slice(start, start + pageSize);
+  }, [page, sortedPrescriptions]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <IonPage>
@@ -93,7 +107,7 @@ const PatientPrescriptionsPage: React.FC = () => {
               </IonText>
             ) : (
               <IonList>
-                {sortedPrescriptions.map((prescription) => (
+                {pagedPrescriptions.map((prescription) => (
                   <IonItem
                     key={prescription.id}
                     lines="full"
@@ -121,6 +135,19 @@ const PatientPrescriptionsPage: React.FC = () => {
                 ))}
               </IonList>
             )}
+            {sortedPrescriptions.length > pageSize ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
+                <IonButton fill="outline" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
+                  Precedent
+                </IonButton>
+                <IonText color="medium">
+                  Page {page} / {totalPages}
+                </IonText>
+                <IonButton fill="outline" disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
+                  Suivant
+                </IonButton>
+              </div>
+            ) : null}
           </IonCardContent>
         </IonCard>
       </IonContent>

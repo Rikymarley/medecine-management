@@ -53,6 +53,14 @@ ion-content.app-content {
   --background: linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-bottom) 100%);
 }
 
+.inner-scroll {
+  padding: 10px;
+}
+
+.card-content-md {
+  padding: 10px;
+}
+
 ion-card.surface-card {
   --background: var(--app-surface);
   border: 1px solid var(--app-border);
@@ -77,6 +85,9 @@ ion-card ion-card-title {
 ion-item {
   --background: transparent;
   --border-color: #d7e4ee;
+  --padding-start: 8px;
+  --padding-end: 8px;
+  --inner-padding-end: 0;
 }
 
 ion-label {
@@ -166,6 +177,22 @@ ion-badge.status-completed {
 @media (min-width: 480px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  ion-content.app-content {
+    --padding-start: 6px;
+    --padding-end: 6px;
+  }
+
+  ion-card {
+    margin-left: 6px;
+    margin-right: 6px;
+  }
+
+  .card-content-md {
+    padding: 8px;
   }
 }
 

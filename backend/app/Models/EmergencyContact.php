@@ -14,14 +14,17 @@ class EmergencyContact extends Model
         'city',
         'department',
         'address',
+        'available_hours',
         'is_24_7',
         'is_favorite',
+        'priority',
         'notes',
     ];
 
     protected $casts = [
         'is_24_7' => 'boolean',
         'is_favorite' => 'boolean',
+        'priority' => 'integer',
     ];
 
     public function patient()

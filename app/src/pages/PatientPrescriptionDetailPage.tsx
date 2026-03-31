@@ -15,15 +15,17 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonSelect,
+  IonSelectOption,
   IonText,
   IonTitle,
   IonToolbar
 } from '@ionic/react';
-import { medkitOutline } from 'ionicons/icons';
+import { callOutline, logoWhatsapp, medkitOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiPharmacy, ApiPrescription } from '../services/api';
+import { api, ApiFamilyMember, ApiPatientMedicinePurchase, ApiPharmacy, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime, minutesAgo, minutesUntil } from '../utils/time';
@@ -43,7 +45,9 @@ const PatientPrescriptionDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [prescription, setPrescription] = useState<ApiPrescription | null>(null);
   const [pharmacies, setPharmacies] = useState<ApiPharmacy[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
   const [expandedPharmacies, setExpandedPharmacies] = useState<Record<number, boolean>>({});
+  const [purchases, setPurchases] = useState<ApiPatientMedicinePurchase[]>([]);
   const [purchasedMap, setPurchasedMap] = useState<Record<string, number>>({});
   const [pendingChanges, setPendingChanges] = useState<
     Record<string, { pharmacy_id: number; medicine_request_id: number; purchased: boolean; quantity?: number }>
@@ -103,12 +107,20 @@ const PatientPrescriptionDetailPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!token) {
+      return;
+    }
+    api.getPatientFamilyMembers(token).then(setFamilyMembers).catch(() => undefined);
+  }, [token]);
+
+  useEffect(() => {
     if (!token || !id) {
       return;
     }
     api
       .getPatientMedicinePurchases(token, Number(id))
       .then((rows) => {
+        setPurchases(rows);
         const next: Record<string, number> = {};
         rows.forEach((row) => {
           next[`${row.pharmacy_id}-${row.medicine_request_id}`] = row.quantity > 0 ? row.quantity : 1;
@@ -131,6 +143,8 @@ const PatientPrescriptionDetailPage: React.FC = () => {
           prescription_id: Number(id),
           items: Object.values(snapshot)
         });
+        const refreshed = await api.getPatientMedicinePurchases(token, Number(id));
+        setPurchases(refreshed);
         setPendingChanges((prev) => {
           const next = { ...prev };
           Object.keys(snapshot).forEach((key) => {
@@ -235,6 +249,50 @@ const PatientPrescriptionDetailPage: React.FC = () => {
     return totals;
   }, [purchasedMap]);
 
+  const pickupHistory = useMemo(() => {
+    if (!prescription) {
+      return [];
+    }
+    return purchases
+      .map((purchase) => {
+        const pharmacy = pharmacies.find((p) => p.id === purchase.pharmacy_id);
+        const med = prescription.medicine_requests.find((m) => m.id === purchase.medicine_request_id);
+        return {
+          id: purchase.id,
+          pharmacyName: pharmacy?.name ?? `Pharmacie #${purchase.pharmacy_id}`,
+          medicineName: med?.name ?? `Medicament #${purchase.medicine_request_id}`,
+          quantity: purchase.quantity
+        };
+      })
+      .sort((a, b) => a.pharmacyName.localeCompare(b.pharmacyName, 'fr', { sensitivity: 'base' }));
+  }, [pharmacies, prescription, purchases]);
+
+  const assignFamilyMember = async (familyMemberIdRaw: number | null) => {
+    if (!token || !prescription) {
+      return;
+    }
+    const updated = await api.assignFamilyMemberToPrescriptionAsPatient(
+      token,
+      prescription.id,
+      familyMemberIdRaw
+    );
+    setPrescription(updated);
+    if (cacheKey) {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        try {
+          const cached = JSON.parse(cachedRaw) as ApiPrescription[];
+          if (Array.isArray(cached)) {
+            const next = cached.map((item) => (item.id === updated.id ? updated : item));
+            localStorage.setItem(cacheKey, JSON.stringify(next));
+          }
+        } catch {
+          localStorage.removeItem(cacheKey);
+        }
+      }
+    }
+  };
+
   const completePrescription = async () => {
     if (!token || !prescription) {
       return;
@@ -326,6 +384,23 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                   </IonBadge>
                 </div>
                 <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">Membre de famille</IonLabel>
+                  <IonSelect
+                    placeholder="Selectionner"
+                    value={prescription.family_member_id ?? ''}
+                    onIonChange={(event) =>
+                      assignFamilyMember(event.detail.value === '' ? null : Number(event.detail.value)).catch(() => undefined)
+                    }
+                  >
+                    <IonSelectOption value="">Aucun</IonSelectOption>
+                    {familyMembers.map((member) => (
+                      <IonSelectOption key={member.id} value={member.id}>
+                        {member.name}
+                      </IonSelectOption>
+                    ))}
+                  </IonSelect>
+                </IonItem>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   {!isCompleted ? (
                     <IonButton
@@ -363,7 +438,15 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                           {med.strength || 'Sans dosage'} · {med.form || 'Sans forme'}
                         </p>
                         <p>Quantite demandee: {med.quantity ?? 1}</p>
+                        {med.expiry_date ? <p>Expiration: {med.expiry_date}</p> : null}
+                        {med.duration_days ? <p>Duree: {med.duration_days} jour(s)</p> : null}
+                        {med.daily_dosage ? <p>Dose journaliere: {med.daily_dosage} fois/jour</p> : null}
+                        {med.notes ? <p>Notes: {med.notes}</p> : null}
                         <p>Quantite achetee: {purchasedTotalsByMedicine[med.id] ?? 0}</p>
+                        <p>
+                          Quantite restante:{' '}
+                          {Math.max(0, (med.quantity ?? 1) - (purchasedTotalsByMedicine[med.id] ?? 0))}
+                        </p>
                         <p>
                           Generique: {med.generic_allowed ? 'Oui' : 'Non'} · Conversion:{' '}
                           {med.conversion_allowed ? 'Oui' : 'Non'}
@@ -423,6 +506,9 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                         ) : (
                           <p>Aucune confirmation</p>
                         )}
+                        {latestConfirmation && new Date(latestConfirmation.expires_at).getTime() > Date.now() && minutesUntil(latestConfirmation.expires_at) <= 10 ? (
+                          <IonBadge color="warning">Alerte: expiration bientot</IonBadge>
+                        ) : null}
 
                         <IonList>
                           {items.map((item) => (
@@ -437,6 +523,30 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                                     : 'Pas de reponse'}
                                 </p>
                               </IonLabel>
+                              <div style={{ display: 'flex', gap: '6px', marginRight: '8px' }}>
+                                <IonButton
+                                  size="small"
+                                  fill="clear"
+                                  disabled={!pharmacy.phone}
+                                  href={pharmacy.phone ? `tel:${pharmacy.phone}` : undefined}
+                                >
+                                  <IonIcon icon={callOutline} />
+                                </IonButton>
+                                <IonButton
+                                  size="small"
+                                  fill="clear"
+                                  disabled={!pharmacy.phone}
+                                  href={
+                                    pharmacy.phone
+                                      ? `https://wa.me/${pharmacy.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                                          `Bonjour, je viens via l'application. Pouvez-vous confirmer ${item.medicine.name} ${item.medicine.strength ?? ''} ?`
+                                        )}`
+                                      : undefined
+                                  }
+                                >
+                                  <IonIcon icon={logoWhatsapp} />
+                                </IonButton>
+                              </div>
                               <IonCheckbox
                                 slot="end"
                                 checked={(purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 0) > 0}
@@ -494,6 +604,28 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                       </IonCardContent>
                     </IonCard>
                   ))
+                )}
+              </IonCardContent>
+            </IonCard>
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle>Historique des achats</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                {pickupHistory.length === 0 ? (
+                  <IonText color="medium">Aucun achat enregistre.</IonText>
+                ) : (
+                  <IonList>
+                    {pickupHistory.map((entry) => (
+                      <IonItem key={entry.id} lines="full">
+                        <IonLabel>
+                          <h3>{entry.pharmacyName}</h3>
+                          <p>{entry.medicineName}</p>
+                          <p>Quantite: {entry.quantity}</p>
+                        </IonLabel>
+                      </IonItem>
+                    ))}
+                  </IonList>
                 )}
               </IonCardContent>
             </IonCard>

@@ -12,10 +12,16 @@ class FamilyMember extends Model
         'age',
         'gender',
         'relationship',
+        'allergies',
+        'chronic_diseases',
+        'blood_type',
+        'emergency_notes',
+        'primary_caregiver',
     ];
 
     protected $casts = [
         'age' => 'integer',
+        'primary_caregiver' => 'boolean',
     ];
 
     public function patient()
