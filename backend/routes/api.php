@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\PharmacyResponseController;
 use App\Http\Controllers\Api\PrescriptionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmergencyContactController;
+use App\Http\Controllers\Api\FamilyMemberController;
 use App\Http\Controllers\Api\PatientMedicinePurchaseController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\UserVerificationController;
@@ -44,7 +45,17 @@ Route::get('/patient/emergency-contacts', [EmergencyContactController::class, 'i
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/patient/emergency-contacts', [EmergencyContactController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:patient']);
+Route::patch('/patient/emergency-contacts/{emergencyContact}', [EmergencyContactController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:patient']);
 Route::delete('/patient/emergency-contacts/{emergencyContact}', [EmergencyContactController::class, 'destroy'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::get('/patient/family-members', [FamilyMemberController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::post('/patient/family-members', [FamilyMemberController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::patch('/patient/family-members/{familyMember}', [FamilyMemberController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::delete('/patient/family-members/{familyMember}', [FamilyMemberController::class, 'destroy'])
     ->middleware(['auth:sanctum', 'role:patient']);
 
 Route::middleware('auth:sanctum')->group(function () {

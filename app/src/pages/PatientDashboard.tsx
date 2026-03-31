@@ -10,7 +10,7 @@ import {
   IonToolbar,
   useIonRouter
 } from '@ionic/react';
-import { documentTextOutline, medkitOutline } from 'ionicons/icons';
+import { callOutline, documentTextOutline, medkitOutline, peopleOutline } from 'ionicons/icons';
 import InstallBanner from '../components/InstallBanner';
 import { useAuth } from '../state/AuthState';
 
@@ -57,6 +57,34 @@ const PatientDashboard: React.FC = () => {
               </div>
               <h3>Ordonnances</h3>
               <p className="muted-note">Voir toutes vos ordonnances.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/emergency-contacts', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-blue">
+                <IonIcon icon={callOutline} />
+              </div>
+              <h3>Urgence</h3>
+              <p className="muted-note">Gerer vos contacts d'urgence.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/family-members', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-rose">
+                <IonIcon icon={peopleOutline} />
+              </div>
+              <h3>Famille</h3>
+              <p className="muted-note">Ajouter et gerer vos proches.</p>
             </IonCardContent>
           </IonCard>
         </div>

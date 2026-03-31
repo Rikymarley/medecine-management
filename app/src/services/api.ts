@@ -113,6 +113,33 @@ export type ApiPatientMedicinePurchase = {
   quantity: number;
 };
 
+export type ApiEmergencyContact = {
+  id: number;
+  patient_user_id: number;
+  name: string;
+  phone: string;
+  category: 'hospital' | 'clinic' | 'laboratory' | 'pharmacy';
+  city: string | null;
+  department: string | null;
+  address: string | null;
+  is_24_7: boolean;
+  is_favorite: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiFamilyMember = {
+  id: number;
+  patient_user_id: number;
+  name: string;
+  age: number | null;
+  gender: 'male' | 'female' | 'other' | null;
+  relationship: 'parent' | 'spouse' | 'child' | 'sibling' | 'grandparent' | 'other' | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export const api = {
   register: (payload: {
     name: string;
@@ -230,5 +257,72 @@ export const api = {
         token,
         body: JSON.stringify({ items: payload.items })
       }
-    )
+    ),
+  getPatientEmergencyContacts: (token: string) =>
+    request<ApiEmergencyContact[]>('/patient/emergency-contacts', { token }),
+  createPatientEmergencyContact: (
+    token: string,
+    payload: {
+      name: string;
+      phone: string;
+      category: ApiEmergencyContact['category'];
+      city?: string | null;
+      department?: string | null;
+      address?: string | null;
+      is_24_7?: boolean;
+      is_favorite?: boolean;
+      notes?: string | null;
+    }
+  ) =>
+    request<ApiEmergencyContact>('/patient/emergency-contacts', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updatePatientEmergencyContact: (
+    token: string,
+    id: number,
+    payload: Partial<{
+      name: string;
+      phone: string;
+      category: ApiEmergencyContact['category'];
+      city: string | null;
+      department: string | null;
+      address: string | null;
+      is_24_7: boolean;
+      is_favorite: boolean;
+      notes: string | null;
+    }>
+  ) =>
+    request<ApiEmergencyContact>(`/patient/emergency-contacts/${id}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  deletePatientEmergencyContact: (token: string, id: number) =>
+    request<{ message: string }>(`/patient/emergency-contacts/${id}`, {
+      method: 'DELETE',
+      token
+    }),
+  getPatientFamilyMembers: (token: string) =>
+    request<ApiFamilyMember[]>('/patient/family-members', { token }),
+  createPatientFamilyMember: (
+    token: string,
+    payload: {
+      name: string;
+      age?: number | null;
+      gender?: ApiFamilyMember['gender'];
+      relationship?: ApiFamilyMember['relationship'];
+    }
+  ) =>
+    request<ApiFamilyMember>('/patient/family-members', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  deletePatientFamilyMember: (token: string, id: number) =>
+    request<{ message: string }>(`/patient/family-members/${id}`, {
+      method: 'DELETE',
+      token
+    })
 };
