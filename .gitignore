@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Root logs
+*.log
+
+# Frontend (Ionic app)
+app/node_modules/
+app/dist/
+app/.env
+app/.vite/
+
+# Backend (Laravel)
+backend/vendor/
+backend/node_modules/
+backend/.env
+backend/storage/*.key
+backend/storage/logs/
+backend/storage/framework/cache/data/
+
+# IDE
+.vscode/
+.idea/
