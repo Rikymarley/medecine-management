@@ -24,7 +24,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiMedicine, ApiPrescription } from '../services/api';
+import { api, ApiFamilyMember, ApiMedicine, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
 const emptyMedicine = () => ({
@@ -57,6 +57,9 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [patientName, setPatientName] = useState('');
   const [selectedPatientUserId, setSelectedPatientUserId] = useState<number | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
+  const [familyMemberName, setFamilyMemberName] = useState('');
+  const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<number | null>(null);
   const [medicines, setMedicines] = useState<DraftMedicine[]>([emptyMedicine()]);
   const [medicineSuggestions, setMedicineSuggestions] = useState<Record<number, ApiMedicine[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -70,9 +73,10 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     const prefilledPatient = params.get('patient');
     if (prefilledPatient) {
       setPatientName(prefilledPatient);
-      setSelectedPatientUserId(null);
+      const matching = prescriptions.find((p) => p.patient_name === prefilledPatient && p.patient_user_id);
+      setSelectedPatientUserId(matching?.patient_user_id ?? null);
     }
-  }, [location.search]);
+  }, [location.search, prescriptions]);
 
   const loadPrescriptionsFromApi = async () => {
     if (!token) {
@@ -167,6 +171,33 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedPatientUserId !== null) {
+      return;
+    }
+
+    const exact = prescriptions.find(
+      (p) => p.patient_name.trim().toLowerCase() === patientName.trim().toLowerCase() && p.patient_user_id
+    );
+    if (exact?.patient_user_id) {
+      setSelectedPatientUserId(exact.patient_user_id);
+    }
+  }, [patientName, prescriptions, selectedPatientUserId]);
+
+  useEffect(() => {
+    if (!token || !selectedPatientUserId) {
+      setFamilyMembers([]);
+      setFamilyMemberName('');
+      setSelectedFamilyMemberId(null);
+      return;
+    }
+
+    api
+      .getDoctorPatientFamilyMembers(token, selectedPatientUserId)
+      .then((rows) => setFamilyMembers(rows))
+      .catch(() => setFamilyMembers([]));
+  }, [selectedPatientUserId, token]);
+
   const submitPrescription = async () => {
     const filtered = medicines.filter((med) => med.name.trim());
     if (!patientName.trim() || filtered.length === 0) {
@@ -185,6 +216,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       const payload = {
         patient_name: patientName.trim(),
         patient_user_id: resolvedPatientUserId,
+        family_member_id: selectedFamilyMemberId ?? undefined,
         medicine_requests: filtered.map((med) => ({
           name: med.name,
           strength: med.strength || null,
@@ -201,12 +233,16 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       await api.createPrescription(token, {
         patient_name: payload.patient_name,
         patient_user_id: payload.patient_user_id,
+        family_member_id: payload.family_member_id,
         medicine_requests: payload.medicine_requests
       });
       console.log('[CREATE PRESCRIPTION] success');
       await loadPrescriptionsFromApi();
       setPatientName('');
       setSelectedPatientUserId(null);
+      setFamilyMembers([]);
+      setFamilyMemberName('');
+      setSelectedFamilyMemberId(null);
       setMedicines([emptyMedicine()]);
     } catch (err) {
       console.error('[CREATE PRESCRIPTION] failed', err);
@@ -226,6 +262,17 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       .filter((name) => name.toLowerCase().includes(query) && name.toLowerCase() !== query)
       .slice(0, 5);
   }, [prescriptions, patientName]);
+
+  const familyMemberSuggestions = useMemo(() => {
+    const query = familyMemberName.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    return familyMembers
+      .filter((member) => member.name.toLowerCase().includes(query) && member.name.toLowerCase() !== query)
+      .slice(0, 5);
+  }, [familyMemberName, familyMembers]);
 
   return (
     <IonPage>
@@ -250,8 +297,12 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                 value={patientName}
                 placeholder="Marie Jean"
                 onIonInput={(event) => {
-                  setPatientName(event.detail.value ?? '');
+                  const nextValue = event.detail.value ?? '';
+                  setPatientName(nextValue);
                   setSelectedPatientUserId(null);
+                  setFamilyMembers([]);
+                  setFamilyMemberName('');
+                  setSelectedFamilyMemberId(null);
                 }}
               />
             </IonItem>
@@ -267,12 +318,47 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                       setPatientName(name);
                       const matching = prescriptions.find((p) => p.patient_name === name && p.patient_user_id);
                       setSelectedPatientUserId(matching?.patient_user_id ?? null);
+                      setFamilyMemberName('');
+                      setSelectedFamilyMemberId(null);
                     }}
                   >
                     <IonLabel>{name}</IonLabel>
                   </IonItem>
                 ))}
               </IonList>
+            ) : null}
+            {selectedPatientUserId ? (
+              <>
+                <IonItem>
+                  <IonLabel position="stacked">Membre de famille (optionnel)</IonLabel>
+                  <IonInput
+                    value={familyMemberName}
+                    placeholder="Tapez un nom"
+                    onIonInput={(event) => {
+                      setFamilyMemberName(event.detail.value ?? '');
+                      setSelectedFamilyMemberId(null);
+                    }}
+                  />
+                </IonItem>
+                {familyMemberSuggestions.length > 0 ? (
+                  <IonList inset>
+                    {familyMemberSuggestions.map((member) => (
+                      <IonItem
+                        key={member.id}
+                        button
+                        detail={false}
+                        lines="none"
+                        onClick={() => {
+                          setFamilyMemberName(member.name);
+                          setSelectedFamilyMemberId(member.id);
+                        }}
+                      >
+                        <IonLabel>{member.name}</IonLabel>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                ) : null}
+              </>
             ) : null}
 
             <IonText className="ion-padding-top">

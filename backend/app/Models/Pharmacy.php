@@ -13,11 +13,19 @@ class Pharmacy extends Model
         'latitude',
         'longitude',
         'open_now',
+        'opening_hours',
+        'closes_at',
+        'temporary_closed',
+        'emergency_available',
+        'last_status_updated_at',
         'reliability_score'
     ];
 
     protected $casts = [
         'open_now' => 'boolean',
+        'temporary_closed' => 'boolean',
+        'emergency_available' => 'boolean',
+        'last_status_updated_at' => 'datetime',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7'
     ];

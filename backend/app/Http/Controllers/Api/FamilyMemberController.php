@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FamilyMember;
+use App\Models\Prescription;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class FamilyMemberController extends Controller
@@ -12,6 +14,30 @@ class FamilyMemberController extends Controller
     {
         $members = FamilyMember::query()
             ->where('patient_user_id', $request->user()->id)
+            ->orderBy('name')
+            ->get();
+
+        return response()->json($members);
+    }
+
+    public function indexForDoctor(Request $request, User $patient)
+    {
+        if ($patient->role !== 'patient') {
+            return response()->json(['message' => 'Patient invalide.'], 422);
+        }
+
+        $doctor = $request->user();
+        $hasLink = Prescription::query()
+            ->where('doctor_user_id', $doctor->id)
+            ->where('patient_user_id', $patient->id)
+            ->exists();
+
+        if (!$hasLink) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        $members = FamilyMember::query()
+            ->where('patient_user_id', $patient->id)
             ->orderBy('name')
             ->get();
 

@@ -17,11 +17,17 @@ Route::post('/auth/login', [AuthController::class, 'login'])->middleware('thrott
 Route::get('/pharmacies', [PharmacyController::class, 'index']);
 Route::post('/pharmacies', [PharmacyController::class, 'store']);
 Route::get('/pharmacies/{pharmacy}', [PharmacyController::class, 'show']);
+Route::get('/pharmacy/me', [PharmacyController::class, 'me'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
+Route::patch('/pharmacy/me', [PharmacyController::class, 'updateMe'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:30,1']);
 Route::get('/medicines', [MedicineController::class, 'index']);
 Route::get('/medicines/{medicine}', [MedicineController::class, 'show']);
 
 Route::get('/prescriptions', [PrescriptionController::class, 'index']);
 Route::get('/doctor/prescriptions', [PrescriptionController::class, 'mine'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/patients/{patient}/family-members', [FamilyMemberController::class, 'indexForDoctor'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/patient/prescriptions', [PrescriptionController::class, 'mineForPatient'])
     ->middleware(['auth:sanctum', 'role:patient']);

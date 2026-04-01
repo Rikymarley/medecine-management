@@ -7,11 +7,13 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
   IonPage,
   IonText,
+  IonToggle,
   IonTitle,
   IonToolbar
 } from '@ionic/react';
@@ -50,27 +52,127 @@ const statusLabel = (status: ApiPharmacyResponse['status']) => {
   }
 };
 
+type DaySchedule = {
+  day: string;
+  open: boolean;
+  from: string;
+  to: string;
+};
+
+const WEEK_DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
+const defaultSchedule = (): DaySchedule[] =>
+  WEEK_DAYS.map((day) => ({ day, open: false, from: '08:00', to: '18:00' }));
+
+const parseOpeningHours = (value: string | null): DaySchedule[] => {
+  const schedule = defaultSchedule();
+  if (!value) {
+    return schedule;
+  }
+
+  const lines = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  lines.forEach((line) => {
+    const match = line.match(/^([^:]+):\s*(Ferme|(\d{2}:\d{2})-(\d{2}:\d{2}))$/i);
+    if (!match) {
+      return;
+    }
+    const day = match[1]?.trim();
+    const index = schedule.findIndex((item) => item.day.toLowerCase() === day.toLowerCase());
+    if (index < 0) {
+      return;
+    }
+
+    if (match[2]?.toLowerCase() === 'ferme') {
+      schedule[index] = { ...schedule[index], open: false };
+      return;
+    }
+
+    schedule[index] = {
+      ...schedule[index],
+      open: true,
+      from: match[3] || schedule[index].from,
+      to: match[4] || schedule[index].to
+    };
+  });
+
+  return schedule;
+};
+
+const serializeOpeningHours = (schedule: DaySchedule[]): string =>
+  schedule
+    .map((item) => `${item.day}: ${item.open ? `${item.from}-${item.to}` : 'Ferme'}`)
+    .join('\n');
+
 const PharmacyDashboard: React.FC = () => {
   const { token, user, logout } = useAuth();
   const [pharmacies, setPharmacies] = useState<ApiPharmacy[]>([]);
+  const [myPharmacy, setMyPharmacy] = useState<ApiPharmacy | null>(null);
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [profileExpanded, setProfileExpanded] = useState(false);
   const [expandedPrescriptions, setExpandedPrescriptions] = useState<Record<number, boolean>>({});
+  const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(defaultSchedule());
+  const [profileForm, setProfileForm] = useState({
+    phone: '',
+    open_now: false,
+    closes_at: '',
+    opening_hours: '',
+    temporary_closed: false,
+    emergency_available: false,
+    address: '',
+    latitude: '',
+    longitude: ''
+  });
 
   const loadData = async () => {
-    const [pharmacyData, prescriptionData] = await Promise.all([
+    const calls: [Promise<ApiPharmacy[]>, Promise<ApiPrescription[]>, Promise<ApiPharmacy | null>] = [
       api.getPharmacies(),
-      api.getPrescriptions()
-    ]);
+      api.getPrescriptions(),
+      token ? api.getMyPharmacy(token).then((data) => data).catch(() => null) : Promise.resolve(null)
+    ];
+    const [pharmacyData, prescriptionData, meData] = await Promise.all(calls);
     setPharmacies(pharmacyData);
     setPrescriptions(prescriptionData);
+    setMyPharmacy(meData);
+    if (meData) {
+      setProfileForm({
+        phone: meData.phone ?? '',
+        open_now: !!meData.open_now,
+        closes_at: meData.closes_at ?? '',
+        opening_hours: meData.opening_hours ?? '',
+        temporary_closed: !!meData.temporary_closed,
+        emergency_available: !!meData.emergency_available,
+        address: meData.address ?? '',
+        latitude: meData.latitude ?? '',
+        longitude: meData.longitude ?? ''
+      });
+      setWeeklySchedule(parseOpeningHours(meData.opening_hours));
+    }
   };
 
   useEffect(() => {
     loadData().catch(() => undefined);
-  }, []);
+  }, [token]);
 
-  const pharmacy = pharmacies.find((item) => item.id === user?.pharmacy_id) ?? null;
+  const pharmacy = myPharmacy ?? pharmacies.find((item) => item.id === user?.pharmacy_id) ?? null;
+  const profileMissingFields = useMemo(() => {
+    if (!pharmacy) {
+      return [] as string[];
+    }
+    const missing: string[] = [];
+    if (!pharmacy.phone) missing.push('telephone');
+    if (!pharmacy.address) missing.push('adresse');
+    if (!pharmacy.opening_hours) missing.push('horaires');
+    if (!pharmacy.latitude || !pharmacy.longitude) missing.push('gps');
+    return missing;
+  }, [pharmacy]);
+  const profileIncomplete = profileMissingFields.length > 0;
 
   const togglePrescription = (prescriptionId: number) => {
     setExpandedPrescriptions((prev) => ({
@@ -114,6 +216,61 @@ const PharmacyDashboard: React.FC = () => {
     }
   };
 
+  const saveProfile = async () => {
+    if (!token || !pharmacy) {
+      setError('Veuillez vous reconnecter.');
+      return;
+    }
+    setProfileSaving(true);
+    setError(null);
+    try {
+      const updated = await api.updateMyPharmacy(token, {
+        phone: profileForm.phone.trim() || null,
+        open_now: profileForm.open_now,
+        closes_at: profileForm.closes_at.trim() || null,
+        opening_hours: serializeOpeningHours(weeklySchedule),
+        temporary_closed: profileForm.temporary_closed,
+        emergency_available: profileForm.emergency_available,
+        address: profileForm.address.trim() || null,
+        latitude: profileForm.latitude.trim() || null,
+        longitude: profileForm.longitude.trim() || null
+      });
+      setMyPharmacy(updated);
+      setPharmacies((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Echec de mise a jour du profil pharmacie');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const fillGpsFromDevice = () => {
+    if (!navigator.geolocation) {
+      setError("La geolocalisation n'est pas supportee sur cet appareil.");
+      return;
+    }
+
+    setIsLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const lng = position.coords.longitude.toFixed(6);
+        setProfileForm((prev) => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng
+        }));
+        setIsLocating(false);
+      },
+      () => {
+        setError('Impossible de recuperer la position GPS.');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -138,13 +295,157 @@ const PharmacyDashboard: React.FC = () => {
               <IonCardTitle>{pharmacy.name}</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
-              <IonText>
-                Score de fiabilite : {pharmacy.reliability_score} · Distance{' '}
-                {pharmacy.latitude && pharmacy.longitude ? 'suivie' : 'inconnue'}
-              </IonText>
-              <IonBadge color={pharmacy.open_now ? 'success' : 'medium'} style={{ marginLeft: '8px' }}>
-                {pharmacy.open_now ? 'Ouverte' : 'Fermee'}
-              </IonBadge>
+              <p>
+                Fiabilite : {pharmacy.reliability_score}
+                {' ||| '}
+                {pharmacy.last_status_updated_at
+                  ? `Mise a jour il y a ${minutesAgo(pharmacy.last_status_updated_at)} min`
+                  : 'Mise a jour inconnue'}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
+                  {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                </IonBadge>
+                <IonBadge color={profileIncomplete ? 'warning' : 'success'}>
+                  {profileIncomplete ? `Infos incompletes (${profileMissingFields.length})` : 'Infos completes'}
+                </IonBadge>
+                {pharmacy.closes_at ? <IonText>Ferme a {pharmacy.closes_at}</IonText> : null}
+                <IonButton
+                  size="small"
+                  fill="outline"
+                  onClick={() => setProfileExpanded((prev) => !prev)}
+                >
+                  {profileExpanded ? 'Masquer infos' : 'Afficher infos'}
+                </IonButton>
+              </div>
+              {profileIncomplete ? (
+                <IonText color="warning">
+                  Champs manquants: {profileMissingFields.join(', ')}.
+                </IonText>
+              ) : null}
+              {profileExpanded ? (
+                <>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Telephone</IonLabel>
+                <IonInput
+                  value={profileForm.phone}
+                  placeholder="+509 ..."
+                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, phone: event.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel>Ouvert maintenant</IonLabel>
+                <IonToggle
+                  checked={profileForm.open_now}
+                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, open_now: event.detail.checked }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel>Fermeture temporaire</IonLabel>
+                <IonToggle
+                  checked={profileForm.temporary_closed}
+                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, temporary_closed: event.detail.checked }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel>Disponibilite urgence</IonLabel>
+                <IonToggle
+                  checked={profileForm.emergency_available}
+                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, emergency_available: event.detail.checked }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Heures d'ouverture</IonLabel>
+              </IonItem>
+              <div style={{ display: 'grid', gap: '8px', marginBottom: '10px' }}>
+                {weeklySchedule.map((row, index) => (
+                  <div
+                    key={row.day}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '90px auto 1fr 1fr',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <strong style={{ fontSize: '0.9rem' }}>{row.day}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <IonToggle
+                        checked={row.open}
+                        onIonChange={(event) =>
+                          setWeeklySchedule((prev) =>
+                            prev.map((item, i) => (i === index ? { ...item, open: event.detail.checked } : item))
+                          )
+                        }
+                      />
+                      <span style={{ fontSize: '0.85rem' }}>{row.open ? 'Ouvert' : 'Ferme'}</span>
+                    </div>
+                    <IonInput
+                      type="time"
+                      value={row.from}
+                      disabled={!row.open}
+                      onIonInput={(event) =>
+                        setWeeklySchedule((prev) =>
+                          prev.map((item, i) => (i === index ? { ...item, from: event.detail.value ?? item.from } : item))
+                        )
+                      }
+                    />
+                    <IonInput
+                      type="time"
+                      value={row.to}
+                      disabled={!row.open}
+                      onIonInput={(event) =>
+                        setWeeklySchedule((prev) =>
+                          prev.map((item, i) => (i === index ? { ...item, to: event.detail.value ?? item.to } : item))
+                        )
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Adresse</IonLabel>
+                <IonInput
+                  value={profileForm.address}
+                  placeholder="Adresse"
+                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, address: event.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Latitude</IonLabel>
+                <IonInput
+                  value={profileForm.latitude}
+                  placeholder="19.7510"
+                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, latitude: event.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Longitude</IonLabel>
+                <IonInput
+                  value={profileForm.longitude}
+                  placeholder="-72.2014"
+                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, longitude: event.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  position: 'absolute',
+                  marginTop: '-85px',
+                  right: '10px',
+                  zIndex: 1
+                }}
+              >
+                <IonButton size="small" fill="outline" onClick={fillGpsFromDevice} disabled={isLocating}>
+                  {isLocating ? 'GPS...' : 'Obtenir GPS'}
+                </IonButton>
+              </div>
+              <IonButton expand="block" onClick={saveProfile} disabled={profileSaving}>
+                {profileSaving ? 'Enregistrement...' : 'Mettre a jour le profil'}
+              </IonButton>
+                </>
+              ) : null}
             </IonCardContent>
           </IonCard>
         )}

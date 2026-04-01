@@ -75,6 +75,7 @@ class PrescriptionController extends Controller
         $data = $request->validate([
             'patient_name' => ['required', 'string', 'max:255'],
             'patient_user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
             'medicine_requests' => ['required', 'array', 'min:1'],
             'medicine_requests.*.name' => ['required', 'string', 'max:255'],
             'medicine_requests.*.strength' => ['nullable', 'string', 'max:50'],
@@ -107,12 +108,26 @@ class PrescriptionController extends Controller
             ], 422);
         }
 
+        if (!empty($data['family_member_id'])) {
+            $belongsToPatient = FamilyMember::query()
+                ->where('id', $data['family_member_id'])
+                ->where('patient_user_id', $patientUser->id)
+                ->exists();
+
+            if (!$belongsToPatient) {
+                return response()->json([
+                    'message' => 'Le membre de famille ne correspond pas a ce patient.'
+                ], 422);
+            }
+        }
+
         $doctor = $request->user();
         $prescription = Prescription::create([
             'patient_user_id' => $patientUser->id,
             'doctor_user_id' => $doctor->id,
             'patient_name' => $patientUser->name,
             'doctor_name' => $doctor->name,
+            'family_member_id' => $data['family_member_id'] ?? null,
             'status' => 'sent_to_pharmacies'
         ]);
         $prescription->statusLogs()->create([

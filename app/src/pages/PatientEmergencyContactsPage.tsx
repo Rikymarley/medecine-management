@@ -29,11 +29,13 @@ import {
   IonToolbar
 } from '@ionic/react';
 import {
+  addCircleOutline,
   addOutline,
   businessOutline,
   callOutline,
   createOutline,
   flaskOutline,
+  homeOutline,
   medkitOutline,
   personOutline,
   star,
@@ -57,11 +59,11 @@ const categoryLabel: Record<ApiEmergencyContact['category'], string> = {
 
 const categoryIcon: Record<ApiEmergencyContact['category'], string> = {
   hospital: businessOutline,
-  clinic: medkitOutline,
+  clinic: homeOutline,
   laboratory: flaskOutline,
   pharmacy: medkitOutline,
   doctor: personOutline,
-  ambulance: callOutline
+  ambulance: addCircleOutline
 };
 
 const PatientEmergencyContactsPage: React.FC = () => {

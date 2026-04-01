@@ -12,6 +12,7 @@ import PatientDashboard from './pages/PatientDashboard';
 import DoctorPatientsPage from './pages/DoctorPatientsPage';
 import DoctorPrescriptionsPage from './pages/DoctorPrescriptionsPage';
 import PatientDoctorsPage from './pages/PatientDoctorsPage';
+import PatientPharmaciesPage from './pages/PatientPharmaciesPage';
 import PatientDoctorPrescriptionsPage from './pages/PatientDoctorPrescriptionsPage';
 import PatientPrescriptionsPage from './pages/PatientPrescriptionsPage';
 import PatientPrescriptionDetailPage from './pages/PatientPrescriptionDetailPage';
@@ -154,6 +155,11 @@ const App: React.FC = () => (
           <Route exact path="/patient/doctors">
             <RequireRole role="patient">
               <PatientDoctorsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/pharmacies">
+            <RequireRole role="patient">
+              <PatientPharmaciesPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient/doctors/:doctorName">

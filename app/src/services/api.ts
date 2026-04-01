@@ -59,6 +59,11 @@ export type ApiPharmacy = {
   latitude: string | null;
   longitude: string | null;
   open_now: boolean;
+  opening_hours: string | null;
+  closes_at: string | null;
+  temporary_closed: boolean;
+  emergency_available: boolean;
+  last_status_updated_at: string | null;
   reliability_score: number;
 };
 
@@ -175,6 +180,26 @@ export const api = {
   me: (token: string) => request<ApiUser>('/auth/me', { token }),
   logout: (token: string) => request<{ message: string }>('/auth/logout', { method: 'POST', token }),
   getPharmacies: () => request<ApiPharmacy[]>('/pharmacies'),
+  getMyPharmacy: (token: string) => request<ApiPharmacy>('/pharmacy/me', { token }),
+  updateMyPharmacy: (
+    token: string,
+    payload: Partial<{
+      phone: string | null;
+      address: string | null;
+      latitude: string | null;
+      longitude: string | null;
+      open_now: boolean;
+      opening_hours: string | null;
+      closes_at: string | null;
+      temporary_closed: boolean;
+      emergency_available: boolean;
+    }>
+  ) =>
+    request<ApiPharmacy>('/pharmacy/me', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
   getMedicines: (params?: { q?: string; category?: ApiMedicine['category']; limit?: number }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set('q', params.q);
@@ -191,6 +216,7 @@ export const api = {
   createPrescription: (token: string, payload: {
     patient_name: string;
     patient_user_id?: number;
+    family_member_id?: number;
     medicine_requests: Array<{
       name: string;
       strength?: string | null;
@@ -339,6 +365,8 @@ export const api = {
     }),
   getPatientFamilyMembers: (token: string) =>
     request<ApiFamilyMember[]>('/patient/family-members', { token }),
+  getDoctorPatientFamilyMembers: (token: string, patientUserId: number) =>
+    request<ApiFamilyMember[]>(`/doctor/patients/${patientUserId}/family-members`, { token }),
   createPatientFamilyMember: (
     token: string,
     payload: {

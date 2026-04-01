@@ -11,6 +11,7 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
@@ -471,15 +472,52 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                   pharmacyAvailability.map(({ pharmacy, items, coverage, latestConfirmation }) => (
                     <IonCard key={pharmacy.id} className="surface-card" style={{ marginTop: '12px' }}>
                       <IonCardContent>
-                        <p>
-                          <strong>{pharmacy.name}</strong>
-                          <IonBadge color={pharmacy.open_now ? 'success' : 'medium'} style={{ marginLeft: '8px' }}>
-                            {pharmacy.open_now ? 'Ouverte' : 'Fermee'}
-                          </IonBadge>
-                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <p style={{ margin: 0 }}>
+                            <strong>{pharmacy.name}</strong>
+                            <IonBadge
+                              color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}
+                              style={{ marginLeft: '8px' }}
+                            >
+                              {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                            </IonBadge>
+                          </p>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <IonButton
+                              size="small"
+                              fill="clear"
+                              disabled={!pharmacy.phone}
+                              href={pharmacy.phone ? `tel:${pharmacy.phone}` : undefined}
+                            >
+                              <IonIcon icon={callOutline} />
+                            </IonButton>
+                            <IonButton
+                              size="small"
+                              fill="clear"
+                              disabled={!pharmacy.phone}
+                              href={
+                                pharmacy.phone
+                                  ? `https://wa.me/${pharmacy.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                                      `Bonjour, je viens via l'application pour l'ordonnance #${prescription.id}.`
+                                    )}`
+                                  : undefined
+                              }
+                            >
+                              <IonIcon icon={logoWhatsapp} />
+                            </IonButton>
+                          </div>
+                        </div>
                         <p>
                           Couverture: {coverage} / {prescription.medicine_requests.length}
                         </p>
+                        {pharmacy.address ? <p>Adresse: {pharmacy.address}</p> : null}
+                        <p>
+                          {pharmacy.closes_at ? `Ferme a ${pharmacy.closes_at} · ` : ''}
+                          {pharmacy.last_status_updated_at
+                            ? `Mis a jour il y a ${minutesAgo(pharmacy.last_status_updated_at)} min`
+                            : 'Derniere mise a jour inconnue'}
+                        </p>
+                        {pharmacy.emergency_available ? <IonBadge color="warning">Urgence disponible</IonBadge> : null}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
                           <IonButton
                             size="small"
@@ -511,93 +549,91 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                         ) : null}
 
                         <IonList>
-                          {items.map((item) => (
-                            <IonItem key={item.medicine.id} lines="none">
-                              <IonLabel>
-                                {item.medicine.name} {item.medicine.strength} {item.medicine.form}
-                                <p>
-                                  {item.latestResponse
-                                    ? item.isActive
-                                      ? availabilityLabel[item.latestResponse.status]
-                                      : 'Expiree'
-                                    : 'Pas de reponse'}
-                                </p>
-                              </IonLabel>
-                              <div style={{ display: 'flex', gap: '6px', marginRight: '8px' }}>
-                                <IonButton
-                                  size="small"
-                                  fill="clear"
-                                  disabled={!pharmacy.phone}
-                                  href={pharmacy.phone ? `tel:${pharmacy.phone}` : undefined}
-                                >
-                                  <IonIcon icon={callOutline} />
-                                </IonButton>
-                                <IonButton
-                                  size="small"
-                                  fill="clear"
-                                  disabled={!pharmacy.phone}
-                                  href={
-                                    pharmacy.phone
-                                      ? `https://wa.me/${pharmacy.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                                          `Bonjour, je viens via l'application. Pouvez-vous confirmer ${item.medicine.name} ${item.medicine.strength ?? ''} ?`
-                                        )}`
-                                      : undefined
-                                  }
-                                >
-                                  <IonIcon icon={logoWhatsapp} />
-                                </IonButton>
-                              </div>
-                              <IonCheckbox
-                                slot="end"
-                                checked={(purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 0) > 0}
-                                disabled={isCompleted}
-                                onIonChange={(event) =>
-                                  setPurchased(pharmacy.id, item.medicine.id, event.detail.checked)
-                                }
-                              />
-                              <div style={{ display: 'flex', alignItems: 'center', marginLeft: '8px', gap: '6px' }}>
-                                <IonButton
-                                  size="small"
-                                  fill="outline"
-                                  disabled={
-                                    isCompleted ||
-                                    (purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 0) <= 1
-                                  }
-                                  onClick={() =>
-                                    setPurchased(
-                                      pharmacy.id,
-                                      item.medicine.id,
-                                      true,
-                                      Math.max(1, (purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 1) - 1)
-                                    )
-                                  }
-                                >
-                                  -
-                                </IonButton>
-                                <strong style={{ minWidth: '28px', textAlign: 'center' }}>
-                                  {purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 1}
-                                </strong>
-                                <IonButton
-                                  size="small"
-                                  fill="outline"
-                                  disabled={
-                                    isCompleted ||
-                                    (purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 0) === 0
-                                  }
-                                  onClick={() =>
-                                    setPurchased(
-                                      pharmacy.id,
-                                      item.medicine.id,
-                                      true,
-                                      (purchasedMap[`${pharmacy.id}-${item.medicine.id}`] ?? 1) + 1
-                                    )
-                                  }
-                                >
-                                  +
-                                </IonButton>
-                              </div>
-                            </IonItem>
-                          ))}
+                          {items.map((item) => {
+                            const key = `${pharmacy.id}-${item.medicine.id}`;
+                            const currentQty = purchasedMap[key] ?? 0;
+                            return (
+                              <IonItem key={item.medicine.id} lines="none">
+                                <IonLabel>
+                                  <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                    <strong style={{ flex: '1 1 90%' }}>{item.medicine.name}</strong>
+                                    <IonCheckbox
+                                      style={{ marginLeft: 'auto' }}
+                                      checked={currentQty > 0}
+                                      disabled={isCompleted}
+                                      onIonChange={(event) => {
+                                        if (event.detail.checked) {
+                                          setPurchased(pharmacy.id, item.medicine.id, true, currentQty > 0 ? currentQty : 1);
+                                        } else {
+                                          setPurchased(pharmacy.id, item.medicine.id, false);
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                  <p>
+                                    {(item.medicine.form || 'Sans forme')} · {(item.medicine.strength || 'Sans dosage')} ·{' '}
+                                    <span style={{ fontSize: '0.92rem', color: 'var(--app-text-soft)' }}>
+                                      {item.latestResponse
+                                        ? item.isActive
+                                          ? availabilityLabel[item.latestResponse.status]
+                                          : 'Expiree'
+                                        : 'Pas de reponse'}
+                                    </span>
+                                  </p>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <strong style={{ fontSize: '0.82rem' }}>QUANTITE :</strong>
+                                    <IonButton
+                                      size="small"
+                                      fill="outline"
+                                      disabled={isCompleted || currentQty <= 0}
+                                      onClick={() => {
+                                        if (currentQty <= 1) {
+                                          setPurchased(pharmacy.id, item.medicine.id, false);
+                                          return;
+                                        }
+                                        setPurchased(pharmacy.id, item.medicine.id, true, currentQty - 1);
+                                      }}
+                                    >
+                                      -
+                                    </IonButton>
+                                    <IonInput
+                                      type="number"
+                                      min="0"
+                                      inputmode="numeric"
+                                      value={String(currentQty)}
+                                      style={{ width: '64px', textAlign: 'center' }}
+                                      disabled={isCompleted}
+                                      onIonInput={(event) => {
+                                        const raw = (event.detail.value ?? '').trim();
+                                        if (raw === '') {
+                                          setPurchased(pharmacy.id, item.medicine.id, false);
+                                          return;
+                                        }
+                                        const parsed = Number(raw);
+                                        if (!Number.isFinite(parsed) || parsed < 0) {
+                                          return;
+                                        }
+                                        const nextQty = Math.floor(parsed);
+                                        if (nextQty <= 0) {
+                                          setPurchased(pharmacy.id, item.medicine.id, false);
+                                          return;
+                                        }
+                                        setPurchased(pharmacy.id, item.medicine.id, true, nextQty);
+                                      }}
+                                    />
+                                    <IonButton
+                                      size="small"
+                                      fill="outline"
+                                      disabled={isCompleted}
+                                      onClick={() => setPurchased(pharmacy.id, item.medicine.id, true, currentQty + 1 || 1)}
+                                    >
+                                      +
+                                    </IonButton>
+                                  </div>
+                                </IonLabel>
+                              </IonItem>
+                            );
+                          })}
                         </IonList>
                           </>
                         ) : null}
