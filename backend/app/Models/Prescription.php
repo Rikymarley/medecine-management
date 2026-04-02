@@ -10,15 +10,26 @@ class Prescription extends Model
     protected $fillable = [
         'doctor_user_id',
         'patient_user_id',
+        'guest_patient_id',
         'family_member_id',
         'patient_name',
+        'patient_phone',
         'doctor_name',
+        'source',
         'status',
-        'requested_at'
+        'requested_at',
+        'claim_token',
+        'claim_expires_at',
+        'qr_token',
+        'print_code',
+        'printed_at',
+        'print_count',
     ];
 
     protected $casts = [
-        'requested_at' => 'datetime'
+        'requested_at' => 'datetime',
+        'claim_expires_at' => 'datetime',
+        'printed_at' => 'datetime',
     ];
 
     public function medicineRequests()
@@ -39,6 +50,11 @@ class Prescription extends Model
     public function familyMember()
     {
         return $this->belongsTo(FamilyMember::class);
+    }
+
+    public function guestPatient()
+    {
+        return $this->belongsTo(GuestPatient::class);
     }
 
     public function responses()

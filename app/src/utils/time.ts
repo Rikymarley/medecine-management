@@ -12,3 +12,12 @@ export const formatDateTime = (iso: string) => {
   const date = new Date(iso);
   return date.toLocaleString('fr-FR');
 };
+
+export const formatDateHaiti = (isoDate: string) => {
+  const date = new Date(isoDate);
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(date);
+};

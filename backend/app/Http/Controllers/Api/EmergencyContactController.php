@@ -24,7 +24,7 @@ class EmergencyContactController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'max:30'],
+            'phone' => ['required', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'category' => ['required', 'in:hospital,clinic,laboratory,pharmacy,doctor,ambulance'],
             'city' => ['nullable', 'string', 'max:120'],
             'department' => ['nullable', 'string', 'max:120'],
@@ -54,7 +54,7 @@ class EmergencyContactController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'phone' => ['sometimes', 'required', 'string', 'max:30'],
+            'phone' => ['sometimes', 'required', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'category' => ['sometimes', 'required', 'in:hospital,clinic,laboratory,pharmacy,doctor,ambulance'],
             'city' => ['nullable', 'string', 'max:120'],
             'department' => ['nullable', 'string', 'max:120'],

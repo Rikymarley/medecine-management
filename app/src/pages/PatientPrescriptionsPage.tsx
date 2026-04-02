@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime } from '../utils/time';
 
@@ -120,6 +121,7 @@ const PatientPrescriptionsPage: React.FC = () => {
                         <IonIcon icon={medkitOutline} color="success" />
                         <span>Dr. {prescription.doctor_name}</span>
                       </h3>
+                      <p>Code ordonnance: {getPrescriptionCode(prescription)}</p>
                       <div className="status-row">
                         <span>Statut:</span>
                         <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>

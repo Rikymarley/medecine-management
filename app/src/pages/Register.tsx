@@ -20,14 +20,20 @@ import { useState } from 'react';
 import { useHistory } from 'react-router';
 import { useAuth } from '../state/AuthState';
 import InstallBanner from '../components/InstallBanner';
+import { maskHaitiPhone } from '../utils/phoneMask';
 
 const Register: React.FC = () => {
   const history = useHistory();
   const { register } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [ninu, setNinu] = useState('');
   const [role, setRole] = useState<'doctor' | 'pharmacy' | 'patient'>('patient');
   const [pharmacyName, setPharmacyName] = useState('');
+  const [doctorPhone, setDoctorPhone] = useState('');
+  const [doctorAddress, setDoctorAddress] = useState('');
+  const [doctorLatitude, setDoctorLatitude] = useState('');
+  const [doctorLongitude, setDoctorLongitude] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +46,11 @@ const Register: React.FC = () => {
       await register({
         name,
         email,
+        ninu: role === 'patient' ? ninu.trim() || undefined : undefined,
+        phone: role === 'doctor' ? doctorPhone.trim() || undefined : undefined,
+        address: role === 'doctor' ? doctorAddress.trim() || undefined : undefined,
+        latitude: role === 'doctor' && doctorLatitude.trim() ? Number(doctorLatitude) : undefined,
+        longitude: role === 'doctor' && doctorLongitude.trim() ? Number(doctorLongitude) : undefined,
         password,
         password_confirmation: confirmPassword,
         role,
@@ -96,6 +107,52 @@ const Register: React.FC = () => {
                   onIonInput={(e) => setPharmacyName(e.detail.value ?? '')}
                 />
               </IonItem>
+            ) : null}
+            {role === 'patient' ? (
+              <IonItem>
+                <IonLabel position="stacked">NINU (optionnel)</IonLabel>
+                <IonInput
+                  value={ninu}
+                  placeholder="Numero identifiant national unique"
+                  onIonInput={(e) => setNinu(e.detail.value ?? '')}
+                />
+              </IonItem>
+            ) : null}
+            {role === 'doctor' ? (
+              <>
+                <IonItem>
+                  <IonLabel position="stacked">Telephone</IonLabel>
+                  <IonInput
+                    value={doctorPhone}
+                    placeholder="+509-xxxx-xxxx"
+                    onIonInput={(e) => setDoctorPhone(maskHaitiPhone(e.detail.value ?? ''))}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Adresse</IonLabel>
+                  <IonInput
+                    value={doctorAddress}
+                    placeholder="Adresse du cabinet"
+                    onIonInput={(e) => setDoctorAddress(e.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Latitude</IonLabel>
+                  <IonInput
+                    value={doctorLatitude}
+                    type="number"
+                    onIonInput={(e) => setDoctorLatitude(e.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Longitude</IonLabel>
+                  <IonInput
+                    value={doctorLongitude}
+                    type="number"
+                    onIonInput={(e) => setDoctorLongitude(e.detail.value ?? '')}
+                  />
+                </IonItem>
+              </>
             ) : null}
             <IonItem>
               <IonLabel position="stacked">Mot de passe</IonLabel>

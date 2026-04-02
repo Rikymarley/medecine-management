@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Pharmacy;
 use App\Models\Prescription;
 use App\Models\PharmacyResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,10 @@ class PharmacyResponseController extends Controller
             'responded_at' => Carbon::now(),
             'expires_at' => Carbon::now()->addMinutes($data['expires_at_minutes'])
         ]);
+
+        Pharmacy::query()
+            ->where('id', $data['pharmacy_id'])
+            ->update(['last_confirmed_stock_time' => Carbon::now()]);
 
         $prescription = Prescription::query()
             ->with(['medicineRequests', 'responses'])

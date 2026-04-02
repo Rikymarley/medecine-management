@@ -24,8 +24,18 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiFamilyMember, ApiMedicine, ApiPrescription } from '../services/api';
+import {
+  api,
+  ApiFamilyMember,
+  ApiGuestPatient,
+  ApiMedicine,
+  ApiPatientLookup,
+  ApiPrescription,
+  ApiPrescriptionPrintData
+} from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { maskHaitiPhone } from '../utils/phoneMask';
+import { formatDateHaiti } from '../utils/time';
 
 const emptyMedicine = () => ({
   name: '',
@@ -51,11 +61,126 @@ const toPositiveInt = (value: unknown): number | null => {
   return Math.floor(parsed);
 };
 
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+
+const formatPrintDate = (value: string | null): string => {
+  if (!value) {
+    return 'N/A';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString('fr-HT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(data.qr_payload)}`;
+  const rows = data.medicine_requests
+    .map((med, index) => {
+      const details = [med.form, med.strength].filter(Boolean).join(' · ');
+      const scheduleBits = [
+        med.duration_days ? `${med.duration_days} j` : null,
+        med.daily_dosage ? `${med.daily_dosage}/jour` : null
+      ].filter(Boolean);
+
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>
+            <strong>${escapeHtml(med.name)}</strong>
+            ${details ? `<div class="sub">${escapeHtml(details)}</div>` : ''}
+            ${med.notes ? `<div class="sub">Note: ${escapeHtml(med.notes)}</div>` : ''}
+          </td>
+          <td>${med.quantity ?? 1}</td>
+          <td>${scheduleBits.length ? escapeHtml(scheduleBits.join(' · ')) : '-'}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Ordonnance ${data.print_code}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #0f172a; margin: 24px; }
+    .header { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
+    .meta { font-size: 14px; line-height: 1.5; }
+    .qr { text-align:center; }
+    .qr img { width: 220px; height: 220px; border: 1px solid #cbd5e1; padding: 6px; border-radius: 10px; }
+    .code { margin-top: 8px; font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 16px; margin: 24px 0 10px; }
+    .badge { display:inline-block; background:#ecfeff; color:#0f766e; border:1px solid #99f6e4; border-radius:999px; padding: 4px 10px; font-size:12px; font-weight:600; }
+    table { width:100%; border-collapse: collapse; margin-top:10px; }
+    th, td { border:1px solid #e2e8f0; padding:8px; text-align:left; vertical-align:top; font-size:14px; }
+    th { background:#f8fafc; }
+    .sub { color:#475569; font-size:12px; margin-top:2px; }
+    .footer { margin-top: 22px; color:#475569; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Ordonnance ${escapeHtml(data.print_code)}</h1>
+      <div class="meta">
+        <div><strong>Patient:</strong> ${escapeHtml(data.patient_name)}</div>
+        ${data.family_member_name ? `<div><strong>Membre de famille:</strong> ${escapeHtml(data.family_member_name)}</div>` : ''}
+        <div><strong>Telephone:</strong> ${escapeHtml(data.patient_phone || 'N/A')}</div>
+        <div><strong>Docteur:</strong> ${escapeHtml(data.doctor_name)}</div>
+        <div><strong>Date:</strong> ${escapeHtml(formatPrintDate(data.requested_at))}</div>
+      </div>
+      <h2>Medicaments</h2>
+    </div>
+    <div class="qr">
+      <img src="${qrUrl}" alt="QR ordonnance" />
+      <div class="code">${escapeHtml(data.print_code)}</div>
+      <div class="badge">Code de secours</div>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Medicament</th><th>Quantite</th><th>Posologie</th></tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+  <div class="footer">
+    Impression #${data.print_count} · Imprime le ${escapeHtml(formatPrintDate(data.printed_at))}
+  </div>
+</body>
+</html>`;
+};
+
 const DoctorCreatePrescriptionPage: React.FC = () => {
   const location = useLocation();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [guestPatients, setGuestPatients] = useState<ApiGuestPatient[]>([]);
+  const [dbPatientSuggestions, setDbPatientSuggestions] = useState<ApiPatientLookup[]>([]);
   const [patientName, setPatientName] = useState('');
+  const [patientPhone, setPatientPhone] = useState('');
+  const [patientNinu, setPatientNinu] = useState('');
+  const [patientDob, setPatientDob] = useState('');
+  const [patientAddress, setPatientAddress] = useState('');
+  const [patientAge, setPatientAge] = useState('');
+  const [patientGender, setPatientGender] = useState<'male' | 'female' | ''>('');
+  const [patientNotes, setPatientNotes] = useState('');
   const [selectedPatientUserId, setSelectedPatientUserId] = useState<number | null>(null);
   const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
   const [familyMemberName, setFamilyMemberName] = useState('');
@@ -63,8 +188,13 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const [medicines, setMedicines] = useState<DraftMedicine[]>([emptyMedicine()]);
   const [medicineSuggestions, setMedicineSuggestions] = useState<Record<number, ApiMedicine[]>>({});
   const [error, setError] = useState<string | null>(null);
+  const [guestMessage, setGuestMessage] = useState<string | null>(null);
+  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [latestPrescriptionId, setLatestPrescriptionId] = useState<number | null>(null);
+  const [printMessage, setPrintMessage] = useState<string | null>(null);
   const medicineDebounceRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const patientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
 
@@ -89,6 +219,14 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
   };
 
+  const loadGuestPatientsFromApi = async () => {
+    if (!token) {
+      return;
+    }
+    const rows = await api.getDoctorGuestPatients(token);
+    setGuestPatients(rows);
+  };
+
   useEffect(() => {
     if (!cacheKey) {
       return;
@@ -100,6 +238,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
         if (Array.isArray(cachedData) && cachedData.length > 0) {
           setPrescriptions(cachedData);
+          loadGuestPatientsFromApi().catch(() => undefined);
           return;
         }
       } catch {
@@ -108,6 +247,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
 
     loadPrescriptionsFromApi().catch(() => undefined);
+    loadGuestPatientsFromApi().catch(() => undefined);
   }, [cacheKey, token]);
 
   const addMedicine = () => setMedicines((prev) => [...prev, emptyMedicine()]);
@@ -168,8 +308,30 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   useEffect(() => {
     return () => {
       Object.values(medicineDebounceRef.current).forEach((timer) => clearTimeout(timer));
+      if (patientDebounceRef.current) {
+        clearTimeout(patientDebounceRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const query = patientName.trim();
+    if (!token || query.length < 2) {
+      setDbPatientSuggestions([]);
+      return;
+    }
+
+    if (patientDebounceRef.current) {
+      clearTimeout(patientDebounceRef.current);
+    }
+
+    patientDebounceRef.current = setTimeout(() => {
+      api
+        .searchDoctorPatients(token, query, 8)
+        .then((rows) => setDbPatientSuggestions(rows))
+        .catch(() => setDbPatientSuggestions([]));
+    }, 250);
+  }, [patientName, token]);
 
   useEffect(() => {
     if (selectedPatientUserId !== null) {
@@ -204,6 +366,11 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       return;
     }
 
+    if (!selectedPatientUserId) {
+      setError("Selectionnez un patient existant ou creez d'abord un patient non inscrit.");
+      return;
+    }
+
     if (!token) {
       setError('Veuillez vous reconnecter.');
       return;
@@ -212,9 +379,10 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const resolvedPatientUserId = selectedPatientUserId ?? prescriptions.find((p) => p.patient_name === patientName.trim() && p.patient_user_id)?.patient_user_id ?? undefined;
+      const resolvedPatientUserId = selectedPatientUserId ?? undefined;
       const payload = {
         patient_name: patientName.trim(),
+        patient_phone: maskHaitiPhone(patientPhone).trim() || null,
         patient_user_id: resolvedPatientUserId,
         family_member_id: selectedFamilyMemberId ?? undefined,
         medicine_requests: filtered.map((med) => ({
@@ -230,20 +398,31 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         }))
       };
       console.log('[CREATE PRESCRIPTION] payload', payload);
-      await api.createPrescription(token, {
+      const created = await api.createPrescription(token, {
         patient_name: payload.patient_name,
+        patient_phone: payload.patient_phone,
         patient_user_id: payload.patient_user_id,
         family_member_id: payload.family_member_id,
         medicine_requests: payload.medicine_requests
       });
       console.log('[CREATE PRESCRIPTION] success');
+      setLatestPrescriptionId(created.id);
+      await printPrescription(created.id);
       await loadPrescriptionsFromApi();
       setPatientName('');
+      setPatientPhone('');
+      setPatientNinu('');
+      setPatientDob('');
+      setPatientAddress('');
+      setPatientAge('');
+      setPatientGender('');
+      setPatientNotes('');
       setSelectedPatientUserId(null);
       setFamilyMembers([]);
       setFamilyMemberName('');
       setSelectedFamilyMemberId(null);
       setMedicines([emptyMedicine()]);
+      setPrintMessage(`Ordonnance ${created.print_code ?? created.id} publiee et prete a imprimer.`);
     } catch (err) {
       console.error('[CREATE PRESCRIPTION] failed', err);
       setError(err instanceof Error ? err.message : "Echec de creation de l'ordonnance");
@@ -252,16 +431,153 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
   };
 
+  const createGuestPatient = async () => {
+    if (!token) {
+      setError('Veuillez vous reconnecter.');
+      return;
+    }
+    if (!patientName.trim()) {
+      setError('Nom du patient requis.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setGuestMessage(null);
+    setAvailabilityMessage(null);
+    try {
+      const created = await api.createDoctorGuestPatient(token, {
+        name: patientName.trim(),
+        phone: maskHaitiPhone(patientPhone).trim() || null,
+        ninu: patientNinu.trim() || null,
+        date_of_birth: patientDob || null,
+        address: patientAddress.trim() || null,
+        age: toPositiveInt(patientAge),
+        gender: patientGender || null,
+        notes: patientNotes.trim() || null
+      });
+      setGuestPatients((prev) => {
+        const next = [...prev.filter((row) => row.id !== created.id), created];
+        next.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+        return next;
+      });
+      setSelectedPatientUserId(created.id);
+      setGuestMessage('Patient non inscrit cree et selectionne.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Echec de creation du patient non inscrit.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkPatientAvailability = async () => {
+    if (!token) {
+      setError('Veuillez vous reconnecter.');
+      return;
+    }
+    if (!patientName.trim() && !patientPhone.trim() && !patientNinu.trim() && !patientDob) {
+      setAvailabilityMessage('Ajoutez au moins un critere (nom, telephone, NINU ou date de naissance).');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setGuestMessage(null);
+    try {
+      const result = await api.checkDoctorGuestPatientAvailability(token, {
+        name: patientName.trim() || undefined,
+        phone: patientPhone.trim() || undefined,
+        ninu: patientNinu.trim() || undefined,
+        date_of_birth: patientDob || undefined,
+        limit: 5
+      });
+
+      if (result.available) {
+        setAvailabilityMessage('Aucun patient similaire trouve. Vous pouvez creer le nouveau patient.');
+      } else {
+        const sample = result.matches
+          .slice(0, 3)
+          .map((row) => `${row.name}${row.ninu ? ` (NINU ${row.ninu})` : ''}`)
+          .join(', ');
+        setAvailabilityMessage(
+          `${result.count} patient(s) similaire(s) trouve(s): ${sample}. Selectionnez un patient existant si possible.`
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification indisponible.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const printPrescription = async (prescriptionId: number) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      const printData = await api.getDoctorPrescriptionPrintData(token, prescriptionId);
+      const popup = window.open('about:blank', '_blank', 'width=980,height=900');
+      if (!popup) {
+        setPrintMessage('Popup bloquee. Autorisez les popups puis reessayez.');
+        return;
+      }
+
+      popup.document.open();
+      popup.document.write(buildPrintHtml(printData));
+      popup.document.close();
+      popup.focus();
+      popup.onload = () => {
+        window.setTimeout(() => {
+          popup.print();
+        }, 250);
+      };
+    } catch (err) {
+      console.error('[PRINT PRESCRIPTION] failed', err);
+      setPrintMessage(err instanceof Error ? err.message : "Impossible de charger les donnees d'impression.");
+    }
+  };
+
   const patientSuggestions = useMemo(() => {
-    const unique = Array.from(new Set(prescriptions.map((p) => p.patient_name.trim()).filter(Boolean)));
     const query = patientName.trim().toLowerCase();
     if (!query) {
       return [];
     }
-    return unique
-      .filter((name) => name.toLowerCase().includes(query) && name.toLowerCase() !== query)
-      .slice(0, 5);
-  }, [prescriptions, patientName]);
+
+    const fromDb = dbPatientSuggestions.map((row) => ({
+      key: `db-${row.id}`,
+      label: row.name,
+      subtitle: [row.ninu ? `NINU: ${row.ninu}` : null, row.phone ? `Tel: ${row.phone}` : null, row.date_of_birth ? `Nais: ${formatDateHaiti(row.date_of_birth)}` : null]
+        .filter(Boolean)
+        .join(' · '),
+      patientUserId: row.id,
+      phone: row.phone ?? '',
+      ninu: row.ninu ?? '',
+      dateOfBirth: row.date_of_birth ?? '',
+      address: '',
+      age: '',
+      gender: '' as '' | 'male' | 'female',
+      notes: ''
+    }));
+
+    const fromGuests = guestPatients
+      .filter((g) => g.name.toLowerCase().includes(query))
+      .map((g) => ({
+        key: `guest-${g.id}`,
+        label: g.name,
+        subtitle: [g.phone ? `Tel: ${g.phone}` : null, 'Non inscrit'].filter(Boolean).join(' · '),
+        patientUserId: g.id,
+        phone: g.phone ?? '',
+        ninu: g.ninu ?? '',
+        dateOfBirth: g.date_of_birth ?? '',
+        address: g.address ?? '',
+        age: g.age ? String(g.age) : '',
+        gender: (g.gender ?? '') as '' | 'male' | 'female',
+        notes: g.notes ?? ''
+      }));
+
+    return [...fromDb, ...fromGuests].slice(0, 8);
+  }, [dbPatientSuggestions, guestPatients, patientName]);
 
   const familyMemberSuggestions = useMemo(() => {
     const query = familyMemberName.trim().toLowerCase();
@@ -273,6 +589,8 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       .filter((member) => member.name.toLowerCase().includes(query) && member.name.toLowerCase() !== query)
       .slice(0, 5);
   }, [familyMemberName, familyMembers]);
+
+  const hasSelectedPatient = selectedPatientUserId !== null;
 
   return (
     <IonPage>
@@ -300,34 +618,147 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                   const nextValue = event.detail.value ?? '';
                   setPatientName(nextValue);
                   setSelectedPatientUserId(null);
+                  setPatientNinu('');
+                  setPatientDob('');
+                  setGuestMessage(null);
+                  setAvailabilityMessage(null);
                   setFamilyMembers([]);
                   setFamilyMemberName('');
                   setSelectedFamilyMemberId(null);
                 }}
               />
             </IonItem>
-            {patientSuggestions.length > 0 ? (
+            {patientSuggestions.length > 0 && !selectedPatientUserId ? (
               <IonList inset>
-                {patientSuggestions.map((name) => (
+                {patientSuggestions.map((suggestion) => (
                   <IonItem
-                    key={name}
+                    key={suggestion.key}
                     button
                     detail={false}
                     lines="none"
                     onClick={() => {
-                      setPatientName(name);
-                      const matching = prescriptions.find((p) => p.patient_name === name && p.patient_user_id);
-                      setSelectedPatientUserId(matching?.patient_user_id ?? null);
+                      setPatientName(suggestion.label);
+                      setSelectedPatientUserId(suggestion.patientUserId);
+                      setPatientPhone(maskHaitiPhone(suggestion.phone));
+                      setPatientNinu(suggestion.ninu);
+                      setPatientDob(suggestion.dateOfBirth);
+                      setPatientAddress(suggestion.address);
+                      setPatientAge(suggestion.age);
+                      setPatientGender(suggestion.gender);
+                      setPatientNotes(suggestion.notes);
                       setFamilyMemberName('');
                       setSelectedFamilyMemberId(null);
                     }}
                   >
-                    <IonLabel>{name}</IonLabel>
+                    <IonLabel>
+                      {suggestion.label}
+                      {suggestion.subtitle ? <p>{suggestion.subtitle}</p> : null}
+                    </IonLabel>
                   </IonItem>
                 ))}
               </IonList>
             ) : null}
-            {selectedPatientUserId ? (
+            {!hasSelectedPatient ? (
+              <>
+                <IonItem>
+                  <IonLabel position="stacked">Telephone (optionnel)</IonLabel>
+                  <IonInput
+                    value={patientPhone}
+                    placeholder="+509-xxxx-xxxx"
+                    maxlength={14}
+                    inputmode="numeric"
+                    onIonInput={(event) => setPatientPhone(maskHaitiPhone(event.detail.value ?? ''))}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">NINU (optionnel)</IonLabel>
+                  <IonInput
+                    value={patientNinu}
+                    placeholder="Ex: 1234-5678-9012"
+                    onIonInput={(event) => setPatientNinu(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Date de naissance (optionnel)</IonLabel>
+                  <IonInput
+                    type="date"
+                    value={patientDob}
+                    onIonInput={(event) => setPatientDob(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Adresse (patient non inscrit)</IonLabel>
+                  <IonInput
+                    value={patientAddress}
+                    placeholder="Adresse"
+                    onIonInput={(event) => setPatientAddress(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Age (optionnel)</IonLabel>
+                  <IonInput
+                    type="number"
+                    min="0"
+                    value={patientAge}
+                    placeholder="Age"
+                    onIonInput={(event) => setPatientAge(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Genre (optionnel)</IonLabel>
+                  <IonSelect
+                    interface="popover"
+                    placeholder="Selectionner"
+                    value={patientGender}
+                    onIonChange={(event) => setPatientGender((event.detail.value as 'male' | 'female' | '') ?? '')}
+                  >
+                    <IonSelectOption value="male">M</IonSelectOption>
+                    <IonSelectOption value="female">F</IonSelectOption>
+                  </IonSelect>
+                </IonItem>
+                <IonItem>
+                  <IonLabel position="stacked">Notes patient (optionnel)</IonLabel>
+                  <IonTextarea
+                    autoGrow
+                    value={patientNotes}
+                    placeholder="Infos utiles pour ce patient non inscrit"
+                    onIonInput={(event) => setPatientNotes(event.detail.value ?? '')}
+                  />
+                </IonItem>
+                {!selectedPatientUserId ? (
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    color="medium"
+                    disabled={loading}
+                    onClick={() => checkPatientAvailability().catch(() => undefined)}
+                  >
+                    Verifier disponibilite du patient
+                  </IonButton>
+                ) : null}
+                {availabilityMessage ? (
+                  <IonText color="medium">
+                    <p>{availabilityMessage}</p>
+                  </IonText>
+                ) : null}
+                {!selectedPatientUserId ? (
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    disabled={loading || !patientName.trim()}
+                    onClick={() => createGuestPatient().catch(() => undefined)}
+                  >
+                    Creer ce patient non inscrit
+                  </IonButton>
+                ) : null}
+                {guestMessage ? (
+                  <IonText color="success">
+                    <p>{guestMessage}</p>
+                  </IonText>
+                ) : null}
+              </>
+            ) : null}
+            {hasSelectedPatient ? (
               <>
                 <IonItem>
                   <IonLabel position="stacked">Membre de famille (optionnel)</IonLabel>
@@ -545,6 +976,20 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
             <IonButton expand="block" onClick={submitPrescription} disabled={loading}>
               Publier la demande d'ordonnance
             </IonButton>
+            {latestPrescriptionId ? (
+              <IonButton
+                expand="block"
+                fill="outline"
+                onClick={() => printPrescription(latestPrescriptionId)}
+              >
+                Imprimer l ordonnance (QR)
+              </IonButton>
+            ) : null}
+            {printMessage ? (
+              <IonText color="success">
+                <p>{printMessage}</p>
+              </IonText>
+            ) : null}
           </IonCardContent>
         </IonCard>
       </IonContent>

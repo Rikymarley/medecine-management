@@ -12,6 +12,11 @@ type AuthContextValue = AuthState & {
   register: (payload: {
     name: string;
     email: string;
+    phone?: string;
+    ninu?: string;
+    address?: string;
+    latitude?: number | null;
+    longitude?: number | null;
     password: string;
     password_confirmation: string;
     role: 'doctor' | 'pharmacy' | 'patient';
@@ -59,6 +64,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (payload: {
     name: string;
     email: string;
+    phone?: string;
+    ninu?: string;
+    address?: string;
+    latitude?: number | null;
+    longitude?: number | null;
     password: string;
     password_confirmation: string;
     role: 'doctor' | 'pharmacy' | 'patient';

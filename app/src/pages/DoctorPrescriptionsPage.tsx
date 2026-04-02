@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime } from '../utils/time';
 
@@ -119,6 +120,10 @@ const DoctorPrescriptionsPage: React.FC = () => {
                   >
                     <IonLabel>
                       <h3>{prescription.patient_name}</h3>
+                      <p>Code ordonnance: {getPrescriptionCode(prescription)}</p>
+                      {!prescription.patient_user_id || prescription.patient?.account_status === 'provisional' ? (
+                        <IonBadge color="warning">Patient non inscrit</IonBadge>
+                      ) : null}
                       <div className="status-row">
                         <span>Statut:</span>
                         <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>

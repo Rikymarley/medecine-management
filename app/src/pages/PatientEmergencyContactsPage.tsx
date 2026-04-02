@@ -47,6 +47,7 @@ import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiEmergencyContact } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { maskHaitiPhone } from '../utils/phoneMask';
 
 const categoryLabel: Record<ApiEmergencyContact['category'], string> = {
   hospital: 'Hopital',
@@ -140,7 +141,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
       if (editingId === null) {
         await api.createPatientEmergencyContact(token, {
           name: form.name.trim(),
-          phone: form.phone.trim(),
+          phone: maskHaitiPhone(form.phone.trim()),
           category: form.category,
           city: form.city.trim() || null,
           department: form.department.trim() || null,
@@ -153,7 +154,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
       } else {
         await api.updatePatientEmergencyContact(token, editingId, {
           name: form.name.trim(),
-          phone: form.phone.trim(),
+          phone: maskHaitiPhone(form.phone.trim()),
           category: form.category,
           city: form.city.trim() || null,
           department: form.department.trim() || null,
@@ -188,7 +189,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
     setEditingId(contact.id);
     setForm({
       name: contact.name,
-      phone: contact.phone,
+      phone: maskHaitiPhone(contact.phone),
       category: contact.category,
       city: contact.city ?? '',
       department: contact.department ?? '',
@@ -410,7 +411,11 @@ const PatientEmergencyContactsPage: React.FC = () => {
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Telephone</IonLabel>
-                <IonInput value={form.phone} onIonInput={(e) => setForm((prev) => ({ ...prev, phone: e.detail.value ?? '' }))} />
+                <IonInput
+                  value={form.phone}
+                  placeholder="+509-xxxx-xxxx"
+                  onIonInput={(e) => setForm((prev) => ({ ...prev, phone: maskHaitiPhone(e.detail.value ?? '') }))}
+                />
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Categorie</IonLabel>

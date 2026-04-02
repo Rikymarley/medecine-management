@@ -18,6 +18,7 @@ import PatientPrescriptionsPage from './pages/PatientPrescriptionsPage';
 import PatientPrescriptionDetailPage from './pages/PatientPrescriptionDetailPage';
 import PatientEmergencyContactsPage from './pages/PatientEmergencyContactsPage';
 import PatientFamilyMembersPage from './pages/PatientFamilyMembersPage';
+import PatientMedicalHistoryPage from './pages/PatientMedicalHistoryPage';
 import VerificationPending from './pages/VerificationPending';
 import { AuthProvider, useAuth } from './state/AuthState';
 
@@ -185,6 +186,11 @@ const App: React.FC = () => (
           <Route exact path="/patient/family-members">
             <RequireRole role="patient">
               <PatientFamilyMembersPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/medical-history">
+            <RequireRole role="patient">
+              <PatientMedicalHistoryPage />
             </RequireRole>
           </Route>
           <Route exact path="/">

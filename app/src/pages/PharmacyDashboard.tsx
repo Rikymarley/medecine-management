@@ -14,6 +14,10 @@ import {
   IonPage,
   IonText,
   IonToggle,
+  IonTextarea,
+  IonSelect,
+  IonSelectOption,
+  IonCheckbox,
   IonTitle,
   IonToolbar
 } from '@ionic/react';
@@ -21,6 +25,7 @@ import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy, ApiPrescription, ApiPharmacyResponse } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { maskHaitiPhone } from '../utils/phoneMask';
 import { minutesAgo, minutesUntil } from '../utils/time';
 
 const STATUS_ACTIONS: { key: ApiPharmacyResponse['status']; label: string; color: string }[] = [
@@ -60,6 +65,22 @@ type DaySchedule = {
 };
 
 const WEEK_DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+const PAYMENT_OPTIONS = ['Cash', 'MonCash', 'NatCash', 'Carte', 'Virement'];
+const normalizePaymentMethod = (value: string) => {
+  const key = value.trim().toLowerCase();
+  const match = PAYMENT_OPTIONS.find((option) => option.toLowerCase() === key);
+  return match ?? value.trim();
+};
+const SERVICE_OPTIONS = [
+  'Vaccination',
+  'Prise de tension',
+  'Test glycemie',
+  'Livraison',
+  'Conseil pharmaceutique',
+  'Preparation ordonnance',
+  'Renouvellement traitement',
+  'Service de nuit'
+];
 
 const defaultSchedule = (): DaySchedule[] =>
   WEEK_DAYS.map((day) => ({ day, open: false, from: '08:00', to: '18:00' }));
@@ -119,6 +140,7 @@ const PharmacyDashboard: React.FC = () => {
   const [expandedPrescriptions, setExpandedPrescriptions] = useState<Record<number, boolean>>({});
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(defaultSchedule());
   const [profileForm, setProfileForm] = useState({
+    pharmacy_mode: 'quick_manual' as 'quick_manual' | 'pos_integrated',
     phone: '',
     open_now: false,
     closes_at: '',
@@ -127,8 +149,22 @@ const PharmacyDashboard: React.FC = () => {
     emergency_available: false,
     address: '',
     latitude: '',
-    longitude: ''
+    longitude: '',
+    services: '',
+    payment_methods: '',
+    price_range: '' as '' | 'low' | 'medium' | 'high',
+    average_wait_time: '',
+    delivery_available: false,
+    delivery_radius_km: '',
+    night_service: false,
+    license_number: '',
+    license_verified: false,
+    logo_url: '',
+    storefront_image_url: '',
+    notes_for_patients: ''
   });
+  const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>([]);
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
 
   const loadData = async () => {
     const calls: [Promise<ApiPharmacy[]>, Promise<ApiPrescription[]>, Promise<ApiPharmacy | null>] = [
@@ -142,7 +178,8 @@ const PharmacyDashboard: React.FC = () => {
     setMyPharmacy(meData);
     if (meData) {
       setProfileForm({
-        phone: meData.phone ?? '',
+        pharmacy_mode: meData.pharmacy_mode ?? 'quick_manual',
+        phone: maskHaitiPhone(meData.phone ?? ''),
         open_now: !!meData.open_now,
         closes_at: meData.closes_at ?? '',
         opening_hours: meData.opening_hours ?? '',
@@ -150,8 +187,35 @@ const PharmacyDashboard: React.FC = () => {
         emergency_available: !!meData.emergency_available,
         address: meData.address ?? '',
         latitude: meData.latitude ?? '',
-        longitude: meData.longitude ?? ''
+        longitude: meData.longitude ?? '',
+        services: meData.services ?? '',
+        payment_methods: meData.payment_methods ?? '',
+        price_range: meData.price_range ?? '',
+        average_wait_time:
+          meData.average_wait_time === null || meData.average_wait_time === undefined
+            ? ''
+            : String(meData.average_wait_time),
+        delivery_available: !!meData.delivery_available,
+        delivery_radius_km: meData.delivery_radius_km ?? '',
+        night_service: !!meData.night_service,
+        license_number: meData.license_number ?? '',
+        license_verified: !!meData.license_verified,
+        logo_url: meData.logo_url ?? '',
+        storefront_image_url: meData.storefront_image_url ?? '',
+        notes_for_patients: meData.notes_for_patients ?? ''
       });
+      setSelectedPaymentMethods(
+        (meData.payment_methods ?? '')
+          .split(',')
+          .map((item) => normalizePaymentMethod(item))
+          .filter(Boolean)
+      );
+      setSelectedServices(
+        (meData.services ?? '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      );
       setWeeklySchedule(parseOpeningHours(meData.opening_hours));
     }
   };
@@ -225,6 +289,7 @@ const PharmacyDashboard: React.FC = () => {
     setError(null);
     try {
       const updated = await api.updateMyPharmacy(token, {
+        pharmacy_mode: profileForm.pharmacy_mode,
         phone: profileForm.phone.trim() || null,
         open_now: profileForm.open_now,
         closes_at: profileForm.closes_at.trim() || null,
@@ -233,7 +298,19 @@ const PharmacyDashboard: React.FC = () => {
         emergency_available: profileForm.emergency_available,
         address: profileForm.address.trim() || null,
         latitude: profileForm.latitude.trim() || null,
-        longitude: profileForm.longitude.trim() || null
+        longitude: profileForm.longitude.trim() || null,
+        services: selectedServices.length > 0 ? selectedServices.join(', ') : null,
+        payment_methods: selectedPaymentMethods.length > 0 ? selectedPaymentMethods.join(', ') : null,
+        price_range: profileForm.price_range || null,
+        average_wait_time: profileForm.average_wait_time.trim() ? Number(profileForm.average_wait_time) : null,
+        delivery_available: profileForm.delivery_available,
+        delivery_radius_km: profileForm.delivery_radius_km.trim() ? Number(profileForm.delivery_radius_km) : null,
+        night_service: profileForm.night_service,
+        license_number: profileForm.license_number.trim() || null,
+        license_verified: profileForm.license_verified,
+        logo_url: profileForm.logo_url.trim() || null,
+        storefront_image_url: profileForm.storefront_image_url.trim() || null,
+        notes_for_patients: profileForm.notes_for_patients.trim() || null
       });
       setMyPharmacy(updated);
       setPharmacies((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
@@ -309,6 +386,9 @@ const PharmacyDashboard: React.FC = () => {
                 <IonBadge color={profileIncomplete ? 'warning' : 'success'}>
                   {profileIncomplete ? `Infos incompletes (${profileMissingFields.length})` : 'Infos completes'}
                 </IonBadge>
+                <IonBadge color={pharmacy.pharmacy_mode === 'pos_integrated' ? 'tertiary' : 'medium'}>
+                  Mode: {pharmacy.pharmacy_mode === 'pos_integrated' ? 'POS integre' : 'Rapide manuel'}
+                </IonBadge>
                 {pharmacy.closes_at ? <IonText>Ferme a {pharmacy.closes_at}</IonText> : null}
                 <IonButton
                   size="small"
@@ -326,11 +406,28 @@ const PharmacyDashboard: React.FC = () => {
               {profileExpanded ? (
                 <>
               <IonItem lines="none">
+                <IonLabel position="stacked">Mode disponibilite</IonLabel>
+                <IonSelect
+                  value={profileForm.pharmacy_mode}
+                  onIonChange={(event) =>
+                    setProfileForm((prev) => ({
+                      ...prev,
+                      pharmacy_mode: (event.detail.value as 'quick_manual' | 'pos_integrated') ?? 'quick_manual'
+                    }))
+                  }
+                >
+                  <IonSelectOption value="quick_manual">Rapide manuel (boutons)</IonSelectOption>
+                  <IonSelectOption value="pos_integrated">POS integre (automatique)</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem lines="none">
                 <IonLabel position="stacked">Telephone</IonLabel>
                 <IonInput
                   value={profileForm.phone}
-                  placeholder="+509 ..."
-                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, phone: event.detail.value ?? '' }))}
+                  placeholder="+509-xxxx-xxxx"
+                  onIonInput={(event) =>
+                    setProfileForm((prev) => ({ ...prev, phone: maskHaitiPhone(event.detail.value ?? '') }))
+                  }
                 />
               </IonItem>
               <IonItem lines="none">
@@ -409,6 +506,146 @@ const PharmacyDashboard: React.FC = () => {
                   value={profileForm.address}
                   placeholder="Adresse"
                   onIonInput={(event) => setProfileForm((prev) => ({ ...prev, address: event.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Services</IonLabel>
+              </IonItem>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                {SERVICE_OPTIONS.map((option) => (
+                  <IonItem key={option} lines="none">
+                    <IonCheckbox
+                      slot="start"
+                      checked={selectedServices.includes(option)}
+                      onIonChange={(event) =>
+                        setSelectedServices((prev) =>
+                          event.detail.checked
+                            ? Array.from(new Set([...prev, option]))
+                            : prev.filter((item) => item !== option)
+                        )
+                      }
+                    />
+                    <IonLabel>{option}</IonLabel>
+                  </IonItem>
+                ))}
+              </div>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Moyens de paiement</IonLabel>
+              </IonItem>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                {PAYMENT_OPTIONS.map((option) => (
+                  <IonItem key={option} lines="none">
+                    <IonCheckbox
+                      slot="start"
+                      checked={selectedPaymentMethods.includes(option)}
+                      onIonChange={(event) =>
+                        setSelectedPaymentMethods((prev) =>
+                          event.detail.checked
+                            ? Array.from(new Set([...prev, option]))
+                            : prev.filter((item) => item !== option)
+                        )
+                      }
+                    />
+                    <IonLabel>{option}</IonLabel>
+                  </IonItem>
+                ))}
+              </div>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Niveau de prix</IonLabel>
+                <IonSelect
+                  value={profileForm.price_range}
+                  placeholder="Selectionner"
+                  onIonChange={(event) =>
+                    setProfileForm((prev) => ({
+                      ...prev,
+                      price_range: (event.detail.value as '' | 'low' | 'medium' | 'high') ?? ''
+                    }))
+                  }
+                >
+                  <IonSelectOption value="">Non renseigne</IonSelectOption>
+                  <IonSelectOption value="low">Bas</IonSelectOption>
+                  <IonSelectOption value="medium">Moyen</IonSelectOption>
+                  <IonSelectOption value="high">Eleve</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Temps d'attente moyen (minutes)</IonLabel>
+                <IonInput
+                  type="number"
+                  value={profileForm.average_wait_time}
+                  onIonInput={(event) =>
+                    setProfileForm((prev) => ({ ...prev, average_wait_time: event.detail.value ?? '' }))
+                  }
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel>Livraison disponible</IonLabel>
+                <IonToggle
+                  checked={profileForm.delivery_available}
+                  onIonChange={(event) =>
+                    setProfileForm((prev) => ({ ...prev, delivery_available: event.detail.checked }))
+                  }
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Rayon de livraison (km)</IonLabel>
+                <IonInput
+                  type="number"
+                  value={profileForm.delivery_radius_km}
+                  onIonInput={(event) =>
+                    setProfileForm((prev) => ({ ...prev, delivery_radius_km: event.detail.value ?? '' }))
+                  }
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel>Service de nuit</IonLabel>
+                <IonToggle
+                  checked={profileForm.night_service}
+                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, night_service: event.detail.checked }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Numero de licence</IonLabel>
+                <IonInput
+                  value={profileForm.license_number}
+                  onIonInput={(event) =>
+                    setProfileForm((prev) => ({ ...prev, license_number: event.detail.value ?? '' }))
+                  }
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel>Licence verifiee</IonLabel>
+                <IonToggle
+                  checked={profileForm.license_verified}
+                  onIonChange={(event) =>
+                    setProfileForm((prev) => ({ ...prev, license_verified: event.detail.checked }))
+                  }
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">URL logo</IonLabel>
+                <IonInput
+                  value={profileForm.logo_url}
+                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, logo_url: event.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">URL photo vitrine</IonLabel>
+                <IonInput
+                  value={profileForm.storefront_image_url}
+                  onIonInput={(event) =>
+                    setProfileForm((prev) => ({ ...prev, storefront_image_url: event.detail.value ?? '' }))
+                  }
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Notes pour patients</IonLabel>
+                <IonTextarea
+                  autoGrow
+                  value={profileForm.notes_for_patients}
+                  onIonInput={(event) =>
+                    setProfileForm((prev) => ({ ...prev, notes_for_patients: event.detail.value ?? '' }))
+                  }
                 />
               </IonItem>
               <IonItem lines="none">

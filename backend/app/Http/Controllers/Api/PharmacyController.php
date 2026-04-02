@@ -25,7 +25,8 @@ class PharmacyController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'pharmacy_mode' => ['sometimes', 'in:quick_manual,pos_integrated'],
+            'phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'address' => ['nullable', 'string', 'max:255'],
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
@@ -34,7 +35,19 @@ class PharmacyController extends Controller
             'closes_at' => ['nullable', 'date_format:H:i'],
             'temporary_closed' => ['boolean'],
             'emergency_available' => ['boolean'],
-            'reliability_score' => ['integer', 'min:0', 'max:100']
+            'reliability_score' => ['integer', 'min:0', 'max:100'],
+            'services' => ['nullable', 'string', 'max:3000'],
+            'payment_methods' => ['nullable', 'string', 'max:3000'],
+            'price_range' => ['nullable', 'in:low,medium,high'],
+            'average_wait_time' => ['nullable', 'integer', 'min:0', 'max:600'],
+            'delivery_available' => ['sometimes', 'boolean'],
+            'delivery_radius_km' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'night_service' => ['sometimes', 'boolean'],
+            'license_number' => ['nullable', 'string', 'max:120'],
+            'license_verified' => ['sometimes', 'boolean'],
+            'logo_url' => ['nullable', 'url', 'max:2048'],
+            'storefront_image_url' => ['nullable', 'url', 'max:2048'],
+            'notes_for_patients' => ['nullable', 'string', 'max:500'],
         ]);
 
         if (
@@ -85,7 +98,8 @@ class PharmacyController extends Controller
         }
 
         $data = $request->validate([
-            'phone' => ['nullable', 'string', 'max:50'],
+            'pharmacy_mode' => ['sometimes', 'in:quick_manual,pos_integrated'],
+            'phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'address' => ['nullable', 'string', 'max:255'],
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
@@ -94,6 +108,18 @@ class PharmacyController extends Controller
             'closes_at' => ['nullable', 'date_format:H:i'],
             'temporary_closed' => ['sometimes', 'boolean'],
             'emergency_available' => ['sometimes', 'boolean'],
+            'services' => ['nullable', 'string', 'max:3000'],
+            'payment_methods' => ['nullable', 'string', 'max:3000'],
+            'price_range' => ['nullable', 'in:low,medium,high'],
+            'average_wait_time' => ['nullable', 'integer', 'min:0', 'max:600'],
+            'delivery_available' => ['sometimes', 'boolean'],
+            'delivery_radius_km' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'night_service' => ['sometimes', 'boolean'],
+            'license_number' => ['nullable', 'string', 'max:120'],
+            'license_verified' => ['sometimes', 'boolean'],
+            'logo_url' => ['nullable', 'url', 'max:2048'],
+            'storefront_image_url' => ['nullable', 'url', 'max:2048'],
+            'notes_for_patients' => ['nullable', 'string', 'max:500'],
         ]);
 
         if (

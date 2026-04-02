@@ -1,0 +1,526 @@
+import {
+  IonAlert,
+  IonBackButton,
+  IonBadge,
+  IonButton,
+  IonButtons,
+  IonCard,
+  IonCardContent,
+  IonContent,
+  IonFab,
+  IonFabButton,
+  IonHeader,
+  IonIcon,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonModal,
+  IonPage,
+  IonSelect,
+  IonSelectOption,
+  IonText,
+  IonTextarea,
+  IonTitle,
+  IonToolbar
+} from '@ionic/react';
+import { addOutline, closeOutline, createOutline, medicalOutline, trashOutline } from 'ionicons/icons';
+import { useEffect, useMemo, useState } from 'react';
+import InstallBanner from '../components/InstallBanner';
+import { api, ApiFamilyMember, ApiMedicalHistoryEntry } from '../services/api';
+import { useAuth } from '../state/AuthState';
+import { formatDateHaiti, formatDateTime } from '../utils/time';
+
+const typeLabel: Record<ApiMedicalHistoryEntry['type'], string> = {
+  condition: 'Condition',
+  allergy: 'Allergie',
+  surgery: 'Chirurgie',
+  hospitalization: 'Hospitalisation',
+  medication: 'Traitement',
+  note: 'Note'
+};
+
+const visibilityLabel: Record<ApiMedicalHistoryEntry['visibility'], string> = {
+  shared: 'Partage',
+  patient_only: 'Patient seulement',
+  doctor_only: 'Docteur seulement'
+};
+
+const statusLabel: Record<ApiMedicalHistoryEntry['status'], string> = {
+  active: 'Actif',
+  resolved: 'Resolue'
+};
+
+const statusColor: Record<ApiMedicalHistoryEntry['status'], string> = {
+  active: 'warning',
+  resolved: 'success'
+};
+
+const toDateInputValue = (value: string | null) => {
+  if (!value) {
+    return '';
+  }
+  return value.includes('T') ? value.slice(0, 10) : value;
+};
+
+const PatientMedicalHistoryPage: React.FC = () => {
+  const { token, user } = useAuth();
+  const [entries, setEntries] = useState<ApiMedicalHistoryEntry[]>([]);
+  const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
+  const [selectedMemberFilter, setSelectedMemberFilter] = useState<'self' | number>('self');
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const [form, setForm] = useState<{
+    family_member_id: string;
+    type: ApiMedicalHistoryEntry['type'];
+    title: string;
+    details: string;
+    started_at: string;
+    ended_at: string;
+    status: ApiMedicalHistoryEntry['status'];
+    visibility: Extract<ApiMedicalHistoryEntry['visibility'], 'shared' | 'patient_only'>;
+  }>({
+    family_member_id: '',
+    type: 'condition',
+    title: '',
+    details: '',
+    started_at: '',
+    ended_at: '',
+    status: 'active',
+    visibility: 'shared'
+  });
+
+  const load = async () => {
+    if (!token) {
+      return;
+    }
+
+    const [history, members] = await Promise.all([
+      api.getPatientMedicalHistory(token),
+      api.getPatientFamilyMembers(token).catch(() => [])
+    ]);
+
+    setEntries(history);
+    setFamilyMembers(members);
+  };
+
+  useEffect(() => {
+    load().catch(() => undefined);
+  }, [token]);
+
+  const sortedEntries = useMemo(
+    () =>
+      [...entries].sort((a, b) => {
+        const aDate = a.started_at ?? a.created_at;
+        const bDate = b.started_at ?? b.created_at;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      }),
+    [entries]
+  );
+
+  const filteredEntries = useMemo(() => {
+    if (selectedMemberFilter === 'self') {
+      return sortedEntries.filter((entry) => !entry.family_member_id);
+    }
+    return sortedEntries.filter((entry) => entry.family_member_id === selectedMemberFilter);
+  }, [selectedMemberFilter, sortedEntries]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredEntries.length / pageSize));
+  const pagedEntries = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredEntries.slice(start, start + pageSize);
+  }, [filteredEntries, page]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedMemberFilter]);
+
+  const resetForm = () => {
+    setForm({
+      family_member_id: '',
+      type: 'condition',
+      title: '',
+      details: '',
+      started_at: '',
+      ended_at: '',
+      status: 'active',
+      visibility: 'shared'
+    });
+    setEditingId(null);
+  };
+
+  const startEdit = (entry: ApiMedicalHistoryEntry) => {
+    setEditingId(entry.id);
+    setForm({
+      family_member_id: entry.family_member_id ? String(entry.family_member_id) : '',
+      type: entry.type,
+      title: entry.title,
+      details: entry.details ?? '',
+      started_at: toDateInputValue(entry.started_at),
+      ended_at: toDateInputValue(entry.ended_at),
+      status: entry.status,
+      visibility: entry.visibility === 'doctor_only' ? 'shared' : entry.visibility
+    });
+    setShowModal(true);
+  };
+
+  const upsert = async () => {
+    if (!token || !form.title.trim()) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        family_member_id: form.family_member_id ? Number(form.family_member_id) : null,
+        type: form.type,
+        title: form.title.trim(),
+        details: form.details.trim() || null,
+        started_at: form.started_at || null,
+        ended_at: form.ended_at || null,
+        status: form.status,
+        visibility: form.visibility
+      };
+
+      if (editingId === null) {
+        const created = await api.createPatientMedicalHistory(token, payload);
+        setEntries((prev) => [created, ...prev]);
+      } else {
+        const updated = await api.updatePatientMedicalHistory(token, editingId, payload);
+        setEntries((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      }
+
+      setShowModal(false);
+      resetForm();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    if (!token) {
+      return;
+    }
+    await api.deletePatientMedicalHistory(token, id);
+    setEntries((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  return (
+    <IonPage>
+      <IonHeader>
+        <IonToolbar>
+          <IonButtons slot="start">
+            <IonBackButton defaultHref="/patient" />
+          </IonButtons>
+          <IonTitle>Historique medical</IonTitle>
+        </IonToolbar>
+      </IonHeader>
+      <IonContent className="ion-padding app-content">
+        <InstallBanner />
+
+        <IonCard className="surface-card">
+          <IonCardContent>
+            <h2 style={{ marginTop: 0 }}>Historique medical</h2>
+            <IonText color="medium">{filteredEntries.length} entree(s)</IonText>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                overflowX: 'auto',
+                padding: '8px 0 4px',
+                marginTop: '8px'
+              }}
+            >
+              <IonButton
+                size="small"
+                fill={selectedMemberFilter === 'self' ? 'solid' : 'outline'}
+                onClick={() => setSelectedMemberFilter('self')}
+              >
+                {user?.name ?? 'Patient'}
+              </IonButton>
+              {familyMembers.map((member) => (
+                <IonButton
+                  key={member.id}
+                  size="small"
+                  fill={selectedMemberFilter === member.id ? 'solid' : 'outline'}
+                  onClick={() => setSelectedMemberFilter(member.id)}
+                >
+                  {member.name}
+                </IonButton>
+              ))}
+            </div>
+
+            {filteredEntries.length === 0 ? (
+              <div style={{ minHeight: '220px', display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+                <div>
+                  <IonIcon icon={medicalOutline} style={{ fontSize: '56px', color: '#64748b' }} />
+                  <h3 style={{ marginBottom: 4 }}>Aucune entree</h3>
+                  <IonText color="medium">Utilisez le bouton + pour ajouter un element.</IonText>
+                </div>
+              </div>
+            ) : (
+              <IonList style={{ marginTop: '8px' }}>
+                {pagedEntries.map((entry) => (
+                  <IonItem key={entry.id} lines="none">
+                    <div
+                      style={{
+                        width: '100%',
+                        display: 'grid',
+                        gridTemplateColumns: '20px 1fr auto',
+                        gap: '8px',
+                        alignItems: 'start',
+                        padding: '8px 0',
+                        borderBottom: '1px solid #dbe7ef'
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div
+                          style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '999px',
+                            background: '#0f766e',
+                            marginTop: '8px'
+                          }}
+                        />
+                        <div style={{ flex: 1, width: '2px', background: '#dbe7ef', marginTop: '6px' }} />
+                      </div>
+                      <IonLabel>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ marginBottom: 2 }}>{entry.title}</h3>
+                        <IonBadge color={statusColor[entry.status]}>{statusLabel[entry.status]}</IonBadge>
+                      </div>
+                      <p>
+                        {typeLabel[entry.type]} · {visibilityLabel[entry.visibility]}
+                      </p>
+                      <p>{entry.family_member_name ? `Membre: ${entry.family_member_name}` : user?.name ?? 'Patient'}</p>
+                      <p>
+                        Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'Non precise'} · Fin:{' '}
+                        {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'Non precise'}
+                      </p>
+                      {entry.details ? <p>{entry.details}</p> : null}
+                      <p>Mise a jour: {formatDateTime(entry.updated_at)}</p>
+                    </IonLabel>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <IonButton fill="clear" color="danger" onClick={() => setDeleteTargetId(entry.id)}>
+                      <IonIcon icon={trashOutline} />
+                      </IonButton>
+                      <IonButton fill="clear" onClick={() => startEdit(entry)}>
+                      <IonIcon icon={createOutline} />
+                      </IonButton>
+                    </div>
+                    </div>
+                  </IonItem>
+                ))}
+              </IonList>
+            )}
+
+            {filteredEntries.length > pageSize ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
+                <IonButton fill="outline" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
+                  Precedent
+                </IonButton>
+                <IonText color="medium">
+                  Page {page} / {totalPages}
+                </IonText>
+                <IonButton
+                  fill="outline"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                >
+                  Suivant
+                </IonButton>
+              </div>
+            ) : null}
+          </IonCardContent>
+        </IonCard>
+
+        <IonModal isOpen={showModal} onDidDismiss={() => setShowModal(false)}>
+          <IonContent className="ion-padding app-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <IonIcon icon={medicalOutline} style={{ fontSize: '30px', color: '#0f766e' }} />
+                <div>
+                  <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 800 }}>
+                    {editingId === null ? 'Ajouter une entree' : 'Modifier une entree'}
+                  </h1>
+                  <IonText color="medium">Historique patient / famille</IonText>
+                </div>
+              </div>
+              <IonButton
+                fill="clear"
+                color="medium"
+                onClick={() => {
+                  setShowModal(false);
+                  resetForm();
+                }}
+              >
+                <IonIcon icon={closeOutline} />
+              </IonButton>
+            </div>
+
+            <div style={{ height: '1px', background: '#cbd5e1', margin: '20px 0' }} />
+
+            <IonItem lines="none">
+              <IonLabel position="stacked">Membre de famille</IonLabel>
+              <IonSelect
+                value={form.family_member_id}
+                placeholder={user?.name ?? 'Patient'}
+                onIonChange={(e) => setForm((prev) => ({ ...prev, family_member_id: e.detail.value ?? '' }))}
+              >
+                <IonSelectOption value="">{user?.name ?? 'Patient'}</IonSelectOption>
+                {familyMembers.map((member) => (
+                  <IonSelectOption key={member.id} value={String(member.id)}>
+                    {member.name}
+                  </IonSelectOption>
+                ))}
+              </IonSelect>
+            </IonItem>
+
+            <IonItem lines="none" style={{ marginTop: '10px' }}>
+              <IonLabel position="stacked">Type</IonLabel>
+              <IonSelect
+                value={form.type}
+                onIonChange={(e) => setForm((prev) => ({ ...prev, type: e.detail.value as ApiMedicalHistoryEntry['type'] }))}
+              >
+                <IonSelectOption value="condition">Condition</IonSelectOption>
+                <IonSelectOption value="allergy">Allergie</IonSelectOption>
+                <IonSelectOption value="surgery">Chirurgie</IonSelectOption>
+                <IonSelectOption value="hospitalization">Hospitalisation</IonSelectOption>
+                <IonSelectOption value="medication">Traitement</IonSelectOption>
+                <IonSelectOption value="note">Note</IonSelectOption>
+              </IonSelect>
+            </IonItem>
+
+            <IonItem lines="none" style={{ marginTop: '10px' }}>
+              <IonLabel position="stacked">Titre *</IonLabel>
+              <IonInput value={form.title} onIonInput={(e) => setForm((prev) => ({ ...prev, title: e.detail.value ?? '' }))} />
+            </IonItem>
+
+            <IonItem lines="none" style={{ marginTop: '10px' }}>
+              <IonLabel position="stacked">Details</IonLabel>
+              <IonTextarea
+                autoGrow
+                value={form.details}
+                onIonInput={(e) => setForm((prev) => ({ ...prev, details: e.detail.value ?? '' }))}
+              />
+            </IonItem>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Debut</IonLabel>
+                <IonInput
+                  type="date"
+                  value={form.started_at}
+                  onIonInput={(e) => setForm((prev) => ({ ...prev, started_at: e.detail.value ?? '' }))}
+                />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Fin</IonLabel>
+                <IonInput
+                  type="date"
+                  value={form.ended_at}
+                  onIonInput={(e) => setForm((prev) => ({ ...prev, ended_at: e.detail.value ?? '' }))}
+                />
+              </IonItem>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '10px' }}>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Statut</IonLabel>
+                <IonSelect
+                  value={form.status}
+                  onIonChange={(e) => setForm((prev) => ({ ...prev, status: e.detail.value as ApiMedicalHistoryEntry['status'] }))}
+                >
+                  <IonSelectOption value="active">Actif</IonSelectOption>
+                  <IonSelectOption value="resolved">Resolue</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Visibilite</IonLabel>
+                <IonSelect
+                  value={form.visibility}
+                  onIonChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: e.detail.value as Extract<ApiMedicalHistoryEntry['visibility'], 'shared' | 'patient_only'>
+                    }))
+                  }
+                >
+                  <IonSelectOption value="shared">Partage</IonSelectOption>
+                  <IonSelectOption value="patient_only">Patient seulement</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+            </div>
+
+            <IonButton expand="block" style={{ marginTop: '20px' }} onClick={() => upsert().catch(() => undefined)} disabled={saving}>
+              {editingId === null ? 'Ajouter' : 'Mettre a jour'}
+            </IonButton>
+            <IonButton
+              expand="block"
+              fill="outline"
+              color="medium"
+              onClick={() => {
+                setShowModal(false);
+                resetForm();
+              }}
+            >
+              Annuler
+            </IonButton>
+          </IonContent>
+        </IonModal>
+
+        <IonFab vertical="bottom" horizontal="end" slot="fixed">
+          <IonFabButton
+            color="primary"
+            onClick={() => {
+              resetForm();
+              setShowModal(true);
+            }}
+          >
+            <IonIcon icon={addOutline} />
+          </IonFabButton>
+        </IonFab>
+
+        <IonAlert
+          isOpen={deleteTargetId !== null}
+          header="Supprimer cette entree ?"
+          message="Cette action est definitive."
+          buttons={[
+            {
+              text: 'Annuler',
+              role: 'cancel',
+              handler: () => setDeleteTargetId(null)
+            },
+            {
+              text: 'Supprimer',
+              role: 'destructive',
+              handler: () => {
+                const id = deleteTargetId;
+                setDeleteTargetId(null);
+                if (id !== null) {
+                  remove(id).catch(() => undefined);
+                }
+              }
+            }
+          ]}
+          onDidDismiss={() => setDeleteTargetId(null)}
+        />
+      </IonContent>
+    </IonPage>
+  );
+};
+
+export default PatientMedicalHistoryPage;

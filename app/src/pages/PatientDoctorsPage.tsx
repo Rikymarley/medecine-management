@@ -8,6 +8,7 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
@@ -28,6 +29,7 @@ const PatientDoctorsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [query, setQuery] = useState('');
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
 
   const loadPrescriptions = useCallback(async () => {
@@ -67,10 +69,33 @@ const PatientDoctorsPage: React.FC = () => {
   });
 
   const doctors = useMemo(() => {
-    return Array.from(new Set(prescriptions.map((p) => p.doctor_name.trim()).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b, 'fr', { sensitivity: 'base' })
-    );
-  }, [prescriptions]);
+    const rows = prescriptions
+      .map((p) => ({
+        name: p.doctor_name.trim(),
+        specialty: p.doctor?.specialty ?? null,
+        city: p.doctor?.city ?? null
+      }))
+      .filter((row) => row.name);
+
+    const byName = new Map<string, { name: string; specialty: string | null; city: string | null }>();
+    rows.forEach((row) => {
+      if (!byName.has(row.name)) {
+        byName.set(row.name, row);
+      }
+    });
+
+    const q = query.trim().toLowerCase();
+    return Array.from(byName.values())
+      .filter((row) => {
+        if (!q) return true;
+        return (
+          row.name.toLowerCase().includes(q) ||
+          (row.specialty ?? '').toLowerCase().includes(q) ||
+          (row.city ?? '').toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+  }, [prescriptions, query]);
 
   return (
     <IonPage>
@@ -89,6 +114,14 @@ const PatientDoctorsPage: React.FC = () => {
             <IonCardTitle>Medecins (A-Z)</IonCardTitle>
           </IonCardHeader>
           <IonCardContent>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Rechercher</IonLabel>
+              <IonInput
+                value={query}
+                placeholder="Nom, specialite, ville..."
+                onIonInput={(e) => setQuery(e.detail.value ?? '')}
+              />
+            </IonItem>
             {doctors.length === 0 ? (
               <IonText color="medium">
                 <p>Aucun medecin pour le moment.</p>
@@ -97,16 +130,22 @@ const PatientDoctorsPage: React.FC = () => {
               <IonList>
                 {doctors.map((doctor) => (
                   <IonItem
-                    key={doctor}
+                    key={doctor.name}
                     lines="full"
                     button
                     detail
                     onClick={() =>
-                      ionRouter.push(`/patient/doctors/${encodeURIComponent(doctor)}`, 'forward', 'push')
+                      ionRouter.push(`/patient/doctors/${encodeURIComponent(doctor.name)}`, 'forward', 'push')
                     }
                   >
                     <IonIcon icon={medkitOutline} slot="start" color="success" />
-                    <IonLabel>{doctor}</IonLabel>
+                    <IonLabel>
+                      <strong>{doctor.name}</strong>
+                      <p>
+                        {doctor.specialty || 'Specialite non renseignee'}
+                        {doctor.city ? ` · ${doctor.city}` : ''}
+                      </p>
+                    </IonLabel>
                   </IonItem>
                 ))}
               </IonList>

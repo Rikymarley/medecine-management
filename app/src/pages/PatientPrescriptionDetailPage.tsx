@@ -28,6 +28,7 @@ import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember, ApiPatientMedicinePurchase, ApiPharmacy, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime, minutesAgo, minutesUntil } from '../utils/time';
 
@@ -498,7 +499,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                               href={
                                 pharmacy.phone
                                   ? `https://wa.me/${pharmacy.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                                      `Bonjour, je viens via l'application pour l'ordonnance #${prescription.id}.`
+                                      `Bonjour, je viens via l'application pour l'ordonnance ${getPrescriptionCode(prescription)}.`
                                     )}`
                                   : undefined
                               }
