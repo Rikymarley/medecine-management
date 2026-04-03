@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\PharmacyController;
 use App\Http\Controllers\Api\PharmacyResponseController;
 use App\Http\Controllers\Api\PrescriptionController;
+use App\Http\Controllers\Api\AdminAccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmergencyContactController;
 use App\Http\Controllers\Api\FamilyMemberController;
@@ -10,13 +11,23 @@ use App\Http\Controllers\Api\GuestPatientController;
 use App\Http\Controllers\Api\MedicalHistoryController;
 use App\Http\Controllers\Api\PatientMedicinePurchaseController;
 use App\Http\Controllers\Api\MedicineController;
+use App\Http\Controllers\Api\LicenseVerificationController;
 use App\Http\Controllers\Api\UserVerificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:8,1');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::get('/doctors', [AuthController::class, 'doctorsDirectory']);
+Route::get('/doctor/doctors-directory', [AuthController::class, 'doctorsDirectoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/pharmacy/doctors-directory', [AuthController::class, 'doctorsDirectoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 
 Route::get('/pharmacies', [PharmacyController::class, 'index']);
+Route::get('/doctor/pharmacies-directory', [PharmacyController::class, 'directoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/pharmacy/pharmacies-directory', [PharmacyController::class, 'directoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 Route::post('/pharmacies', [PharmacyController::class, 'store']);
 Route::get('/pharmacies/{pharmacy}', [PharmacyController::class, 'show']);
 Route::get('/pharmacy/me', [PharmacyController::class, 'me'])
@@ -56,7 +67,7 @@ Route::get('/doctor/patients/{patient}/family-members', [FamilyMemberController:
 Route::get('/patient/prescriptions', [PrescriptionController::class, 'mineForPatient'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/prescriptions', [PrescriptionController::class, 'store'])
-    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 Route::patch('/patient/prescriptions/{prescription}/complete', [PrescriptionController::class, 'completeForPatient'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::patch('/patient/prescriptions/{prescription}/reopen', [PrescriptionController::class, 'reopenForPatient'])
@@ -102,7 +113,7 @@ Route::delete('/patient/medical-history/{entry}', [MedicalHistoryController::cla
 Route::get('/doctor/patients/{patient}/medical-history', [MedicalHistoryController::class, 'doctorIndex'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::post('/doctor/patients/{patient}/medical-history', [MedicalHistoryController::class, 'doctorStore'])
-    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/medical-history/{entry}', [MedicalHistoryController::class, 'doctorUpdate'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/medical-history/{entry}/link-prescription', [MedicalHistoryController::class, 'doctorLinkPrescription'])
@@ -122,6 +133,41 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/verifications'
     Route::post('/{user}/approve', [UserVerificationController::class, 'approve']);
     Route::post('/{user}/reject', [UserVerificationController::class, 'reject']);
 });
+
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/accounts')->group(function () {
+    Route::get('/users', [AdminAccountController::class, 'users']);
+    Route::get('/pharmacies', [AdminAccountController::class, 'pharmacies']);
+    Route::post('/users/{user}/approve', [AdminAccountController::class, 'approveUser']);
+    Route::post('/users/{user}/unapprove', [AdminAccountController::class, 'unapproveUser']);
+    Route::post('/users/{user}/block', [AdminAccountController::class, 'blockUser']);
+    Route::post('/users/{user}/unblock', [AdminAccountController::class, 'unblockUser']);
+    Route::post('/doctors/{doctor}/verify-license', [AdminAccountController::class, 'verifyDoctorLicense']);
+    Route::post('/doctors/{doctor}/verifier-permission', [AdminAccountController::class, 'setDoctorVerifierPermission']);
+    Route::post('/pharmacies/{pharmacy}/verify-license', [AdminAccountController::class, 'verifyPharmacyLicense']);
+    Route::post('/pharmacy-accounts/{user}/verifier-permission', [AdminAccountController::class, 'setPharmacyVerifierPermission']);
+});
+
+Route::middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'can_verify_accounts'])
+    ->prefix('/doctor/verifications')
+    ->group(function () {
+        Route::post('/doctors/{doctor}/license', [LicenseVerificationController::class, 'verifyDoctor']);
+        Route::post('/pharmacies/{pharmacy}/license', [LicenseVerificationController::class, 'verifyPharmacy']);
+        Route::post('/doctor-accounts/{user}/approve', [LicenseVerificationController::class, 'approveDoctorAccount']);
+        Route::post('/doctor-accounts/{user}/unapprove', [LicenseVerificationController::class, 'unapproveDoctorAccount']);
+        Route::post('/pharmacy-accounts/{user}/approve', [LicenseVerificationController::class, 'approvePharmacyAccount']);
+        Route::post('/pharmacy-accounts/{user}/unapprove', [LicenseVerificationController::class, 'unapprovePharmacyAccount']);
+    });
+
+Route::middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'can_verify_accounts'])
+    ->prefix('/pharmacy/verifications')
+    ->group(function () {
+        Route::post('/doctors/{doctor}/license', [LicenseVerificationController::class, 'verifyDoctor']);
+        Route::post('/pharmacies/{pharmacy}/license', [LicenseVerificationController::class, 'verifyPharmacy']);
+        Route::post('/doctor-accounts/{user}/approve', [LicenseVerificationController::class, 'approveDoctorAccount']);
+        Route::post('/doctor-accounts/{user}/unapprove', [LicenseVerificationController::class, 'unapproveDoctorAccount']);
+        Route::post('/pharmacy-accounts/{user}/approve', [LicenseVerificationController::class, 'approvePharmacyAccount']);
+        Route::post('/pharmacy-accounts/{user}/unapprove', [LicenseVerificationController::class, 'unapprovePharmacyAccount']);
+    });
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/medicines')->group(function () {
     Route::post('/', [MedicineController::class, 'store']);

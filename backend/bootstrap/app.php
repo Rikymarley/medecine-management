@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
             'verified' => \App\Http\Middleware\EnsureVerified::class,
+            'doctor_license_verified' => \App\Http\Middleware\EnsureDoctorLicenseVerified::class,
+            'can_verify_accounts' => \App\Http\Middleware\EnsureCanVerifyAccounts::class,
         ]);
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
     })

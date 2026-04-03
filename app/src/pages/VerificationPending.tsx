@@ -9,11 +9,20 @@ import {
   IonTitle,
   IonToolbar
 } from '@ionic/react';
+import { Redirect } from 'react-router-dom';
 import InstallBanner from '../components/InstallBanner';
 import { useAuth } from '../state/AuthState';
 
 const VerificationPending: React.FC = () => {
   const { user, logout } = useAuth();
+
+  if (!user) {
+    return <Redirect to="/login" />;
+  }
+
+  if (user.verification_status === 'approved') {
+    return <Redirect to={`/${user.role}`} />;
+  }
 
   const isRejected = user?.verification_status === 'rejected';
 

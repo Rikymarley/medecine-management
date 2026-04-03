@@ -20,12 +20,18 @@ import {
   useIonRouter
 } from '@ionic/react';
 import {
+  alertCircleOutline,
+  closeCircleOutline,
+  checkmarkCircleOutline,
   chevronDownOutline,
   chevronUpOutline,
   documentTextOutline,
   locateOutline,
+  medkitOutline,
   peopleOutline,
   personCircleOutline,
+  storefrontOutline,
+  starOutline,
   shieldCheckmarkOutline
 } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -64,6 +70,15 @@ const DoctorDashboard: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
+  const parseCoordinate = (value: string): number | null => {
+    const raw = value.trim();
+    if (!raw) {
+      return null;
+    }
+    const normalized = raw.replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
   useEffect(() => {
     if (!token) {
@@ -128,39 +143,25 @@ const DoctorDashboard: React.FC = () => {
     user?.years_experience
   ]);
 
-  const profileMissingFields = useMemo(() => {
-    const lat = normalizeText(latitude).trim();
-    const lng = normalizeText(longitude).trim();
-    const missing: string[] = [];
-    if (!phone.trim()) missing.push('telephone');
-    if (!specialty.trim()) missing.push('specialite');
-    if (!address.trim()) missing.push('adresse');
-    if (!lat || !lng) missing.push('gps');
-    return missing;
-  }, [address, latitude, longitude, phone, specialty]);
-  const profileIncomplete = profileMissingFields.length > 0;
-  const profileCompletion = useMemo(() => {
+  const completionMissingFields = useMemo(() => {
     const checks = [
-      specialty.trim(),
-      phone.trim(),
-      whatsapp.trim(),
-      address.trim(),
-      city.trim(),
-      department.trim(),
-      languages.trim(),
-      consultationHours.trim(),
-      licenseNumber.trim(),
-      yearsExperience.trim(),
-      consultationFeeRange.trim(),
-      bio.trim(),
-      normalizeText(latitude).trim(),
-      normalizeText(longitude).trim()
+      { label: 'specialite', value: specialty.trim() },
+      { label: 'telephone', value: phone.trim() },
+      { label: 'whatsapp', value: whatsapp.trim() },
+      { label: 'adresse', value: address.trim() },
+      { label: 'ville', value: city.trim() },
+      { label: 'departement', value: department.trim() },
+      { label: 'langues', value: languages.trim() },
+      { label: 'horaires de consultation', value: consultationHours.trim() },
+      { label: 'numero licence', value: licenseNumber.trim() },
+      { label: "annees d'experience", value: yearsExperience.trim() },
+      { label: 'frais de consultation', value: consultationFeeRange.trim() },
+      { label: 'latitude', value: normalizeText(latitude).trim() },
+      { label: 'longitude', value: normalizeText(longitude).trim() }
     ];
-    const done = checks.filter(Boolean).length;
-    return Math.round((done / checks.length) * 100);
+    return checks.filter((item) => !item.value).map((item) => item.label);
   }, [
     address,
-    bio,
     city,
     consultationFeeRange,
     consultationHours,
@@ -174,19 +175,79 @@ const DoctorDashboard: React.FC = () => {
     whatsapp,
     yearsExperience
   ]);
+  const profileIncomplete = completionMissingFields.length > 0;
+  const profileCompletion = useMemo(() => {
+    const total = 13;
+    const done = total - completionMissingFields.length;
+    return Math.round((done / total) * 100);
+  }, [
+    completionMissingFields.length
+  ]);
+  const canUseDoctorApp = profileCompletion === 100;
+  const requiredLabel = (label: string, isFilled: boolean) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+      <span>* {label}</span>
+      <IonIcon
+        icon={isFilled ? checkmarkCircleOutline : alertCircleOutline}
+        color={isFilled ? 'success' : 'warning'}
+      />
+    </span>
+  );
+  const focusMissingField = (field: string) => {
+    setProfileCardExpanded(true);
+    setEditMode(true);
+
+    const contactFields = new Set([
+      'specialite',
+      'telephone',
+      'whatsapp',
+      'adresse',
+      'ville',
+      'departement',
+      'langues'
+    ]);
+    const professionalFields = new Set([
+      'horaires de consultation',
+      "annees d'experience",
+      'frais de consultation'
+    ]);
+    const verificationFields = new Set([
+      'numero licence',
+      'latitude',
+      'longitude'
+    ]);
+
+    setContactExpanded(contactFields.has(field));
+    setProfessionalExpanded(professionalFields.has(field));
+    setVerificationExpanded(verificationFields.has(field));
+  };
 
   const saveProfile = async () => {
     if (!token) {
       return;
     }
+    const parsedLatitude = parseCoordinate(normalizeText(latitude));
+    const parsedLongitude = parseCoordinate(normalizeText(longitude));
+    const hasLatitudeInput = normalizeText(latitude).trim() !== '';
+    const hasLongitudeInput = normalizeText(longitude).trim() !== '';
+
+    if (hasLatitudeInput && parsedLatitude === null) {
+      setMessage('Latitude invalide. Utilisez un nombre (ex: 19.7510).');
+      return;
+    }
+    if (hasLongitudeInput && parsedLongitude === null) {
+      setMessage('Longitude invalide. Utilisez un nombre (ex: -72.2014).');
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
     try {
       await api.updateDoctorProfile(token, {
         phone: phone.trim() || null,
         address: address.trim() || null,
-        latitude: normalizeText(latitude).trim() ? Number(normalizeText(latitude).trim()) : null,
-        longitude: normalizeText(longitude).trim() ? Number(normalizeText(longitude).trim()) : null,
+        latitude: parsedLatitude,
+        longitude: parsedLongitude,
         specialty: specialty.trim() || null,
         city: city.trim() || null,
         department: department.trim() || null,
@@ -194,7 +255,6 @@ const DoctorDashboard: React.FC = () => {
         teleconsultation_available: teleconsultationAvailable,
         consultation_hours: consultationHours.trim() || null,
         license_number: licenseNumber.trim() || null,
-        license_verified: licenseVerified,
         years_experience: yearsExperience.trim() ? Number(yearsExperience) : null,
         consultation_fee_range: consultationFeeRange.trim() || null,
         whatsapp: whatsapp.trim() || null,
@@ -237,7 +297,12 @@ const DoctorDashboard: React.FC = () => {
         <IonCard className="hero-card">
           <IonCardHeader>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-              <IonCardTitle>Profil medecin</IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <IonCardTitle>Profil medecin</IonCardTitle>
+                <IonBadge color={profileCompletion === 100 ? 'success' : 'warning'}>
+                  Completion du profil : {profileCompletion}%
+                </IonBadge>
+              </div>
               <IonButton fill="clear" size="small" onClick={() => setProfileCardExpanded((prev) => !prev)}>
                 <IonIcon icon={profileCardExpanded ? chevronUpOutline : chevronDownOutline} />
               </IonButton>
@@ -266,17 +331,6 @@ const DoctorDashboard: React.FC = () => {
               </IonButton>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-              <IonBadge color={profileIncomplete ? 'warning' : 'success'}>
-                {profileIncomplete ? `Infos incompletes (${profileMissingFields.length})` : 'Infos completes'}
-              </IonBadge>
-              <IonBadge color="medium">Completion: {profileCompletion}%</IonBadge>
-            </div>
-            {profileIncomplete ? (
-              <IonText color="warning">
-                <p>Champs manquants: {profileMissingFields.join(', ')}.</p>
-              </IonText>
-            ) : null}
             <div
               style={{
                 width: '100%',
@@ -295,6 +349,35 @@ const DoctorDashboard: React.FC = () => {
                 }}
               />
             </div>
+            {!canUseDoctorApp ? (
+              <div
+                style={{
+                  marginTop: '10px',
+                  border: '1px solid #fde68a',
+                  background: '#fffbeb',
+                  borderRadius: '12px',
+                  padding: '10px'
+                }}
+              >
+                <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '4px' }}>Profil incomplet</div>
+                <div style={{ color: '#92400e', fontSize: '0.92rem', marginBottom: '8px' }}>
+                  Il manque {completionMissingFields.length} champ(s) obligatoire(s). Bio reste facultatif.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {completionMissingFields.map((field) => (
+                    <IonButton
+                      key={field}
+                      size="small"
+                      fill="outline"
+                      color="warning"
+                      onClick={() => focusMissingField(field)}
+                    >
+                      {field}
+                    </IonButton>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {message ? (
               <IonText color="medium">
                 <p>{message}</p>
@@ -313,7 +396,7 @@ const DoctorDashboard: React.FC = () => {
               {contactExpanded ? (
                 <>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Specialite</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Specialite', specialty.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={specialty}
@@ -322,7 +405,7 @@ const DoctorDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Telephone</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Telephone', phone.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={phone}
@@ -331,7 +414,7 @@ const DoctorDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">WhatsApp</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('WhatsApp', whatsapp.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={whatsapp}
@@ -340,19 +423,19 @@ const DoctorDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Adresse</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Adresse', address.trim().length > 0)}</IonLabel>
                     <IonInput disabled={!editMode} value={address} placeholder="Adresse du cabinet" onIonInput={(e) => setAddress(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Ville</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Ville', city.trim().length > 0)}</IonLabel>
                     <IonInput disabled={!editMode} value={city} onIonInput={(e) => setCity(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Departement</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Departement', department.trim().length > 0)}</IonLabel>
                     <IonInput disabled={!editMode} value={department} onIonInput={(e) => setDepartment(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Langues</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Langues', languages.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={languages}
@@ -386,11 +469,11 @@ const DoctorDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Horaires de consultation</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Horaires de consultation', consultationHours.trim().length > 0)}</IonLabel>
                     <IonTextarea disabled={!editMode} autoGrow value={consultationHours} onIonInput={(e) => setConsultationHours(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Annees d'experience</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel("Annees d'experience", yearsExperience.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       type="number"
@@ -399,7 +482,7 @@ const DoctorDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Frais consultation (plage)</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Frais consultation (plage)', consultationFeeRange.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={consultationFeeRange}
@@ -408,7 +491,7 @@ const DoctorDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Bio</IonLabel>
+                    <IonLabel position="stacked">Bio (optionel)</IonLabel>
                     <IonTextarea disabled={!editMode} autoGrow value={bio} onIonInput={(e) => setBio(e.detail.value ?? '')} />
                   </IonItem>
                 </>
@@ -430,19 +513,30 @@ const DoctorDashboard: React.FC = () => {
               {verificationExpanded ? (
                 <>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Numero licence</IonLabel>
-                    <IonInput disabled={!editMode} value={licenseNumber} onIonInput={(e) => setLicenseNumber(e.detail.value ?? '')} />
+                    <IonLabel position="stacked">{requiredLabel('Numero licence', licenseNumber.trim().length > 0)}</IonLabel>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                      <IonInput
+                        disabled={!editMode}
+                        value={licenseNumber}
+                        onIonInput={(e) => setLicenseNumber(e.detail.value ?? '')}
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                        <IonText color={licenseVerified ? 'warning' : 'danger'}>
+                          {licenseVerified ? 'Verifiee' : 'Non verifiee'}
+                        </IonText>
+                        <IonIcon
+                          icon={licenseVerified ? starOutline : closeCircleOutline}
+                          color={licenseVerified ? 'warning' : 'danger'}
+                        />
+                      </div>
+                    </div>
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel>Licence verifiee</IonLabel>
-                    <IonToggle disabled={!editMode} checked={licenseVerified} onIonChange={(e) => setLicenseVerified(e.detail.checked)} />
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel position="stacked">Latitude</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Latitude', normalizeText(latitude).trim().length > 0)}</IonLabel>
                     <IonInput disabled={!editMode} type="number" value={latitude} placeholder="19.7510" onIonInput={(e) => setLatitude(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Longitude</IonLabel>
+                    <IonLabel position="stacked">{requiredLabel('Longitude', normalizeText(longitude).trim().length > 0)}</IonLabel>
                     <IonInput disabled={!editMode} type="number" value={longitude} placeholder="-72.2014" onIonInput={(e) => setLongitude(e.detail.value ?? '')} />
                   </IonItem>
                   {editMode ? (
@@ -466,22 +560,76 @@ const DoctorDashboard: React.FC = () => {
         </IonCard>
 
         <div className="dashboard-grid dashboard-grid-fab">
-          <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/doctor/patients', 'forward', 'push')}>
+          <IonCard
+            button={canUseDoctorApp}
+            className="surface-card"
+            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+            onClick={() => {
+              if (!canUseDoctorApp) {
+                setMessage('Completez le profil a 100% pour acceder aux patients.');
+                return;
+              }
+              ionRouter.push('/doctor/patients', 'forward', 'push');
+            }}
+          >
             <IonCardContent>
-              <div className="quick-icon quick-icon-green">
+              <div className="quick-icon quick-icon-rose">
                 <IonIcon icon={peopleOutline} />
               </div>
               <h3>Patients</h3>
               <p className="muted-note">Voir la liste de vos patients.</p>
             </IonCardContent>
           </IonCard>
-          <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/doctor/prescriptions', 'forward', 'push')}>
+          <IonCard
+            button={canUseDoctorApp}
+            className="surface-card"
+            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+            onClick={() => {
+              if (!canUseDoctorApp) {
+                setMessage('Completez le profil a 100% pour acceder aux ordonnances.');
+                return;
+              }
+              ionRouter.push('/doctor/prescriptions', 'forward', 'push');
+            }}
+          >
             <IonCardContent>
               <div className="quick-icon quick-icon-gold">
                 <IonIcon icon={documentTextOutline} />
               </div>
               <h3>Ordonnances</h3>
               <p className="muted-note">Voir toutes vos ordonnances.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => {
+              ionRouter.push('/doctor/doctors', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-blue">
+                <IonIcon icon={medkitOutline} />
+              </div>
+              <h3>Annuaire medecins</h3>
+              <p className="muted-note">Voir tous les medecins approuves.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => {
+              ionRouter.push('/doctor/pharmacies', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-green">
+                <IonIcon icon={storefrontOutline} />
+              </div>
+              <h3>Annuaire pharmacies</h3>
+              <p className="muted-note">Voir les pharmacies disponibles.</p>
             </IonCardContent>
           </IonCard>
         </div>

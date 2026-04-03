@@ -24,6 +24,7 @@ import { callOutline, chevronDownOutline, chevronForwardOutline, locateOutline, 
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { useAuth } from '../state/AuthState';
 
 const toNumber = (value: string | null) => {
   if (!value) {
@@ -49,9 +50,12 @@ const toKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
 };
 
 const PatientPharmaciesPage: React.FC = () => {
+  const { user } = useAuth();
   const [pharmacies, setPharmacies] = useState<ApiPharmacy[]>([]);
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [expandedHours, setExpandedHours] = useState<Record<number, boolean>>({});
   const [query, setQuery] = useState('');
   const [onlyOpenNow, setOnlyOpenNow] = useState(false);
@@ -60,9 +64,42 @@ const PatientPharmaciesPage: React.FC = () => {
   const [priceRange, setPriceRange] = useState<'' | 'low' | 'medium' | 'high'>('');
   const [serviceFilter, setServiceFilter] = useState('');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
+  const cacheKey = user ? `patient-pharmacies-${user.id}` : 'patient-pharmacies-guest';
 
   useEffect(() => {
-    api.getPharmacies().then(setPharmacies).catch(() => undefined);
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { updated_at: string; items: ApiPharmacy[] };
+        if (Array.isArray(parsed?.items)) {
+          setPharmacies(parsed.items);
+          setLastUpdatedAt(parsed.updated_at ?? null);
+        }
+      } catch {
+        localStorage.removeItem(cacheKey);
+      }
+    }
+
+    api
+      .getPharmacies()
+      .then((items) => {
+        setPharmacies(items);
+        const updatedAt = new Date().toISOString();
+        setLastUpdatedAt(updatedAt);
+        localStorage.setItem(cacheKey, JSON.stringify({ updated_at: updatedAt, items }));
+      })
+      .catch(() => undefined);
+  }, [cacheKey]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
   }, []);
 
   useEffect(() => {
@@ -253,6 +290,16 @@ const PatientPharmaciesPage: React.FC = () => {
                     <p>{locationError}</p>
                   </IonText>
                 ) : null}
+                {!isOnline ? (
+                  <IonText color="warning">
+                    <p>Hors ligne: affichage des pharmacies en cache.</p>
+                  </IonText>
+                ) : null}
+                {lastUpdatedAt ? (
+                  <IonText color="medium">
+                    <p style={{ marginTop: '4px' }}>Mise a jour: {new Date(lastUpdatedAt).toLocaleString('fr-FR')}</p>
+                  </IonText>
+                ) : null}
               </div>
               <div style={{ overflowY: 'auto', flex: 1 }}>
                 {sorted.length === 0 ? (
@@ -288,9 +335,6 @@ const PatientPharmaciesPage: React.FC = () => {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                               <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
                                 {pharmacy.temporary_closed ? 'Temp. fermee' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
-                              </IonBadge>
-                              <IonBadge color={pharmacy.pharmacy_mode === 'pos_integrated' ? 'tertiary' : 'medium'}>
-                                {pharmacy.pharmacy_mode === 'pos_integrated' ? 'POS' : 'Rapide'}
                               </IonBadge>
                             </div>
                           </div>

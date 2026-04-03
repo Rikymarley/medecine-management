@@ -19,7 +19,21 @@ import {
   IonToolbar,
   useIonRouter
 } from '@ionic/react';
-import { medicalOutline } from 'ionicons/icons';
+import {
+  callOutline,
+  cashOutline,
+  chevronDownOutline,
+  chevronUpOutline,
+  languageOutline,
+  locationOutline,
+  logoWhatsapp,
+  medicalOutline,
+  navigateOutline,
+  personCircleOutline,
+  shieldCheckmarkOutline,
+  timeOutline,
+  videocamOutline
+} from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
@@ -33,7 +47,11 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
   const { token, user } = useAuth();
   const { doctorName } = useParams<{ doctorName: string }>();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
-  const [doctorInfoExpanded, setDoctorInfoExpanded] = useState(false);
+  const [doctorInfoExpanded, setDoctorInfoExpanded] = useState(true);
+  const [contactExpanded, setContactExpanded] = useState(true);
+  const [professionalExpanded, setProfessionalExpanded] = useState(false);
+  const [consultationExpanded, setConsultationExpanded] = useState(false);
+  const [verificationExpanded, setVerificationExpanded] = useState(false);
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
   const decodedDoctorName = decodeURIComponent(doctorName);
 
@@ -141,94 +159,136 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
         <IonCard className="surface-card">
           <IonCardHeader>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-              <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                <IonIcon icon={medicalOutline} style={{ fontSize: '20px' }} />
-                Informations du medecin
+              <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
+                <div
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '14px',
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: '#dcfce7'
+                  }}
+                >
+                  <IonIcon icon={medicalOutline} style={{ fontSize: '24px', color: '#166534' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700 }}>Dr. {doctorInfo.name}</div>
+                  <div style={{ fontSize: '0.9rem', color: '#64748b' }}>{doctorInfo.specialty || 'Specialite non renseignee'}</div>
+                </div>
               </IonCardTitle>
-              <IonButton size="small" fill="outline" onClick={() => setDoctorInfoExpanded((prev) => !prev)}>
-                {doctorInfoExpanded ? 'Masquer' : 'Afficher'}
+              <IonButton size="small" fill="clear" onClick={() => setDoctorInfoExpanded((prev) => !prev)}>
+                <IonIcon icon={doctorInfoExpanded ? chevronUpOutline : chevronDownOutline} />
               </IonButton>
             </div>
           </IonCardHeader>
           <IonCardContent style={{ display: doctorInfoExpanded ? 'block' : 'none' }}>
-            <p>
-              <strong>Nom:</strong> {doctorInfo.name}
-            </p>
-            <p>
-              <strong>Specialite:</strong> {doctorInfo.specialty || 'Non renseignee'}
-            </p>
-            <p>
-              <strong>Total ordonnances:</strong> {doctorInfo.totalPrescriptions}
-            </p>
-            <p>
-              <strong>Total medicaments prescrits:</strong> {doctorInfo.totalMedicines}
-            </p>
-            <p>
-              <strong>Derniere ordonnance:</strong>{' '}
-              {doctorInfo.latestPrescriptionAt ? formatDateTime(doctorInfo.latestPrescriptionAt) : 'Aucune'}
-            </p>
-            <p>
-              <strong>Telephone:</strong> {doctorInfo.phone || 'Non renseigne'}
-            </p>
-            <p>
-              <strong>Adresse:</strong> {doctorInfo.address || 'Non renseignee'}
-            </p>
-            <p>
-              <strong>Ville / Departement:</strong>{' '}
-              {[doctorInfo.city, doctorInfo.department].filter(Boolean).join(' / ') || 'Non renseigne'}
-            </p>
-            <p>
-              <strong>Langues:</strong> {doctorInfo.languages || 'Non renseignees'}
-            </p>
-            <p>
-              <strong>Teleconsultation:</strong> {doctorInfo.teleconsultationAvailable ? 'Oui' : 'Non'}
-            </p>
-            <p>
-              <strong>Horaires:</strong> {doctorInfo.consultationHours || 'Non renseignes'}
-            </p>
-            <p>
-              <strong>Numero licence:</strong> {doctorInfo.licenseNumber || 'Non renseigne'}{' '}
-              {doctorInfo.licenseVerified ? '(Verifiee)' : ''}
-            </p>
-            <p>
-              <strong>Experience:</strong>{' '}
-              {doctorInfo.yearsExperience !== null ? `${doctorInfo.yearsExperience} an(s)` : 'Non renseignee'}
-            </p>
-            <p>
-              <strong>Frais consultation:</strong> {doctorInfo.consultationFeeRange || 'Non renseignes'}
-            </p>
-            <p>
-              <strong>WhatsApp:</strong> {doctorInfo.whatsapp || 'Non renseigne'}
-            </p>
-            <p>
-              <strong>Bio:</strong> {doctorInfo.bio || 'Non renseignee'}
-            </p>
-            <p>
-              <strong>GPS:</strong>{' '}
-              {doctorInfo.latitude && doctorInfo.longitude
-                ? `${doctorInfo.latitude}, ${doctorInfo.longitude}`
-                : 'Non renseigne'}
-            </p>
-            {doctorInfo.whatsapp ? (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {doctorInfo.licenseVerified ? <IonBadge color="success">Verifie</IonBadge> : <IonBadge color="medium">Non verifie</IonBadge>}
+              {doctorInfo.teleconsultationAvailable ? <IonBadge color="primary">Teleconsultation</IonBadge> : null}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              <IonButton size="small" fill="outline" disabled={!doctorInfo.phone} href={doctorInfo.phone ? `tel:${doctorInfo.phone}` : undefined}>
+                <IonIcon icon={callOutline} slot="start" />
+                Appeler
+              </IonButton>
               <IonButton
-                fill="outline"
                 size="small"
-                href={`https://wa.me/${doctorInfo.whatsapp.replace(/[^0-9]/g, '')}`}
+                fill="outline"
+                disabled={!doctorInfo.whatsapp}
+                href={doctorInfo.whatsapp ? `https://wa.me/${doctorInfo.whatsapp.replace(/[^0-9]/g, '')}` : undefined}
                 target="_blank"
               >
+                <IonIcon icon={logoWhatsapp} slot="start" />
                 WhatsApp
               </IonButton>
-            ) : null}
-            {doctorInfo.latitude && doctorInfo.longitude ? (
               <IonButton
-                fill="outline"
                 size="small"
-                href={`https://www.google.com/maps?q=${doctorInfo.latitude},${doctorInfo.longitude}`}
+                fill="outline"
+                disabled={!doctorInfo.latitude || !doctorInfo.longitude}
+                href={
+                  doctorInfo.latitude && doctorInfo.longitude
+                    ? `https://www.google.com/maps?q=${doctorInfo.latitude},${doctorInfo.longitude}`
+                    : undefined
+                }
                 target="_blank"
               >
-                Ouvrir la carte
+                <IonIcon icon={navigateOutline} slot="start" />
+                Localiser
               </IonButton>
-            ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>Coordonnees</strong>
+                <IonButton fill="clear" size="small" onClick={() => setContactExpanded((prev) => !prev)}>
+                  <IonIcon icon={contactExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+              {contactExpanded ? (
+                <>
+                  <p><IonIcon icon={callOutline} /> {doctorInfo.phone || 'Telephone N/D'}</p>
+                  <p><IonIcon icon={logoWhatsapp} /> {doctorInfo.whatsapp || 'WhatsApp N/D'}</p>
+                  <p><IonIcon icon={locationOutline} /> {doctorInfo.address || 'Adresse N/D'}</p>
+                  <p>{[doctorInfo.city, doctorInfo.department].filter(Boolean).join(' / ') || 'Ville/Departement N/D'}</p>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>Profil professionnel</strong>
+                <IonButton fill="clear" size="small" onClick={() => setProfessionalExpanded((prev) => !prev)}>
+                  <IonIcon icon={professionalExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+              {professionalExpanded ? (
+                <>
+                  <p><IonIcon icon={medicalOutline} /> {doctorInfo.specialty || 'Specialite N/D'}</p>
+                  <p><IonIcon icon={timeOutline} /> {doctorInfo.yearsExperience !== null ? `${doctorInfo.yearsExperience} an(s)` : 'Experience N/D'}</p>
+                  <p><IonIcon icon={languageOutline} /> {doctorInfo.languages || 'Langues N/D'}</p>
+                  <p>{doctorInfo.bio || 'Bio N/D'}</p>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>Consultation</strong>
+                <IonButton fill="clear" size="small" onClick={() => setConsultationExpanded((prev) => !prev)}>
+                  <IonIcon icon={consultationExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+              {consultationExpanded ? (
+                <>
+                  <p><IonIcon icon={videocamOutline} /> Teleconsultation: {doctorInfo.teleconsultationAvailable ? 'Oui' : 'Non'}</p>
+                  <p><IonIcon icon={timeOutline} /> {doctorInfo.consultationHours || 'Horaires N/D'}</p>
+                  <p><IonIcon icon={cashOutline} /> {doctorInfo.consultationFeeRange || 'Tarif N/D'}</p>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>Verification</strong>
+                <IonButton fill="clear" size="small" onClick={() => setVerificationExpanded((prev) => !prev)}>
+                  <IonIcon icon={verificationExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+              {verificationExpanded ? (
+                <>
+                  <p><IonIcon icon={shieldCheckmarkOutline} /> Licence: {doctorInfo.licenseNumber || 'N/D'}</p>
+                  <p>Statut: {doctorInfo.licenseVerified ? 'Verifiee' : 'Non verifiee'}</p>
+                  <p>Total ordonnances: {doctorInfo.totalPrescriptions}</p>
+                  <p>Total medicaments prescrits: {doctorInfo.totalMedicines}</p>
+                  <p>
+                    Derniere ordonnance:{' '}
+                    {doctorInfo.latestPrescriptionAt ? formatDateTime(doctorInfo.latestPrescriptionAt) : 'Aucune'}
+                  </p>
+                </>
+              ) : null}
+            </div>
           </IonCardContent>
         </IonCard>
         <IonCard className="surface-card">

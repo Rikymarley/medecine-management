@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FamilyMember;
+use App\Models\PharmacyResponse;
 use App\Models\Prescription;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -11,6 +12,34 @@ use Illuminate\Support\Str;
 
 class PrescriptionController extends Controller
 {
+    private function missingDoctorProfileFields(User $doctor): array
+    {
+        $checks = [
+            'specialite' => trim((string) ($doctor->specialty ?? '')),
+            'telephone' => trim((string) ($doctor->phone ?? '')),
+            'whatsapp' => trim((string) ($doctor->whatsapp ?? '')),
+            'adresse' => trim((string) ($doctor->address ?? '')),
+            'ville' => trim((string) ($doctor->city ?? '')),
+            'departement' => trim((string) ($doctor->department ?? '')),
+            'langues' => trim((string) ($doctor->languages ?? '')),
+            'horaires_consultation' => trim((string) ($doctor->consultation_hours ?? '')),
+            'numero_licence' => trim((string) ($doctor->license_number ?? '')),
+            'annees_experience' => $doctor->years_experience,
+            'frais_consultation' => trim((string) ($doctor->consultation_fee_range ?? '')),
+            'latitude' => trim((string) ($doctor->latitude ?? '')),
+            'longitude' => trim((string) ($doctor->longitude ?? '')),
+        ];
+
+        $missing = [];
+        foreach ($checks as $field => $value) {
+            if ($value === null || $value === '') {
+                $missing[] = $field;
+            }
+        }
+
+        return $missing;
+    }
+
     private function generatePrintCode(): string
     {
         do {
@@ -60,6 +89,100 @@ class PrescriptionController extends Controller
     private function expireHours(): int
     {
         return max(1, (int) env('PRESCRIPTION_EXPIRE_HOURS', 1));
+    }
+
+    private function normalizeMedicineValue(?string $value): string
+    {
+        $text = Str::lower(trim((string) Str::ascii($value ?? '')));
+        return preg_replace('/\s+/', ' ', $text) ?? '';
+    }
+
+    private function medicineSignature(?string $name, ?string $strength, ?string $form): string
+    {
+        return implode('|', [
+            $this->normalizeMedicineValue($name),
+            $this->normalizeMedicineValue($strength),
+            $this->normalizeMedicineValue($form),
+        ]);
+    }
+
+    private function autoAssignRecentPharmacyApprovals(Prescription $prescription): void
+    {
+        $medicineRequests = $prescription->medicineRequests()
+            ->get(['id', 'name', 'strength', 'form']);
+
+        if ($medicineRequests->isEmpty()) {
+            return;
+        }
+
+        $requiredSignatures = [];
+        foreach ($medicineRequests as $medicineRequest) {
+            $requiredSignatures[$medicineRequest->id] = $this->medicineSignature(
+                $medicineRequest->name,
+                $medicineRequest->strength,
+                $medicineRequest->form
+            );
+        }
+
+        $signatureSet = array_flip(array_values($requiredSignatures));
+
+        $candidateResponses = PharmacyResponse::query()
+            ->join('medicine_requests', 'medicine_requests.id', '=', 'pharmacy_responses.medicine_request_id')
+            ->where('pharmacy_responses.expires_at', '>', now())
+            ->whereIn('pharmacy_responses.status', ['very_low', 'low', 'available', 'high', 'equivalent'])
+            ->orderByDesc('pharmacy_responses.responded_at')
+            ->get([
+                'pharmacy_responses.id',
+                'pharmacy_responses.pharmacy_id',
+                'pharmacy_responses.status',
+                'pharmacy_responses.responded_at',
+                'pharmacy_responses.expires_at',
+                'medicine_requests.name as source_name',
+                'medicine_requests.strength as source_strength',
+                'medicine_requests.form as source_form',
+            ]);
+
+        $latestBySignatureAndPharmacy = [];
+        foreach ($candidateResponses as $row) {
+            $signature = $this->medicineSignature($row->source_name, $row->source_strength, $row->source_form);
+            if (!isset($signatureSet[$signature])) {
+                continue;
+            }
+
+            $pairKey = $signature . '|' . $row->pharmacy_id;
+            if (!isset($latestBySignatureAndPharmacy[$pairKey])) {
+                $latestBySignatureAndPharmacy[$pairKey] = $row;
+            }
+        }
+
+        $rowsToCreate = [];
+        foreach ($medicineRequests as $medicineRequest) {
+            $signature = $requiredSignatures[$medicineRequest->id] ?? '';
+            if ($signature === '') {
+                continue;
+            }
+
+            foreach ($latestBySignatureAndPharmacy as $pairKey => $row) {
+                if (!str_starts_with($pairKey, $signature . '|')) {
+                    continue;
+                }
+
+                $rowsToCreate[] = [
+                    'pharmacy_id' => (int) $row->pharmacy_id,
+                    'prescription_id' => $prescription->id,
+                    'medicine_request_id' => $medicineRequest->id,
+                    'status' => (string) $row->status,
+                    'responded_at' => $row->responded_at,
+                    'expires_at' => $row->expires_at,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+        }
+
+        if (!empty($rowsToCreate)) {
+            PharmacyResponse::query()->insert($rowsToCreate);
+        }
     }
 
     public function mine(Request $request)
@@ -232,6 +355,13 @@ class PrescriptionController extends Controller
         }
 
         $doctor = $request->user();
+        $missingFields = $this->missingDoctorProfileFields($doctor);
+        if (!empty($missingFields)) {
+            return response()->json([
+                'message' => 'Profil medecin incomplet. Completion a 100% requise (Bio facultatif).',
+                'missing_fields' => $missingFields,
+            ], 422);
+        }
         $resolvedPatientName = $patientUser->name;
         $resolvedPatientPhone = $patientUser->phone ?? ($data['patient_phone'] ?? null);
 
@@ -263,6 +393,9 @@ class PrescriptionController extends Controller
         }, $data['medicine_requests']);
 
         $prescription->medicineRequests()->createMany($medicinePayload);
+        $this->autoAssignRecentPharmacyApprovals($prescription);
+        $prescription->load(['medicineRequests', 'responses']);
+        $prescription->refreshStatusFromResponses($this->expireHours());
 
         return response()->json(
             $prescription->load($this->baseRelations()),

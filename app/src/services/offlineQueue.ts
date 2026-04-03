@@ -2,6 +2,7 @@ import { api, ApiEmergencyContact, ApiFamilyMember, ApiPharmacyResponse } from '
 
 const PHARMACY_RESPONSE_OUTBOX_KEY = 'offline-outbox-pharmacy-responses-v1';
 const PATIENT_PURCHASE_OUTBOX_KEY = 'offline-outbox-patient-purchases-v1';
+const PATIENT_PRESCRIPTION_STATUS_OUTBOX_KEY = 'offline-outbox-patient-prescription-status-v1';
 const PATIENT_EMERGENCY_CONTACT_OUTBOX_KEY = 'offline-outbox-patient-emergency-contacts-v1';
 const PATIENT_FAMILY_MEMBER_OUTBOX_KEY = 'offline-outbox-patient-family-members-v1';
 
@@ -26,6 +27,15 @@ type PatientPurchaseOutboxItem = {
     pharmacy_id: number;
     purchased: boolean;
     quantity?: number;
+  };
+};
+
+type PatientPrescriptionStatusOutboxItem = {
+  id: string;
+  created_at: string;
+  payload: {
+    prescription_id: number;
+    action: 'complete' | 'reopen';
   };
 };
 
@@ -119,6 +129,24 @@ const writePatientPurchaseOutbox = (items: PatientPurchaseOutboxItem[]) => {
   localStorage.setItem(PATIENT_PURCHASE_OUTBOX_KEY, JSON.stringify(items));
 };
 
+const readPatientPrescriptionStatusOutbox = (): PatientPrescriptionStatusOutboxItem[] => {
+  const raw = localStorage.getItem(PATIENT_PRESCRIPTION_STATUS_OUTBOX_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as PatientPrescriptionStatusOutboxItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem(PATIENT_PRESCRIPTION_STATUS_OUTBOX_KEY);
+    return [];
+  }
+};
+
+const writePatientPrescriptionStatusOutbox = (items: PatientPrescriptionStatusOutboxItem[]) => {
+  localStorage.setItem(PATIENT_PRESCRIPTION_STATUS_OUTBOX_KEY, JSON.stringify(items));
+};
+
 const readEmergencyContactOutbox = (): EmergencyContactOutboxItem[] => {
   const raw = localStorage.getItem(PATIENT_EMERGENCY_CONTACT_OUTBOX_KEY);
   if (!raw) {
@@ -160,6 +188,7 @@ const patientPurchaseDedupeKey = (item: PatientPurchaseOutboxItem['payload']) =>
 
 export const getPendingPharmacyResponseCount = () => readOutbox().length;
 export const getPendingPatientPurchaseCount = () => readPatientPurchaseOutbox().length;
+export const getPendingPatientPrescriptionStatusCount = () => readPatientPrescriptionStatusOutbox().length;
 export const getPendingEmergencyContactMutationCount = () => readEmergencyContactOutbox().length;
 export const getPendingFamilyMemberMutationCount = () => readFamilyMemberOutbox().length;
 export const getPendingFamilyMemberMutationStateById = (): Record<number, 'create' | 'update' | 'delete'> => {
@@ -193,6 +222,20 @@ export const enqueuePatientPurchase = (payload: PatientPurchaseOutboxItem['paylo
     payload
   });
   writePatientPurchaseOutbox(filtered);
+  return filtered.length;
+};
+
+export const enqueuePatientPrescriptionStatus = (
+  payload: PatientPrescriptionStatusOutboxItem['payload']
+) => {
+  const current = readPatientPrescriptionStatusOutbox();
+  const filtered = current.filter((row) => row.payload.prescription_id !== payload.prescription_id);
+  filtered.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    created_at: new Date().toISOString(),
+    payload
+  });
+  writePatientPrescriptionStatusOutbox(filtered);
   return filtered.length;
 };
 
@@ -306,6 +349,29 @@ export const flushPatientPurchasesOutbox = async (token: string): Promise<number
   }
 
   writePatientPurchaseOutbox(remaining);
+  return remaining.length;
+};
+
+export const flushPatientPrescriptionStatusOutbox = async (token: string): Promise<number> => {
+  const queue = readPatientPrescriptionStatusOutbox();
+  if (queue.length === 0) {
+    return 0;
+  }
+
+  const remaining: PatientPrescriptionStatusOutboxItem[] = [];
+  for (const item of queue) {
+    try {
+      if (item.payload.action === 'complete') {
+        await api.completePrescriptionAsPatient(token, item.payload.prescription_id);
+      } else {
+        await api.reopenPrescriptionAsPatient(token, item.payload.prescription_id);
+      }
+    } catch {
+      remaining.push(item);
+    }
+  }
+
+  writePatientPrescriptionStatusOutbox(remaining);
   return remaining.length;
 };
 

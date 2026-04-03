@@ -28,6 +28,7 @@ type AuthContextValue = AuthState & {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const TOKEN_KEY = 'med-app-token';
+const USER_KEY = 'user';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
@@ -43,9 +44,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const me = await api.me(token);
         setUser(me);
+        localStorage.setItem(USER_KEY, JSON.stringify(me));
       } catch {
         setToken(null);
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
       } finally {
         setLoading(false);
       }
@@ -59,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(response.token);
     localStorage.setItem(TOKEN_KEY, response.token);
     setUser(response.user);
+    localStorage.setItem(USER_KEY, JSON.stringify(response.user));
   };
 
   const register = async (payload: {
@@ -78,6 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(response.token);
     localStorage.setItem(TOKEN_KEY, response.token);
     setUser(response.user);
+    localStorage.setItem(USER_KEY, JSON.stringify(response.user));
   };
 
   const logout = async () => {
@@ -87,6 +92,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setUser(null);
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
   };
 
   const value = useMemo(

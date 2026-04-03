@@ -29,6 +29,9 @@ class Pharmacy extends Model
         'night_service',
         'license_number',
         'license_verified',
+        'license_verified_at',
+        'license_verified_by_doctor_id',
+        'license_verification_notes',
         'logo_url',
         'storefront_image_url',
         'notes_for_patients',
@@ -42,6 +45,7 @@ class Pharmacy extends Model
         'delivery_available' => 'boolean',
         'night_service' => 'boolean',
         'license_verified' => 'boolean',
+        'license_verified_at' => 'datetime',
         'last_status_updated_at' => 'datetime',
         'last_confirmed_stock_time' => 'datetime',
         'average_wait_time' => 'integer',
@@ -58,5 +62,15 @@ class Pharmacy extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    public function accountUser()
+    {
+        return $this->hasOne(User::class)->where('role', 'pharmacy');
+    }
+
+    public function licenseVerifiedByDoctor()
+    {
+        return $this->belongsTo(User::class, 'license_verified_by_doctor_id');
     }
 }

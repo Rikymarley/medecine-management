@@ -13,6 +13,7 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonBadge,
   IonText,
   IonTitle,
   IonToolbar,
@@ -30,6 +31,8 @@ const PatientDoctorsPage: React.FC = () => {
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [query, setQuery] = useState('');
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
 
   const loadPrescriptions = useCallback(async () => {
@@ -43,21 +46,27 @@ const PatientDoctorsPage: React.FC = () => {
         const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
         if (Array.isArray(cachedData)) {
           setPrescriptions(cachedData);
-          if (cachedData.length > 0) {
-            return;
-          }
+          setLastUpdatedAt(localStorage.getItem(`${cacheKey}-updated-at`));
         }
       } catch {
         localStorage.removeItem(cacheKey);
+        localStorage.removeItem(`${cacheKey}-updated-at`);
       }
     }
 
     if (!token) {
       return;
     }
-    const data = await api.getPatientPrescriptions(token);
-    setPrescriptions(data);
-    localStorage.setItem(cacheKey, JSON.stringify(data));
+    try {
+      const data = await api.getPatientPrescriptions(token);
+      setPrescriptions(data);
+      const updatedAt = new Date().toISOString();
+      setLastUpdatedAt(updatedAt);
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      localStorage.setItem(`${cacheKey}-updated-at`, updatedAt);
+    } catch {
+      // Keep local cache when network is unavailable.
+    }
   }, [cacheKey, token]);
 
   useEffect(() => {
@@ -67,6 +76,17 @@ const PatientDoctorsPage: React.FC = () => {
   useIonViewWillEnter(() => {
     loadPrescriptions().catch(() => undefined);
   });
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
 
   const doctors = useMemo(() => {
     const rows = prescriptions
@@ -114,6 +134,14 @@ const PatientDoctorsPage: React.FC = () => {
             <IonCardTitle>Medecins (A-Z)</IonCardTitle>
           </IonCardHeader>
           <IonCardContent>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <IonBadge color={isOnline ? 'success' : 'warning'}>{isOnline ? 'En ligne' : 'Hors ligne'}</IonBadge>
+              {lastUpdatedAt ? (
+                <IonText color="medium">
+                  <small>Mise a jour: {new Date(lastUpdatedAt).toLocaleString('fr-FR')}</small>
+                </IonText>
+              ) : null}
+            </div>
             <IonItem lines="none">
               <IonLabel position="stacked">Rechercher</IonLabel>
               <IonInput

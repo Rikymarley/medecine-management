@@ -9,6 +9,28 @@ use Illuminate\Support\Facades\Storage;
 
 class PharmacyController extends Controller
 {
+    private function presentPharmacy(Pharmacy $pharmacy): array
+    {
+        $pharmacy->loadMissing([
+            'licenseVerifiedByDoctor:id,name',
+            'accountUser:id,pharmacy_id,verification_status,verified_at,verified_by,verification_notes',
+            'accountUser.verifiedBy:id,name',
+        ]);
+        $row = $pharmacy->toArray();
+        $row['license_verified_by_doctor_name'] = $pharmacy->licenseVerifiedByDoctor?->name;
+        $row['account_verification_status'] = $pharmacy->accountUser?->verification_status;
+        $row['pharmacy_user_id'] = $pharmacy->accountUser?->id;
+        $row['account_verified_at'] = $pharmacy->accountUser?->verified_at;
+        $row['account_verified_by'] = $pharmacy->accountUser?->verified_by;
+        $row['account_verified_by_name'] = $pharmacy->accountUser?->verifiedBy?->name;
+        $row['account_verification_notes'] = $pharmacy->accountUser?->verification_notes;
+        $row['approved_by'] = $pharmacy->accountUser?->verifiedBy?->name;
+        $row['approved_at'] = $pharmacy->accountUser?->verified_at;
+        $row['verified_by'] = $pharmacy->licenseVerifiedByDoctor?->name;
+        $row['verified_at'] = $pharmacy->license_verified_at;
+        return $row;
+    }
+
     private function deleteIfLocalStorageUrl(?string $url): void
     {
         if (!$url) {
@@ -50,15 +72,18 @@ class PharmacyController extends Controller
 
     public function index()
     {
-        return response()->json(
-            Pharmacy::query()
+        $pharmacies = Pharmacy::query()
+                ->with('licenseVerifiedByDoctor:id,name')
                 ->whereHas('users', function ($query) {
                     $query->where('role', 'pharmacy')
                         ->where('verification_status', 'approved');
                 })
                 ->orderBy('name')
                 ->get()
-        );
+                ->map(fn (Pharmacy $pharmacy) => $this->presentPharmacy($pharmacy))
+                ->values();
+
+        return response()->json($pharmacies);
     }
 
     public function store(Request $request)
@@ -84,7 +109,6 @@ class PharmacyController extends Controller
             'delivery_radius_km' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'night_service' => ['sometimes', 'boolean'],
             'license_number' => ['nullable', 'string', 'max:120'],
-            'license_verified' => ['sometimes', 'boolean'],
             'logo_url' => ['nullable', 'url', 'max:2048'],
             'storefront_image_url' => ['nullable', 'url', 'max:2048'],
             'notes_for_patients' => ['nullable', 'string', 'max:500'],
@@ -99,6 +123,7 @@ class PharmacyController extends Controller
         ) {
             $data['last_status_updated_at'] = now();
         }
+        $data['pharmacy_mode'] = 'quick_manual';
 
         $pharmacy = Pharmacy::create($data);
 
@@ -107,7 +132,23 @@ class PharmacyController extends Controller
 
     public function show(Pharmacy $pharmacy)
     {
-        return response()->json($pharmacy);
+        return response()->json($this->presentPharmacy($pharmacy));
+    }
+
+    public function directoryForDoctor()
+    {
+        $pharmacies = Pharmacy::query()
+            ->with([
+                'licenseVerifiedByDoctor:id,name',
+                'accountUser:id,pharmacy_id,verification_status,verified_at,verified_by,verification_notes',
+                'accountUser.verifiedBy:id,name',
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Pharmacy $pharmacy) => $this->presentPharmacy($pharmacy))
+            ->values();
+
+        return response()->json($pharmacies);
     }
 
     public function me(Request $request)
@@ -122,7 +163,7 @@ class PharmacyController extends Controller
             return response()->json(['message' => 'Pharmacie introuvable.'], 404);
         }
 
-        return response()->json($pharmacy);
+        return response()->json($this->presentPharmacy($pharmacy));
     }
 
     public function updateMe(Request $request)
@@ -156,7 +197,6 @@ class PharmacyController extends Controller
             'delivery_radius_km' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'night_service' => ['sometimes', 'boolean'],
             'license_number' => ['nullable', 'string', 'max:120'],
-            'license_verified' => ['sometimes', 'boolean'],
             'logo_url' => ['nullable', 'url', 'max:2048'],
             'storefront_image_url' => ['nullable', 'url', 'max:2048'],
             'notes_for_patients' => ['nullable', 'string', 'max:500'],
@@ -171,10 +211,11 @@ class PharmacyController extends Controller
         ) {
             $data['last_status_updated_at'] = now();
         }
+        $data['pharmacy_mode'] = 'quick_manual';
 
         $pharmacy->update($data);
 
-        return response()->json($pharmacy->fresh());
+        return response()->json($this->presentPharmacy($pharmacy->fresh()));
     }
 
     public function uploadLogo(Request $request)
@@ -189,7 +230,7 @@ class PharmacyController extends Controller
             return response()->json(['message' => 'Pharmacie introuvable.'], 404);
         }
 
-        return response()->json($this->uploadPharmacyImage($request, $pharmacy, 'logo', 'logo_url', 'pharmacies/logos'));
+        return response()->json($this->presentPharmacy($this->uploadPharmacyImage($request, $pharmacy, 'logo', 'logo_url', 'pharmacies/logos')));
     }
 
     public function uploadStorefrontImage(Request $request)
@@ -204,6 +245,6 @@ class PharmacyController extends Controller
             return response()->json(['message' => 'Pharmacie introuvable.'], 404);
         }
 
-        return response()->json($this->uploadPharmacyImage($request, $pharmacy, 'storefront_image', 'storefront_image_url', 'pharmacies/storefronts'));
+        return response()->json($this->presentPharmacy($this->uploadPharmacyImage($request, $pharmacy, 'storefront_image', 'storefront_image_url', 'pharmacies/storefronts')));
     }
 }

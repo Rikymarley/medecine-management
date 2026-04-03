@@ -197,6 +197,9 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const patientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
+  const doctorHasGps = Boolean(
+    String(user?.latitude ?? '').trim() && String(user?.longitude ?? '').trim()
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -985,7 +988,14 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                 <p>{error}</p>
               </IonText>
             ) : null}
-            <IonButton expand="block" onClick={submitPrescription} disabled={loading}>
+            {!doctorHasGps ? (
+              <IonText color="warning">
+                <p>
+                  GPS requis: renseignez latitude et longitude dans le profil medecin avant de publier une ordonnance.
+                </p>
+              </IonText>
+            ) : null}
+            <IonButton expand="block" onClick={submitPrescription} disabled={loading || !doctorHasGps}>
               Publier la demande d'ordonnance
             </IonButton>
             {latestPrescriptionId ? (

@@ -10,6 +10,100 @@ use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
+    private function presentDoctor(User $doctor): array
+    {
+        $row = $doctor->toArray();
+        $row['license_verified_by_doctor_name'] = $doctor->licenseVerifiedByDoctor?->name;
+        $row['approved_by'] = $doctor->verifiedBy?->name;
+        $row['approved_at'] = $doctor->verified_at;
+        $row['verified_by'] = $doctor->licenseVerifiedByDoctor?->name;
+        $row['verified_at'] = $doctor->license_verified_at;
+        $row['account_verification_status'] = $doctor->verification_status;
+        $row['account_verified_at'] = $doctor->verified_at;
+        $row['account_verified_by'] = $doctor->verified_by;
+        $row['account_verified_by_name'] = $doctor->verifiedBy?->name;
+        $row['account_verification_notes'] = $doctor->verification_notes;
+
+        return $row;
+    }
+
+    public function doctorsDirectory()
+    {
+        $doctors = User::query()
+            ->with(['licenseVerifiedByDoctor:id,name', 'verifiedBy:id,name'])
+            ->where('role', 'doctor')
+            ->where('verification_status', 'approved')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'phone',
+                'address',
+                'latitude',
+                'longitude',
+                'specialty',
+                'city',
+                'department',
+                'languages',
+                'teleconsultation_available',
+                'consultation_hours',
+                'license_number',
+                'license_verified',
+                'years_experience',
+                'consultation_fee_range',
+                'whatsapp',
+                'bio',
+                'can_verify_accounts',
+                'license_verified_at',
+                'license_verified_by_doctor_id',
+                'license_verification_notes',
+            ])
+            ->map(fn (User $doctor) => $this->presentDoctor($doctor))
+            ->values();
+
+        return response()->json($doctors);
+    }
+
+    public function doctorsDirectoryForDoctor()
+    {
+        $doctors = User::query()
+            ->with(['licenseVerifiedByDoctor:id,name', 'verifiedBy:id,name'])
+            ->where('role', 'doctor')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'phone',
+                'address',
+                'latitude',
+                'longitude',
+                'specialty',
+                'city',
+                'department',
+                'languages',
+                'teleconsultation_available',
+                'consultation_hours',
+                'license_number',
+                'license_verified',
+                'license_verified_at',
+                'license_verified_by_doctor_id',
+                'license_verification_notes',
+                'can_verify_accounts',
+                'years_experience',
+                'consultation_fee_range',
+                'whatsapp',
+                'bio',
+                'verification_status',
+                'verified_at',
+                'verified_by',
+                'verification_notes',
+            ])
+            ->map(fn (User $doctor) => $this->presentDoctor($doctor))
+            ->values();
+
+        return response()->json($doctors);
+    }
+
     public function register(Request $request)
     {
         $data = $request->validate([
@@ -66,6 +160,10 @@ class AuthController extends Controller
             ? 'pending'
             : 'approved';
         $data['verified_at'] = $data['verification_status'] === 'approved' ? now() : null;
+        $data['can_verify_accounts'] = false;
+        $data['license_verified_at'] = null;
+        $data['license_verified_by_doctor_id'] = null;
+        $data['license_verification_notes'] = null;
 
         $user = User::create($data);
 
@@ -88,6 +186,10 @@ class AuthController extends Controller
 
         if (!$user || !Hash::check($data['password'], $user->password)) {
             return response()->json(['message' => 'Identifiants invalides.'], 401);
+        }
+
+        if ($user->account_status === 'blocked') {
+            return response()->json(['message' => 'Compte bloque. Veuillez contacter un administrateur.'], 403);
         }
 
         $token = $user->createToken('api')->plainTextToken;
@@ -131,7 +233,6 @@ class AuthController extends Controller
             'teleconsultation_available' => ['nullable', 'boolean'],
             'consultation_hours' => ['nullable', 'string', 'max:3000'],
             'license_number' => ['nullable', 'string', 'max:120'],
-            'license_verified' => ['nullable', 'boolean'],
             'years_experience' => ['nullable', 'integer', 'min:0', 'max:80'],
             'consultation_fee_range' => ['nullable', 'string', 'max:120'],
             'whatsapp' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],

@@ -24,3 +24,21 @@ php artisan migrate --force
 php artisan optimize:clear
 php artisan serve --host=127.0.0.1 --port=8000
 '''
+
+[[actions]]
+name = "migrate:fresh\"seed"
+icon = "run"
+command = '''
+cd backend
+php artisan migrate:fresh
+php artisan db:seed
+php artisan test
+'''
+
+[[actions]]
+name = "Generate SQLITE DUMP"
+icon = "tool"
+command = '''
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/backend
+php artisan schema:dump
+'''

@@ -31,6 +31,16 @@ class PharmacyResponseController extends Controller
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
+        $pharmacy = Pharmacy::query()->find($data['pharmacy_id']);
+        if (!$pharmacy) {
+            return response()->json(['message' => 'Pharmacie introuvable.'], 404);
+        }
+        if ($pharmacy->latitude === null || $pharmacy->longitude === null) {
+            return response()->json([
+                'message' => 'GPS requis: veuillez renseigner latitude et longitude de la pharmacie avant de confirmer une disponibilite.'
+            ], 422);
+        }
+
         $response = PharmacyResponse::create([
             'pharmacy_id' => $data['pharmacy_id'],
             'prescription_id' => $data['prescription_id'],
@@ -40,9 +50,7 @@ class PharmacyResponseController extends Controller
             'expires_at' => Carbon::now()->addMinutes($data['expires_at_minutes'])
         ]);
 
-        Pharmacy::query()
-            ->where('id', $data['pharmacy_id'])
-            ->update(['last_confirmed_stock_time' => Carbon::now()]);
+        $pharmacy->update(['last_confirmed_stock_time' => Carbon::now()]);
 
         $prescription = Prescription::query()
             ->with(['medicineRequests', 'responses'])

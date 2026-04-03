@@ -28,8 +28,11 @@ import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember, ApiPatientMedicinePurchase, ApiPharmacy, ApiPrescription } from '../services/api';
 import {
+  enqueuePatientPrescriptionStatus,
   enqueuePatientPurchase,
+  flushPatientPrescriptionStatusOutbox,
   flushPatientPurchasesOutbox,
+  getPendingPatientPrescriptionStatusCount,
   getPendingPatientPurchaseCount
 } from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
@@ -61,11 +64,35 @@ const PatientPrescriptionDetailPage: React.FC = () => {
   >({});
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
-  const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(getPendingPatientPurchaseCount());
+  const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(
+    getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount()
+  );
   const [isBatchSaving, setIsBatchSaving] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
   const isCompleted = prescription?.status === 'completed';
+
+  const persistPrescriptionInCache = (updated: ApiPrescription) => {
+    if (!cacheKey) {
+      return;
+    }
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (!cachedRaw) {
+      return;
+    }
+    try {
+      const cached = JSON.parse(cachedRaw) as ApiPrescription[];
+      if (!Array.isArray(cached)) {
+        localStorage.removeItem(cacheKey);
+        return;
+      }
+      const next = cached.map((item) => (item.id === updated.id ? updated : item));
+      localStorage.setItem(cacheKey, JSON.stringify(next));
+    } catch {
+      localStorage.removeItem(cacheKey);
+    }
+  };
 
   const togglePharmacy = (pharmacyId: number) => {
     setExpandedPharmacies((prev) => ({
@@ -225,19 +252,28 @@ const PatientPrescriptionDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (!token || !id || !isOnline) {
-      setPendingOutboxCount(getPendingPatientPurchaseCount());
+      setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
       return;
     }
 
-    flushPatientPurchasesOutbox(token)
+    Promise.all([flushPatientPurchasesOutbox(token), flushPatientPrescriptionStatusOutbox(token)])
       .then(async (remaining) => {
-        setPendingOutboxCount(remaining);
-        if (remaining === 0) {
+        const [remainingPurchases, remainingStatus] = remaining;
+        const totalRemaining = remainingPurchases + remainingStatus;
+        setPendingOutboxCount(totalRemaining);
+        if (totalRemaining === 0) {
           setSyncMessage('Synchronisation terminee.');
         } else {
-          setSyncMessage(`${remaining} action(s) en attente.`);
+          setSyncMessage(`${totalRemaining} action(s) en attente.`);
         }
-        const refreshed = await api.getPatientMedicinePurchases(token, Number(id));
+        const [refreshedPrescription, refreshed] = await Promise.all([
+          api.getPatientPrescriptions(token).then((rows) => rows.find((row) => row.id === Number(id)) ?? null),
+          api.getPatientMedicinePurchases(token, Number(id))
+        ]);
+        if (refreshedPrescription) {
+          setPrescription(refreshedPrescription);
+          persistPrescriptionInCache(refreshedPrescription);
+        }
         setPurchases(refreshed);
         const next: Record<string, number> = {};
         refreshed.forEach((row) => {
@@ -246,7 +282,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
         setPurchasedMap(next);
       })
       .catch(() => {
-        setPendingOutboxCount(getPendingPatientPurchaseCount());
+        setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
       });
   }, [id, isOnline, token]);
 
@@ -314,6 +350,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
 
         return { pharmacy, items, coverage, latestConfirmation };
       })
+      .filter((entry) => entry.coverage > 0)
       .sort((a, b) => {
         if (b.coverage !== a.coverage) {
           return b.coverage - a.coverage;
@@ -385,25 +422,37 @@ const PatientPrescriptionDetailPage: React.FC = () => {
     if (!token || !prescription) {
       return;
     }
+    if (!isOnline) {
+      enqueuePatientPrescriptionStatus({ prescription_id: prescription.id, action: 'complete' });
+      setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
+      setPrescription((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const next = { ...prev, status: 'completed' };
+        persistPrescriptionInCache(next);
+        return next;
+      });
+      setSyncMessage('Hors ligne: completion en attente de synchronisation.');
+      return;
+    }
     setIsCompleting(true);
     try {
       const updated = await api.completePrescriptionAsPatient(token, prescription.id);
       setPrescription(updated);
-      if (cacheKey) {
-        const cachedRaw = localStorage.getItem(cacheKey);
-        if (cachedRaw) {
-          try {
-            const cached = JSON.parse(cachedRaw) as ApiPrescription[];
-            if (Array.isArray(cached)) {
-              const next = cached.map((item) => (item.id === updated.id ? updated : item));
-              localStorage.setItem(cacheKey, JSON.stringify(next));
-            }
-          } catch {
-            localStorage.removeItem(cacheKey);
-          }
-        }
-      }
+      persistPrescriptionInCache(updated);
     } catch (error) {
+      enqueuePatientPrescriptionStatus({ prescription_id: prescription.id, action: 'complete' });
+      setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
+      setPrescription((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const next = { ...prev, status: 'completed' };
+        persistPrescriptionInCache(next);
+        return next;
+      });
+      setSyncMessage('Reseau indisponible: completion mise en attente.');
       console.error('[COMPLETE PRESCRIPTION] failed', error);
     } finally {
       setIsCompleting(false);
@@ -414,28 +463,75 @@ const PatientPrescriptionDetailPage: React.FC = () => {
     if (!token || !prescription) {
       return;
     }
+    if (!isOnline) {
+      enqueuePatientPrescriptionStatus({ prescription_id: prescription.id, action: 'reopen' });
+      setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
+      setPrescription((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const next = { ...prev, status: 'available' };
+        persistPrescriptionInCache(next);
+        return next;
+      });
+      setSyncMessage('Hors ligne: reouverture en attente de synchronisation.');
+      return;
+    }
     setIsCompleting(true);
     try {
       const updated = await api.reopenPrescriptionAsPatient(token, prescription.id);
       setPrescription(updated);
-      if (cacheKey) {
-        const cachedRaw = localStorage.getItem(cacheKey);
-        if (cachedRaw) {
-          try {
-            const cached = JSON.parse(cachedRaw) as ApiPrescription[];
-            if (Array.isArray(cached)) {
-              const next = cached.map((item) => (item.id === updated.id ? updated : item));
-              localStorage.setItem(cacheKey, JSON.stringify(next));
-            }
-          } catch {
-            localStorage.removeItem(cacheKey);
-          }
-        }
-      }
+      persistPrescriptionInCache(updated);
     } catch (error) {
+      enqueuePatientPrescriptionStatus({ prescription_id: prescription.id, action: 'reopen' });
+      setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
+      setPrescription((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const next = { ...prev, status: 'available' };
+        persistPrescriptionInCache(next);
+        return next;
+      });
+      setSyncMessage('Reseau indisponible: reouverture mise en attente.');
       console.error('[REOPEN PRESCRIPTION] failed', error);
     } finally {
       setIsCompleting(false);
+    }
+  };
+
+  const syncNow = async () => {
+    if (!token || !id || !isOnline || isManualSyncing) {
+      return;
+    }
+    setIsManualSyncing(true);
+    try {
+      const [remainingPurchases, remainingStatus] = await Promise.all([
+        flushPatientPurchasesOutbox(token),
+        flushPatientPrescriptionStatusOutbox(token)
+      ]);
+      const totalRemaining = remainingPurchases + remainingStatus;
+      setPendingOutboxCount(totalRemaining);
+      setSyncMessage(totalRemaining === 0 ? 'Synchronisation terminee.' : `${totalRemaining} action(s) en attente.`);
+      const [refreshedPrescription, refreshed] = await Promise.all([
+        api.getPatientPrescriptions(token).then((rows) => rows.find((row) => row.id === Number(id)) ?? null),
+        api.getPatientMedicinePurchases(token, Number(id))
+      ]);
+      if (refreshedPrescription) {
+        setPrescription(refreshedPrescription);
+        persistPrescriptionInCache(refreshedPrescription);
+      }
+      setPurchases(refreshed);
+      const next: Record<string, number> = {};
+      refreshed.forEach((row) => {
+        next[`${row.pharmacy_id}-${row.medicine_request_id}`] = row.quantity > 0 ? row.quantity : 1;
+      });
+      setPurchasedMap(next);
+    } catch {
+      setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
+      setSyncMessage('Echec de synchronisation. Reessayez.');
+    } finally {
+      setIsManualSyncing(false);
     }
   };
 
@@ -458,6 +554,16 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                 {isOnline ? 'En ligne' : 'Hors ligne'}
               </IonBadge>
               {pendingOutboxCount > 0 ? <IonBadge color="warning">Actions en attente: {pendingOutboxCount}</IonBadge> : null}
+            </div>
+            <div style={{ marginTop: '8px' }}>
+              <IonButton
+                size="small"
+                fill="outline"
+                disabled={!isOnline || pendingOutboxCount === 0 || isManualSyncing}
+                onClick={() => syncNow().catch(() => undefined)}
+              >
+                {isManualSyncing ? 'Synchronisation...' : 'Synchroniser maintenant'}
+              </IonButton>
             </div>
             {syncMessage ? (
               <IonText color="medium">

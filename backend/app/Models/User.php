@@ -28,6 +28,12 @@ use Laravel\Sanctum\HasApiTokens;
     'consultation_hours',
     'license_number',
     'license_verified',
+    'can_verify_accounts',
+    'delegated_by',
+    'delegated_at',
+    'license_verified_at',
+    'license_verified_by_doctor_id',
+    'license_verification_notes',
     'years_experience',
     'consultation_fee_range',
     'whatsapp',
@@ -45,6 +51,8 @@ use Laravel\Sanctum\HasApiTokens;
     'password',
     'role',
     'account_status',
+    'blocked_by',
+    'blocked_at',
     'created_by_doctor_id',
     'pharmacy_id',
     'verification_status',
@@ -71,12 +79,16 @@ class User extends Authenticatable
             'verified_at' => 'datetime',
             'teleconsultation_available' => 'boolean',
             'license_verified' => 'boolean',
+            'can_verify_accounts' => 'boolean',
+            'delegated_at' => 'datetime',
+            'license_verified_at' => 'datetime',
             'years_experience' => 'integer',
             'age' => 'integer',
             'date_of_birth' => 'date',
             'weight_kg' => 'float',
             'height_cm' => 'float',
             'vaccination_up_to_date' => 'boolean',
+            'blocked_at' => 'datetime',
         ];
     }
 
@@ -93,5 +105,20 @@ class User extends Authenticatable
     public function createdByDoctor()
     {
         return $this->belongsTo(self::class, 'created_by_doctor_id');
+    }
+
+    public function licenseVerifiedByDoctor()
+    {
+        return $this->belongsTo(self::class, 'license_verified_by_doctor_id');
+    }
+
+    public function delegatedBy()
+    {
+        return $this->belongsTo(self::class, 'delegated_by');
+    }
+
+    public function blockedBy()
+    {
+        return $this->belongsTo(self::class, 'blocked_by');
     }
 }

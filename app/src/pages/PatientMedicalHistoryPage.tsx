@@ -311,6 +311,10 @@ const PatientMedicalHistoryPage: React.FC = () => {
                       <p>
                         {typeLabel[entry.type]} · {visibilityLabel[entry.visibility]}
                       </p>
+                      <p>
+                        Cree par:{' '}
+                        {entry.doctor_name ? `Dr. ${entry.doctor_name}` : 'Patient'}
+                      </p>
                       <p>{entry.family_member_name ? `Membre: ${entry.family_member_name}` : user?.name ?? 'Patient'}</p>
                       <p>
                         Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'Non precise'} · Fin:{' '}

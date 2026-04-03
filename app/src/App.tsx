@@ -8,9 +8,22 @@ import DoctorCreatePrescriptionPage from './pages/DoctorCreatePrescriptionPage';
 import DoctorPrescriptionDetailPage from './pages/DoctorPrescriptionDetailPage';
 import DoctorPatientPrescriptionsPage from './pages/DoctorPatientPrescriptionsPage';
 import PharmacyDashboard from './pages/PharmacyDashboard';
+import PharmacyPrescriptionsPage from './pages/PharmacyPrescriptionsPage';
 import PatientDashboard from './pages/PatientDashboard';
 import DoctorPatientsPage from './pages/DoctorPatientsPage';
 import DoctorPrescriptionsPage from './pages/DoctorPrescriptionsPage';
+import DoctorDoctorsDirectoryPage from './pages/DoctorDoctorsDirectoryPage';
+import DoctorDoctorDetailPage from './pages/DoctorDoctorDetailPage';
+import DoctorPharmaciesDirectoryPage from './pages/DoctorPharmaciesDirectoryPage';
+import DoctorPharmacyDetailPage from './pages/DoctorPharmacyDetailPage';
+import PharmacyDoctorsDirectoryPage from './pages/PharmacyDoctorsDirectoryPage';
+import PharmacyDoctorDetailPage from './pages/PharmacyDoctorDetailPage';
+import PharmacyPharmaciesDirectoryPage from './pages/PharmacyPharmaciesDirectoryPage';
+import PharmacyPharmacyDetailPage from './pages/PharmacyPharmacyDetailPage';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminDoctorsPage from './pages/AdminDoctorsPage';
+import AdminPharmaciesPage from './pages/AdminPharmaciesPage';
+import AdminPatientsPage from './pages/AdminPatientsPage';
 import PatientDoctorsPage from './pages/PatientDoctorsPage';
 import PatientPharmaciesPage from './pages/PatientPharmaciesPage';
 import PatientDoctorPrescriptionsPage from './pages/PatientDoctorPrescriptionsPage';
@@ -143,9 +156,74 @@ const App: React.FC = () => (
               <DoctorPrescriptionDetailPage />
             </RequireRole>
           </Route>
+          <Route exact path="/doctor/doctors">
+            <RequireRole role="doctor">
+              <DoctorDoctorsDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/doctors/:doctorId">
+            <RequireRole role="doctor">
+              <DoctorDoctorDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/pharmacies">
+            <RequireRole role="doctor">
+              <DoctorPharmaciesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/pharmacies/:pharmacyId">
+            <RequireRole role="doctor">
+              <DoctorPharmacyDetailPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/pharmacy">
             <RequireRole role="pharmacy">
               <PharmacyDashboard />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/prescriptions">
+            <RequireRole role="pharmacy">
+              <PharmacyPrescriptionsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/doctors">
+            <RequireRole role="pharmacy">
+              <PharmacyDoctorsDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/doctors/:doctorId">
+            <RequireRole role="pharmacy">
+              <PharmacyDoctorDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/pharmacies">
+            <RequireRole role="pharmacy">
+              <PharmacyPharmaciesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/pharmacies/:pharmacyId">
+            <RequireRole role="pharmacy">
+              <PharmacyPharmacyDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin">
+            <RequireRole role="admin">
+              <AdminDashboard />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/doctors">
+            <RequireRole role="admin">
+              <AdminDoctorsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/pharmacies">
+            <RequireRole role="admin">
+              <AdminPharmaciesPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/patients">
+            <RequireRole role="admin">
+              <AdminPatientsPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient">

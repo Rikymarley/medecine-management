@@ -67,37 +67,6 @@ CREATE TABLE IF NOT EXISTS "failed_jobs"(
   "failed_at" datetime not null default CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX "failed_jobs_uuid_unique" on "failed_jobs"("uuid");
-CREATE TABLE IF NOT EXISTS "pharmacies"(
-  "id" integer primary key autoincrement not null,
-  "name" varchar not null,
-  "phone" varchar,
-  "address" varchar,
-  "latitude" numeric,
-  "longitude" numeric,
-  "open_now" tinyint(1) not null default '1',
-  "reliability_score" integer not null default '0',
-  "created_at" datetime,
-  "updated_at" datetime,
-  "opening_hours" text,
-  "closes_at" varchar,
-  "temporary_closed" tinyint(1) not null default '0',
-  "emergency_available" tinyint(1) not null default '0',
-  "last_status_updated_at" datetime,
-  "services" text,
-  "payment_methods" text,
-  "price_range" varchar,
-  "average_wait_time" integer,
-  "delivery_available" tinyint(1) not null default '0',
-  "delivery_radius_km" numeric,
-  "night_service" tinyint(1) not null default '0',
-  "license_number" varchar,
-  "license_verified" tinyint(1) not null default '0',
-  "logo_url" varchar,
-  "storefront_image_url" varchar,
-  "notes_for_patients" varchar,
-  "last_confirmed_stock_time" datetime,
-  "pharmacy_mode" varchar not null default 'quick_manual'
-);
 CREATE TABLE IF NOT EXISTS "medicine_requests"(
   "id" integer primary key autoincrement not null,
   "prescription_id" integer not null,
@@ -354,6 +323,22 @@ CREATE INDEX "medical_history_entries_patient_user_id_prescription_id_index" on 
   "patient_user_id",
   "prescription_id"
 );
+CREATE UNIQUE INDEX "medical_history_entries_entry_code_unique" on "medical_history_entries"(
+  "entry_code"
+);
+CREATE TABLE IF NOT EXISTS "medical_history_entry_prescriptions"(
+  "id" integer primary key autoincrement not null,
+  "medical_history_entry_id" integer not null,
+  "prescription_id" integer not null,
+  "created_at" datetime,
+  "updated_at" datetime,
+  foreign key("medical_history_entry_id") references "medical_history_entries"("id") on delete cascade,
+  foreign key("prescription_id") references "prescriptions"("id") on delete cascade
+);
+CREATE UNIQUE INDEX "mh_entry_rx_unique" on "medical_history_entry_prescriptions"(
+  "medical_history_entry_id",
+  "prescription_id"
+);
 CREATE TABLE IF NOT EXISTS "users"(
   "id" integer primary key autoincrement not null,
   "name" varchar not null,
@@ -392,16 +377,25 @@ CREATE TABLE IF NOT EXISTS "users"(
   "blood_type" varchar,
   "emergency_notes" text,
   "ninu" varchar,
-  "account_status" varchar not null default 'active',
+  "account_status" varchar not null default('active'),
   "created_by_doctor_id" integer,
   "date_of_birth" date,
   "weight_kg" numeric,
   "height_cm" numeric,
   "surgical_history" text,
   "vaccination_up_to_date" tinyint(1),
-  foreign key("verified_by") references users("id") on delete set null on update no action,
+  "can_verify_accounts" tinyint(1) not null default '0',
+  "license_verified_at" datetime,
+  "license_verified_by_doctor_id" integer,
+  "license_verification_notes" text,
+  foreign key("created_by_doctor_id") references users("id") on delete set null on update no action,
   foreign key("pharmacy_id") references pharmacies("id") on delete set null on update no action,
-  foreign key("created_by_doctor_id") references "users"("id") on delete set null
+  foreign key("verified_by") references users("id") on delete set null on update no action,
+  foreign key("license_verified_by_doctor_id") references "users"("id") on delete set null
+);
+CREATE INDEX "users_created_by_doctor_id_account_status_index" on "users"(
+  "created_by_doctor_id",
+  "account_status"
 );
 CREATE UNIQUE INDEX "users_email_unique" on "users"("email");
 CREATE UNIQUE INDEX "users_ninu_unique" on "users"("ninu");
@@ -410,25 +404,40 @@ CREATE INDEX "users_role_account_status_index" on "users"(
   "role",
   "account_status"
 );
-CREATE INDEX "users_created_by_doctor_id_account_status_index" on "users"(
-  "created_by_doctor_id",
-  "account_status"
-);
-CREATE UNIQUE INDEX "medical_history_entries_entry_code_unique" on "medical_history_entries"(
-  "entry_code"
-);
-CREATE TABLE IF NOT EXISTS "medical_history_entry_prescriptions"(
+CREATE TABLE IF NOT EXISTS "pharmacies"(
   "id" integer primary key autoincrement not null,
-  "medical_history_entry_id" integer not null,
-  "prescription_id" integer not null,
+  "name" varchar not null,
+  "phone" varchar,
+  "address" varchar,
+  "latitude" numeric,
+  "longitude" numeric,
+  "open_now" tinyint(1) not null default('1'),
+  "reliability_score" integer not null default('0'),
   "created_at" datetime,
   "updated_at" datetime,
-  foreign key("medical_history_entry_id") references "medical_history_entries"("id") on delete cascade,
-  foreign key("prescription_id") references "prescriptions"("id") on delete cascade
-);
-CREATE UNIQUE INDEX "mh_entry_rx_unique" on "medical_history_entry_prescriptions"(
-  "medical_history_entry_id",
-  "prescription_id"
+  "opening_hours" text,
+  "closes_at" varchar,
+  "temporary_closed" tinyint(1) not null default('0'),
+  "emergency_available" tinyint(1) not null default('0'),
+  "last_status_updated_at" datetime,
+  "services" text,
+  "payment_methods" text,
+  "price_range" varchar,
+  "average_wait_time" integer,
+  "delivery_available" tinyint(1) not null default('0'),
+  "delivery_radius_km" numeric,
+  "night_service" tinyint(1) not null default('0'),
+  "license_number" varchar,
+  "license_verified" tinyint(1) not null default('0'),
+  "logo_url" varchar,
+  "storefront_image_url" varchar,
+  "notes_for_patients" varchar,
+  "last_confirmed_stock_time" datetime,
+  "pharmacy_mode" varchar not null default('quick_manual'),
+  "license_verified_at" datetime,
+  "license_verified_by_doctor_id" integer,
+  "license_verification_notes" text,
+  foreign key("license_verified_by_doctor_id") references "users"("id") on delete set null
 );
 
 INSERT INTO migrations VALUES(1,'0001_01_01_000000_create_users_table',1);
@@ -475,3 +484,16 @@ INSERT INTO migrations VALUES(41,'2026_04_02_140000_create_medical_history_entry
 INSERT INTO migrations VALUES(42,'2026_04_02_231000_add_pharmacy_mode_column_to_pharmacies_table',33);
 INSERT INTO migrations VALUES(43,'2026_04_03_090000_add_date_of_birth_to_family_members_table',34);
 INSERT INTO migrations VALUES(44,'2026_04_03_103000_add_extended_medical_profile_fields_to_users_and_family_members',35);
+INSERT INTO migrations VALUES(45,'2026_04_03_120000_create_users_table_consolidated',36);
+INSERT INTO migrations VALUES(46,'2026_04_03_121000_create_pharmacies_table_consolidated',36);
+INSERT INTO migrations VALUES(47,'2026_04_03_122000_create_prescriptions_table_consolidated',36);
+INSERT INTO migrations VALUES(48,'2026_04_03_123000_create_medicine_requests_table_consolidated',36);
+INSERT INTO migrations VALUES(49,'2026_04_03_124000_create_family_members_table_consolidated',36);
+INSERT INTO migrations VALUES(50,'2026_04_03_125000_create_emergency_contacts_table_consolidated',36);
+INSERT INTO migrations VALUES(51,'2026_04_03_130000_create_medical_history_entries_table_consolidated',36);
+INSERT INTO migrations VALUES(52,'2026_04_03_131000_create_patient_medicine_purchases_table_consolidated',36);
+INSERT INTO migrations VALUES(53,'2026_04_03_132000_create_pharmacy_responses_table_consolidated',36);
+INSERT INTO migrations VALUES(54,'2026_04_03_133000_create_medicines_table_consolidated',36);
+INSERT INTO migrations VALUES(55,'2026_04_03_134000_create_guest_patients_table_consolidated',36);
+INSERT INTO migrations VALUES(56,'2026_04_03_135000_create_prescription_status_logs_table_consolidated',36);
+INSERT INTO migrations VALUES(57,'2026_04_03_141000_add_license_verifier_fields',37);

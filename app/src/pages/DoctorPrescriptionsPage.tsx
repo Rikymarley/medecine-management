@@ -1,6 +1,7 @@
 import {
   IonBackButton,
   IonBadge,
+  IonAlert,
   IonButton,
   IonButtons,
   IonCard,
@@ -34,8 +35,10 @@ const DoctorPrescriptionsPage: React.FC = () => {
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [page, setPage] = useState(1);
+  const [showNotVerifiedAlert, setShowNotVerifiedAlert] = useState(false);
   const pageSize = 12;
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
+  const canCreatePrescription = user?.license_verified === true;
 
   const loadPrescriptions = useCallback(async () => {
     if (!cacheKey) {
@@ -147,13 +150,36 @@ const DoctorPrescriptionsPage: React.FC = () => {
                 </IonButton>
               </div>
             ) : null}
+            {!canCreatePrescription ? (
+              <IonText color="warning">
+                <p>
+                  Licence non verifiee: vous ne pouvez pas creer une ordonnance pour le moment.
+                </p>
+              </IonText>
+            ) : null}
           </IonCardContent>
         </IonCard>
         <IonFab vertical="bottom" horizontal="center" slot="fixed">
-          <IonFabButton color="success" onClick={() => ionRouter.push('/doctor/create-prescription', 'forward', 'push')}>
+          <IonFabButton
+            color={canCreatePrescription ? 'success' : 'warning'}
+            onClick={() => {
+              if (!canCreatePrescription) {
+                setShowNotVerifiedAlert(true);
+                return;
+              }
+              ionRouter.push('/doctor/create-prescription', 'forward', 'push');
+            }}
+          >
             <IonIcon icon={addOutline} />
           </IonFabButton>
         </IonFab>
+        <IonAlert
+          isOpen={showNotVerifiedAlert}
+          header="Licence non verifiee"
+          message="Votre licence n'est pas encore verifiee. Vous ne pouvez pas creer une ordonnance pour le moment."
+          buttons={[{ text: 'OK', role: 'cancel' }]}
+          onDidDismiss={() => setShowNotVerifiedAlert(false)}
+        />
       </IonContent>
     </IonPage>
   );

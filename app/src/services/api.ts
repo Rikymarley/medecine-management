@@ -83,6 +83,10 @@ export type ApiUser = {
   consultation_hours: string | null;
   license_number: string | null;
   license_verified: boolean;
+  can_verify_accounts: boolean;
+  license_verified_at: string | null;
+  license_verified_by_doctor_id: number | null;
+  license_verification_notes: string | null;
   years_experience: number | null;
   consultation_fee_range: string | null;
   whatsapp: string | null;
@@ -98,13 +102,22 @@ export type ApiUser = {
   surgical_history: string | null;
   vaccination_up_to_date: boolean | null;
   role: 'doctor' | 'pharmacy' | 'patient' | 'admin';
-  account_status?: 'active' | 'provisional';
+  account_status?: 'active' | 'provisional' | 'blocked';
+  blocked_by?: number | null;
+  blocked_at?: string | null;
+  blocked_by_name?: string | null;
+  delegated_by?: number | null;
+  delegated_at?: string | null;
+  delegated_by_name?: string | null;
   created_by_doctor_id?: number | null;
   pharmacy_id: number | null;
   verification_status: 'pending' | 'approved' | 'rejected';
   verified_at: string | null;
   verified_by: number | null;
   verification_notes: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  license_verified_by_doctor_name?: string | null;
 };
 
 export type ApiAuthResponse = {
@@ -135,6 +148,30 @@ export type ApiPharmacy = {
   night_service: boolean;
   license_number: string | null;
   license_verified: boolean;
+  license_verified_at: string | null;
+  license_verified_by_doctor_id: number | null;
+  license_verification_notes: string | null;
+  license_verified_by_doctor_name?: string | null;
+  account_verification_status?: 'pending' | 'approved' | 'rejected' | null;
+  account_status?: 'active' | 'provisional' | 'blocked' | null;
+  account_can_verify_accounts?: boolean | null;
+  pharmacy_user_id?: number | null;
+  pharmacy_user_name?: string | null;
+  pharmacy_user_email?: string | null;
+  account_verified_at?: string | null;
+  account_verified_by?: number | null;
+  account_verified_by_name?: string | null;
+  account_verification_notes?: string | null;
+  blocked_by?: number | null;
+  blocked_at?: string | null;
+  blocked_by_name?: string | null;
+  delegated_by?: number | null;
+  delegated_at?: string | null;
+  delegated_by_name?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
   logo_url: string | null;
   storefront_image_url: string | null;
   notes_for_patients: string | null;
@@ -363,6 +400,41 @@ export type ApiDoctorPatientProfile = {
   emergency_notes: string | null;
 };
 
+export type ApiDoctorDirectory = {
+  id: number;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  specialty: string | null;
+  city: string | null;
+  department: string | null;
+  languages: string | null;
+  teleconsultation_available: boolean;
+  consultation_hours: string | null;
+  license_number: string | null;
+  license_verified: boolean;
+  can_verify_accounts: boolean;
+  license_verified_at: string | null;
+  license_verified_by_doctor_id: number | null;
+  license_verification_notes: string | null;
+  license_verified_by_doctor_name?: string | null;
+  account_verification_status?: 'pending' | 'approved' | 'rejected' | null;
+  account_verified_at?: string | null;
+  account_verified_by?: number | null;
+  account_verified_by_name?: string | null;
+  account_verification_notes?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  years_experience: number | null;
+  consultation_fee_range: string | null;
+  whatsapp: string | null;
+  bio: string | null;
+};
+
 export type ApiPatientLookup = {
   id: number;
   name: string;
@@ -419,6 +491,9 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   me: (token: string) => request<ApiUser>('/auth/me', { token }),
+  getDoctorsDirectory: () => request<ApiDoctorDirectory[]>('/doctors'),
+  getDoctorsDirectoryForDoctor: (token: string) => request<ApiDoctorDirectory[]>('/doctor/doctors-directory', { token }),
+  getDoctorsDirectoryForPharmacy: (token: string) => request<ApiDoctorDirectory[]>('/pharmacy/doctors-directory', { token }),
   updateDoctorProfile: (
     token: string,
     payload: Partial<{
@@ -474,6 +549,8 @@ export const api = {
     }),
   logout: (token: string) => request<{ message: string }>('/auth/logout', { method: 'POST', token }),
   getPharmacies: () => request<ApiPharmacy[]>('/pharmacies'),
+  getPharmaciesForDoctor: (token: string) => request<ApiPharmacy[]>('/doctor/pharmacies-directory', { token }),
+  getPharmaciesForPharmacy: (token: string) => request<ApiPharmacy[]>('/pharmacy/pharmacies-directory', { token }),
   getMyPharmacy: (token: string) => request<ApiPharmacy>('/pharmacy/me', { token }),
   updateMyPharmacy: (
     token: string,
@@ -517,6 +594,142 @@ export const api = {
     formData.append('storefront_image', file);
     return requestFormData<ApiPharmacy>('/pharmacy/me/storefront-image', formData, token);
   },
+  verifyDoctorLicense: (
+    token: string,
+    doctorId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiDoctorDirectory>(`/doctor/verifications/doctors/${doctorId}/license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  approveDoctorAccount: (
+    token: string,
+    doctorUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/doctor/verifications/doctor-accounts/${doctorUserId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  verifyPharmacyLicense: (
+    token: string,
+    pharmacyId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiPharmacy>(`/doctor/verifications/pharmacies/${pharmacyId}/license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  approvePharmacyAccount: (
+    token: string,
+    pharmacyUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/doctor/verifications/pharmacy-accounts/${pharmacyUserId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  pharmacyVerifyDoctorLicense: (
+    token: string,
+    doctorId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiDoctorDirectory>(`/pharmacy/verifications/doctors/${doctorId}/license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  pharmacyApproveDoctorAccount: (
+    token: string,
+    doctorUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/pharmacy/verifications/doctor-accounts/${doctorUserId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  pharmacyUnapproveDoctorAccount: (
+    token: string,
+    doctorUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/pharmacy/verifications/doctor-accounts/${doctorUserId}/unapprove`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  pharmacyVerifyPharmacyLicense: (
+    token: string,
+    pharmacyId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiPharmacy>(`/pharmacy/verifications/pharmacies/${pharmacyId}/license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  pharmacyApprovePharmacyAccount: (
+    token: string,
+    pharmacyUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/pharmacy/verifications/pharmacy-accounts/${pharmacyUserId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  pharmacyUnapprovePharmacyAccount: (
+    token: string,
+    pharmacyUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/pharmacy/verifications/pharmacy-accounts/${pharmacyUserId}/unapprove`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
   getMedicines: (params?: { q?: string; category?: ApiMedicine['category']; limit?: number }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set('q', params.q);
@@ -954,5 +1167,109 @@ export const api = {
       method: 'PATCH',
       token,
       body: JSON.stringify({ prescription_id })
+    }),
+  getAdminUsers: (
+    token: string,
+    role?: 'doctor' | 'pharmacy' | 'patient'
+  ) => {
+    const search = new URLSearchParams();
+    if (role) {
+      search.set('role', role);
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiUser[]>(`/admin/accounts/users${suffix}`, { token });
+  },
+  getAdminPharmacies: (token: string) =>
+    request<ApiPharmacy[]>('/admin/accounts/pharmacies', { token }),
+  adminApproveUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
+    request<{
+      id: number;
+      role: 'doctor' | 'pharmacy' | 'patient';
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/admin/accounts/users/${userId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminUnapproveUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
+    request<{
+      id: number;
+      role: 'doctor' | 'pharmacy' | 'patient';
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+    }>(`/admin/accounts/users/${userId}/unapprove`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminBlockUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
+    request<{
+      id: number;
+      role: 'doctor' | 'pharmacy' | 'patient';
+      account_status: 'active' | 'provisional' | 'blocked';
+      verification_status: 'pending' | 'approved' | 'rejected';
+    }>(`/admin/accounts/users/${userId}/block`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminUnblockUser: (token: string, userId: number) =>
+    request<{
+      id: number;
+      role: 'doctor' | 'pharmacy' | 'patient';
+      account_status: 'active' | 'provisional' | 'blocked';
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+    }>(`/admin/accounts/users/${userId}/unblock`, {
+      method: 'POST',
+      token
+    }),
+  adminVerifyDoctorLicense: (
+    token: string,
+    doctorId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiUser>(`/admin/accounts/doctors/${doctorId}/verify-license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminSetDoctorVerifierPermission: (
+    token: string,
+    doctorId: number,
+    canVerifyAccounts: boolean
+  ) =>
+    request<{ id: number; can_verify_accounts: boolean; delegated_by: number | null; delegated_at: string | null }>(`/admin/accounts/doctors/${doctorId}/verifier-permission`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ can_verify_accounts: canVerifyAccounts })
+    }),
+  adminSetPharmacyVerifierPermission: (
+    token: string,
+    pharmacyUserId: number,
+    canVerifyAccounts: boolean
+  ) =>
+    request<{ id: number; can_verify_accounts: boolean; delegated_by: number | null; delegated_at: string | null }>(
+      `/admin/accounts/pharmacy-accounts/${pharmacyUserId}/verifier-permission`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ can_verify_accounts: canVerifyAccounts })
+      }
+    ),
+  adminVerifyPharmacyLicense: (
+    token: string,
+    pharmacyId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiPharmacy>(`/admin/accounts/pharmacies/${pharmacyId}/verify-license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
     })
 };
