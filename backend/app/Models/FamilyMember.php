@@ -10,17 +10,26 @@ class FamilyMember extends Model
         'patient_user_id',
         'name',
         'age',
+        'date_of_birth',
         'gender',
         'relationship',
         'allergies',
         'chronic_diseases',
         'blood_type',
         'emergency_notes',
+        'weight_kg',
+        'height_cm',
+        'surgical_history',
+        'vaccination_up_to_date',
         'primary_caregiver',
     ];
 
     protected $casts = [
         'age' => 'integer',
+        'date_of_birth' => 'date',
+        'weight_kg' => 'float',
+        'height_cm' => 'float',
+        'vaccination_up_to_date' => 'boolean',
         'primary_caregiver' => 'boolean',
     ];
 

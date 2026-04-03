@@ -93,6 +93,10 @@ export type ApiUser = {
   chronic_diseases: string | null;
   blood_type: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
   emergency_notes: string | null;
+  weight_kg: number | null;
+  height_cm: number | null;
+  surgical_history: string | null;
+  vaccination_up_to_date: boolean | null;
   role: 'doctor' | 'pharmacy' | 'patient' | 'admin';
   account_status?: 'active' | 'provisional';
   created_by_doctor_id?: number | null;
@@ -327,12 +331,17 @@ export type ApiFamilyMember = {
   patient_user_id: number;
   name: string;
   age: number | null;
+  date_of_birth: string | null;
   gender: 'male' | 'female' | null;
   relationship: 'parent' | 'spouse' | 'child' | 'sibling' | 'grandparent' | 'other' | null;
   allergies: string | null;
   chronic_diseases: string | null;
   blood_type: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
   emergency_notes: string | null;
+  weight_kg: number | null;
+  height_cm: number | null;
+  surgical_history: string | null;
+  vaccination_up_to_date: boolean | null;
   primary_caregiver: boolean;
   created_at: string;
   updated_at: string;
@@ -452,6 +461,10 @@ export const api = {
       chronic_diseases: string | null;
       blood_type: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
       emergency_notes: string | null;
+      weight_kg: number | null;
+      height_cm: number | null;
+      surgical_history: string | null;
+      vaccination_up_to_date: boolean | null;
     }>
   ) =>
     request<ApiUser>('/patient/me', {
@@ -777,12 +790,17 @@ export const api = {
     payload: {
       name: string;
       age?: number | null;
+      date_of_birth?: string | null;
       gender?: ApiFamilyMember['gender'];
       relationship?: ApiFamilyMember['relationship'];
       allergies?: string | null;
       chronic_diseases?: string | null;
       blood_type?: ApiFamilyMember['blood_type'];
       emergency_notes?: string | null;
+      weight_kg?: number | null;
+      height_cm?: number | null;
+      surgical_history?: string | null;
+      vaccination_up_to_date?: boolean | null;
       primary_caregiver?: boolean;
     }
   ) =>
@@ -797,12 +815,17 @@ export const api = {
     payload: Partial<{
       name: string;
       age: number | null;
+      date_of_birth: string | null;
       gender: ApiFamilyMember['gender'];
       relationship: ApiFamilyMember['relationship'];
       allergies: string | null;
       chronic_diseases: string | null;
       blood_type: ApiFamilyMember['blood_type'];
       emergency_notes: string | null;
+      weight_kg: number | null;
+      height_cm: number | null;
+      surgical_history: string | null;
+      vaccination_up_to_date: boolean | null;
       primary_caregiver: boolean;
     }>
   ) =>

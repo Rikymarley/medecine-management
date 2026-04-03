@@ -38,6 +38,10 @@ class AuthController extends Controller
             'chronic_diseases' => ['nullable', 'string', 'max:255'],
             'blood_type' => ['nullable', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'],
             'emergency_notes' => ['nullable', 'string', 'max:3000'],
+            'weight_kg' => ['nullable', 'numeric', 'between:0.1,500'],
+            'height_cm' => ['nullable', 'numeric', 'between:10,300'],
+            'surgical_history' => ['nullable', 'string', 'max:5000'],
+            'vaccination_up_to_date' => ['nullable', 'boolean'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'role' => ['required', 'in:doctor,pharmacy,patient'],
             'pharmacy_name' => ['nullable', 'required_if:role,pharmacy', 'string', 'max:255']
@@ -162,6 +166,10 @@ class AuthController extends Controller
             'chronic_diseases' => ['nullable', 'string', 'max:255'],
             'blood_type' => ['nullable', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'],
             'emergency_notes' => ['nullable', 'string', 'max:3000'],
+            'weight_kg' => ['nullable', 'numeric', 'between:0.1,500'],
+            'height_cm' => ['nullable', 'numeric', 'between:10,300'],
+            'surgical_history' => ['nullable', 'string', 'max:5000'],
+            'vaccination_up_to_date' => ['nullable', 'boolean'],
         ]);
 
         $patient->update($data);

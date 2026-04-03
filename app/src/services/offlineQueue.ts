@@ -1,7 +1,9 @@
-import { api, ApiPharmacyResponse } from './api';
+import { api, ApiEmergencyContact, ApiFamilyMember, ApiPharmacyResponse } from './api';
 
 const PHARMACY_RESPONSE_OUTBOX_KEY = 'offline-outbox-pharmacy-responses-v1';
 const PATIENT_PURCHASE_OUTBOX_KEY = 'offline-outbox-patient-purchases-v1';
+const PATIENT_EMERGENCY_CONTACT_OUTBOX_KEY = 'offline-outbox-patient-emergency-contacts-v1';
+const PATIENT_FAMILY_MEMBER_OUTBOX_KEY = 'offline-outbox-patient-family-members-v1';
 
 type PharmacyResponseOutboxItem = {
   id: string;
@@ -25,6 +27,57 @@ type PatientPurchaseOutboxItem = {
     purchased: boolean;
     quantity?: number;
   };
+};
+
+type EmergencyContactMutationPayload = {
+  op: 'create' | 'update' | 'delete';
+  local_id: number;
+  data?: {
+    name: string;
+    phone: string;
+    category: ApiEmergencyContact['category'];
+    city?: string | null;
+    department?: string | null;
+    address?: string | null;
+    available_hours?: string | null;
+    priority?: number | null;
+    is_24_7?: boolean;
+    is_favorite?: boolean;
+    notes?: string | null;
+  };
+};
+
+type FamilyMemberMutationPayload = {
+  op: 'create' | 'update' | 'delete';
+  local_id: number;
+  data?: {
+    name: string;
+    age?: number | null;
+    date_of_birth?: string | null;
+    gender?: ApiFamilyMember['gender'];
+    relationship?: ApiFamilyMember['relationship'];
+    allergies?: string | null;
+    chronic_diseases?: string | null;
+    blood_type?: ApiFamilyMember['blood_type'];
+    emergency_notes?: string | null;
+    weight_kg?: number | null;
+    height_cm?: number | null;
+    surgical_history?: string | null;
+    vaccination_up_to_date?: boolean | null;
+    primary_caregiver?: boolean;
+  };
+};
+
+type EmergencyContactOutboxItem = {
+  id: string;
+  created_at: string;
+  payload: EmergencyContactMutationPayload;
+};
+
+type FamilyMemberOutboxItem = {
+  id: string;
+  created_at: string;
+  payload: FamilyMemberMutationPayload;
 };
 
 const readOutbox = (): PharmacyResponseOutboxItem[] => {
@@ -66,11 +119,56 @@ const writePatientPurchaseOutbox = (items: PatientPurchaseOutboxItem[]) => {
   localStorage.setItem(PATIENT_PURCHASE_OUTBOX_KEY, JSON.stringify(items));
 };
 
+const readEmergencyContactOutbox = (): EmergencyContactOutboxItem[] => {
+  const raw = localStorage.getItem(PATIENT_EMERGENCY_CONTACT_OUTBOX_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as EmergencyContactOutboxItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem(PATIENT_EMERGENCY_CONTACT_OUTBOX_KEY);
+    return [];
+  }
+};
+
+const writeEmergencyContactOutbox = (items: EmergencyContactOutboxItem[]) => {
+  localStorage.setItem(PATIENT_EMERGENCY_CONTACT_OUTBOX_KEY, JSON.stringify(items));
+};
+
+const readFamilyMemberOutbox = (): FamilyMemberOutboxItem[] => {
+  const raw = localStorage.getItem(PATIENT_FAMILY_MEMBER_OUTBOX_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as FamilyMemberOutboxItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    localStorage.removeItem(PATIENT_FAMILY_MEMBER_OUTBOX_KEY);
+    return [];
+  }
+};
+
+const writeFamilyMemberOutbox = (items: FamilyMemberOutboxItem[]) => {
+  localStorage.setItem(PATIENT_FAMILY_MEMBER_OUTBOX_KEY, JSON.stringify(items));
+};
+
 const patientPurchaseDedupeKey = (item: PatientPurchaseOutboxItem['payload']) =>
   `${item.prescription_id}-${item.pharmacy_id}-${item.medicine_request_id}`;
 
 export const getPendingPharmacyResponseCount = () => readOutbox().length;
 export const getPendingPatientPurchaseCount = () => readPatientPurchaseOutbox().length;
+export const getPendingEmergencyContactMutationCount = () => readEmergencyContactOutbox().length;
+export const getPendingFamilyMemberMutationCount = () => readFamilyMemberOutbox().length;
+export const getPendingFamilyMemberMutationStateById = (): Record<number, 'create' | 'update' | 'delete'> => {
+  const state: Record<number, 'create' | 'update' | 'delete'> = {};
+  readFamilyMemberOutbox().forEach((item) => {
+    state[item.payload.local_id] = item.payload.op;
+  });
+  return state;
+};
 
 export const enqueuePharmacyResponse = (payload: PharmacyResponseOutboxItem['payload']) => {
   const current = readOutbox();
@@ -95,6 +193,65 @@ export const enqueuePatientPurchase = (payload: PatientPurchaseOutboxItem['paylo
     payload
   });
   writePatientPurchaseOutbox(filtered);
+  return filtered.length;
+};
+
+export const enqueueEmergencyContactMutation = (payload: EmergencyContactMutationPayload) => {
+  const current = readEmergencyContactOutbox();
+
+  if (payload.op === 'delete') {
+    const withoutSame = current.filter((row) => row.payload.local_id !== payload.local_id);
+    // No need to keep a delete for unsynced new record.
+    if (payload.local_id < 0) {
+      writeEmergencyContactOutbox(withoutSame);
+      return withoutSame.length;
+    }
+    withoutSame.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      created_at: new Date().toISOString(),
+      payload
+    });
+    writeEmergencyContactOutbox(withoutSame);
+    return withoutSame.length;
+  }
+
+  const key = `${payload.local_id}-${payload.op}`;
+  const filtered = current.filter((row) => `${row.payload.local_id}-${row.payload.op}` !== key);
+  filtered.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    created_at: new Date().toISOString(),
+    payload
+  });
+  writeEmergencyContactOutbox(filtered);
+  return filtered.length;
+};
+
+export const enqueueFamilyMemberMutation = (payload: FamilyMemberMutationPayload) => {
+  const current = readFamilyMemberOutbox();
+
+  if (payload.op === 'delete') {
+    const withoutSame = current.filter((row) => row.payload.local_id !== payload.local_id);
+    if (payload.local_id < 0) {
+      writeFamilyMemberOutbox(withoutSame);
+      return withoutSame.length;
+    }
+    withoutSame.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      created_at: new Date().toISOString(),
+      payload
+    });
+    writeFamilyMemberOutbox(withoutSame);
+    return withoutSame.length;
+  }
+
+  const key = `${payload.local_id}-${payload.op}`;
+  const filtered = current.filter((row) => `${row.payload.local_id}-${row.payload.op}` !== key);
+  filtered.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    created_at: new Date().toISOString(),
+    payload
+  });
+  writeFamilyMemberOutbox(filtered);
   return filtered.length;
 };
 
@@ -149,5 +306,101 @@ export const flushPatientPurchasesOutbox = async (token: string): Promise<number
   }
 
   writePatientPurchaseOutbox(remaining);
+  return remaining.length;
+};
+
+export const flushEmergencyContactMutationsOutbox = async (token: string): Promise<number> => {
+  const queue = readEmergencyContactOutbox();
+  if (queue.length === 0) {
+    return 0;
+  }
+
+  const tempIdMap = new Map<number, number>();
+  const remaining: EmergencyContactOutboxItem[] = [];
+
+  for (const item of queue) {
+    try {
+      const payload = { ...item.payload };
+      const resolvedId = tempIdMap.get(payload.local_id) ?? payload.local_id;
+
+      if (payload.op === 'create') {
+        if (!payload.data) {
+          continue;
+        }
+        const created = await api.createPatientEmergencyContact(token, payload.data);
+        if (payload.local_id < 0) {
+          tempIdMap.set(payload.local_id, created.id);
+        }
+        continue;
+      }
+
+      if (payload.op === 'update') {
+        if (!payload.data || resolvedId < 1) {
+          continue;
+        }
+        await api.updatePatientEmergencyContact(token, resolvedId, payload.data);
+        continue;
+      }
+
+      if (payload.op === 'delete') {
+        if (resolvedId < 1) {
+          continue;
+        }
+        await api.deletePatientEmergencyContact(token, resolvedId);
+      }
+    } catch {
+      remaining.push(item);
+    }
+  }
+
+  writeEmergencyContactOutbox(remaining);
+  return remaining.length;
+};
+
+export const flushFamilyMemberMutationsOutbox = async (token: string): Promise<number> => {
+  const queue = readFamilyMemberOutbox();
+  if (queue.length === 0) {
+    return 0;
+  }
+
+  const tempIdMap = new Map<number, number>();
+  const remaining: FamilyMemberOutboxItem[] = [];
+
+  for (const item of queue) {
+    try {
+      const payload = { ...item.payload };
+      const resolvedId = tempIdMap.get(payload.local_id) ?? payload.local_id;
+
+      if (payload.op === 'create') {
+        if (!payload.data) {
+          continue;
+        }
+        const created = await api.createPatientFamilyMember(token, payload.data);
+        if (payload.local_id < 0) {
+          tempIdMap.set(payload.local_id, created.id);
+        }
+        continue;
+      }
+
+      if (payload.op === 'update') {
+        if (!payload.data || resolvedId < 1) {
+          continue;
+        }
+        await api.updatePatientFamilyMember(token, resolvedId, payload.data);
+        continue;
+      }
+
+      if (payload.op === 'delete') {
+        if (resolvedId < 1) {
+          continue;
+        }
+        await api.deletePatientFamilyMember(token, resolvedId);
+      }
+    } catch {
+      remaining.push(item);
+    }
+  }
+
+  writeFamilyMemberOutbox(remaining);
   return remaining.length;
 };

@@ -8,12 +8,19 @@ script = ""
 [[actions]]
 name = "npm run dev"
 icon = "run"
-command = '''
-cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/app
-npm run dev
-'''
+command = "cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/app && npm run dev"
 
 [[actions]]
 name = "Status"
 icon = "tool"
 command = "git status"
+
+[[actions]]
+name = "php artisan serve"
+icon = "tool"
+command = '''
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/backend
+php artisan migrate --force
+php artisan optimize:clear
+php artisan serve --host=127.0.0.1 --port=8000
+'''

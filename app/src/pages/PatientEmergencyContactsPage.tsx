@@ -46,6 +46,11 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiEmergencyContact } from '../services/api';
+import {
+  enqueueEmergencyContactMutation,
+  flushEmergencyContactMutationsOutbox,
+  getPendingEmergencyContactMutationCount
+} from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
 
@@ -68,7 +73,7 @@ const categoryIcon: Record<ApiEmergencyContact['category'], string> = {
 };
 
 const PatientEmergencyContactsPage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [contacts, setContacts] = useState<ApiEmergencyContact[]>([]);
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | ApiEmergencyContact['category']>('all');
@@ -78,6 +83,9 @@ const PatientEmergencyContactsPage: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(getPendingEmergencyContactMutationCount());
   const [page, setPage] = useState(1);
   const pageSize = 8;
   const [form, setForm] = useState({
@@ -93,17 +101,96 @@ const PatientEmergencyContactsPage: React.FC = () => {
     is_favorite: false
   });
 
+  const cacheKey = user ? `patient-emergency-contacts-${user.id}` : null;
+
+  const toMutationPayload = (value: typeof form) => ({
+    name: value.name.trim(),
+    phone: maskHaitiPhone(value.phone.trim()),
+    category: value.category,
+    city: value.city.trim() || null,
+    department: value.department.trim() || null,
+    address: value.address.trim() || null,
+    available_hours: value.available_hours.trim() || null,
+    priority: value.priority.trim() ? Number(value.priority) : null,
+    is_24_7: value.is_24_7,
+    is_favorite: value.is_favorite
+  });
+
+  const toUpdatePayloadFromContact = (contact: ApiEmergencyContact) => ({
+    name: contact.name,
+    phone: maskHaitiPhone(contact.phone),
+    category: contact.category,
+    city: contact.city,
+    department: contact.department,
+    address: contact.address,
+    available_hours: contact.available_hours,
+    priority: contact.priority,
+    is_24_7: contact.is_24_7,
+    is_favorite: contact.is_favorite,
+    notes: contact.notes
+  });
+
   const loadContacts = async () => {
+    if (cacheKey) {
+      const cachedRaw = localStorage.getItem(cacheKey);
+      if (cachedRaw) {
+        try {
+          const cached = JSON.parse(cachedRaw) as ApiEmergencyContact[];
+          if (Array.isArray(cached)) {
+            setContacts(cached);
+          }
+        } catch {
+          localStorage.removeItem(cacheKey);
+        }
+      }
+    }
     if (!token) {
       return;
     }
     const data = await api.getPatientEmergencyContacts(token);
     setContacts(data);
+    if (cacheKey) {
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+    }
   };
 
   useEffect(() => {
     loadContacts().catch(() => undefined);
   }, [token]);
+
+  useEffect(() => {
+    if (!cacheKey) {
+      return;
+    }
+    localStorage.setItem(cacheKey, JSON.stringify(contacts));
+  }, [cacheKey, contacts]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!token || !isOnline) {
+      setPendingOutboxCount(getPendingEmergencyContactMutationCount());
+      return;
+    }
+    flushEmergencyContactMutationsOutbox(token)
+      .then(async (remaining) => {
+        setPendingOutboxCount(remaining);
+        setSyncMessage(remaining === 0 ? 'Synchronisation terminee.' : `${remaining} action(s) en attente.`);
+        await loadContacts();
+      })
+      .catch(() => {
+        setPendingOutboxCount(getPendingEmergencyContactMutationCount());
+      });
+  }, [isOnline, token]);
 
   const filtered = useMemo(() => {
     return contacts.filter((contact) => {
@@ -138,32 +225,58 @@ const PatientEmergencyContactsPage: React.FC = () => {
     }
     setSaving(true);
     try {
+      const payload = toMutationPayload(form);
       if (editingId === null) {
-        await api.createPatientEmergencyContact(token, {
-          name: form.name.trim(),
-          phone: maskHaitiPhone(form.phone.trim()),
-          category: form.category,
-          city: form.city.trim() || null,
-          department: form.department.trim() || null,
-          address: form.address.trim() || null,
-          available_hours: form.available_hours.trim() || null,
-          priority: form.priority.trim() ? Number(form.priority) : null,
-          is_24_7: form.is_24_7,
-          is_favorite: form.is_favorite
-        });
+        if (!isOnline) {
+          const tempId = -Date.now();
+          const optimistic: ApiEmergencyContact = {
+            id: tempId,
+            patient_user_id: user?.id ?? 0,
+            name: payload.name,
+            phone: payload.phone,
+            category: payload.category,
+            city: payload.city ?? null,
+            department: payload.department ?? null,
+            address: payload.address ?? null,
+            available_hours: payload.available_hours ?? null,
+            is_24_7: !!payload.is_24_7,
+            is_favorite: !!payload.is_favorite,
+            priority: payload.priority ?? null,
+            notes: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          setContacts((prev) => [optimistic, ...prev]);
+          const count = enqueueEmergencyContactMutation({ op: 'create', local_id: tempId, data: payload });
+          setPendingOutboxCount(count);
+          setSyncMessage('Hors ligne: contact en attente de synchronisation.');
+        } else {
+          await api.createPatientEmergencyContact(token, payload);
+        }
       } else {
-        await api.updatePatientEmergencyContact(token, editingId, {
-          name: form.name.trim(),
-          phone: maskHaitiPhone(form.phone.trim()),
-          category: form.category,
-          city: form.city.trim() || null,
-          department: form.department.trim() || null,
-          address: form.address.trim() || null,
-          available_hours: form.available_hours.trim() || null,
-          priority: form.priority.trim() ? Number(form.priority) : null,
-          is_24_7: form.is_24_7,
-          is_favorite: form.is_favorite
-        });
+        setContacts((prev) =>
+          prev.map((item) =>
+            item.id === editingId
+              ? {
+                  ...item,
+                  ...payload,
+                  city: payload.city ?? null,
+                  department: payload.department ?? null,
+                  address: payload.address ?? null,
+                  available_hours: payload.available_hours ?? null,
+                  priority: payload.priority ?? null,
+                  updated_at: new Date().toISOString()
+                }
+              : item
+          )
+        );
+        if (!isOnline) {
+          const count = enqueueEmergencyContactMutation({ op: 'update', local_id: editingId, data: payload });
+          setPendingOutboxCount(count);
+          setSyncMessage('Hors ligne: modification en attente.');
+        } else {
+          await api.updatePatientEmergencyContact(token, editingId, payload);
+        }
       }
       setShowAdd(false);
       setEditingId(null);
@@ -179,7 +292,9 @@ const PatientEmergencyContactsPage: React.FC = () => {
         is_24_7: false,
         is_favorite: false
       });
-      await loadContacts();
+      if (isOnline) {
+        await loadContacts();
+      }
     } finally {
       setSaving(false);
     }
@@ -206,6 +321,18 @@ const PatientEmergencyContactsPage: React.FC = () => {
     if (!token) {
       return;
     }
+    const next = { ...contact, is_favorite: !contact.is_favorite, updated_at: new Date().toISOString() };
+    setContacts((prev) => prev.map((item) => (item.id === contact.id ? next : item)));
+    if (!isOnline) {
+      const count = enqueueEmergencyContactMutation({
+        op: 'update',
+        local_id: contact.id,
+        data: toUpdatePayloadFromContact(next)
+      });
+      setPendingOutboxCount(count);
+      setSyncMessage('Hors ligne: favori en attente.');
+      return;
+    }
     const updated = await api.updatePatientEmergencyContact(token, contact.id, {
       is_favorite: !contact.is_favorite
     });
@@ -216,8 +343,14 @@ const PatientEmergencyContactsPage: React.FC = () => {
     if (!token) {
       return;
     }
-    await api.deletePatientEmergencyContact(token, contactId);
     setContacts((prev) => prev.filter((item) => item.id !== contactId));
+    if (!isOnline) {
+      const count = enqueueEmergencyContactMutation({ op: 'delete', local_id: contactId });
+      setPendingOutboxCount(count);
+      setSyncMessage('Hors ligne: suppression en attente.');
+      return;
+    }
+    await api.deletePatientEmergencyContact(token, contactId);
   };
 
   return (
@@ -232,6 +365,19 @@ const PatientEmergencyContactsPage: React.FC = () => {
       </IonHeader>
       <IonContent className="ion-padding app-content">
         <InstallBanner />
+        <IonCard className="surface-card">
+          <IonCardContent>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <IonBadge color={isOnline ? 'success' : 'warning'}>{isOnline ? 'En ligne' : 'Hors ligne'}</IonBadge>
+              {pendingOutboxCount > 0 ? <IonBadge color="warning">Actions en attente: {pendingOutboxCount}</IonBadge> : null}
+            </div>
+            {syncMessage ? (
+              <IonText color="medium">
+                <p style={{ marginBottom: 0 }}>{syncMessage}</p>
+              </IonText>
+            ) : null}
+          </IonCardContent>
+        </IonCard>
 
         <IonCard className="surface-card" style={{ borderRadius: '20px' }}>
           <IonCardHeader>

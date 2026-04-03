@@ -38,6 +38,10 @@ use Laravel\Sanctum\HasApiTokens;
     'chronic_diseases',
     'blood_type',
     'emergency_notes',
+    'weight_kg',
+    'height_cm',
+    'surgical_history',
+    'vaccination_up_to_date',
     'password',
     'role',
     'account_status',
@@ -70,6 +74,9 @@ class User extends Authenticatable
             'years_experience' => 'integer',
             'age' => 'integer',
             'date_of_birth' => 'date',
+            'weight_kg' => 'float',
+            'height_cm' => 'float',
+            'vaccination_up_to_date' => 'boolean',
         ];
     }
 

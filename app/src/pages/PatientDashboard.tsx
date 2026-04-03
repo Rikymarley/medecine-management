@@ -13,6 +13,7 @@ import {
   IonLabel,
   IonSelect,
   IonSelectOption,
+  IonTextarea,
   IonPage,
   IonText,
   IonTitle,
@@ -54,6 +55,10 @@ const PatientDashboard: React.FC = () => {
     '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-'
   >('');
   const [emergencyNotes, setEmergencyNotes] = useState('');
+  const [weightKg, setWeightKg] = useState('');
+  const [heightCm, setHeightCm] = useState('');
+  const [surgicalHistory, setSurgicalHistory] = useState('');
+  const [vaccinationUpToDate, setVaccinationUpToDate] = useState<'' | 'yes' | 'no'>('');
   const [saving, setSaving] = useState(false);
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -106,6 +111,16 @@ const PatientDashboard: React.FC = () => {
         setChronicDiseases(normalizeText(me.chronic_diseases));
         setBloodType((me.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
         setEmergencyNotes(normalizeText(me.emergency_notes));
+        setWeightKg(me.weight_kg === null || me.weight_kg === undefined ? '' : String(me.weight_kg));
+        setHeightCm(me.height_cm === null || me.height_cm === undefined ? '' : String(me.height_cm));
+        setSurgicalHistory(normalizeText(me.surgical_history));
+        setVaccinationUpToDate(
+          me.vaccination_up_to_date === null || me.vaccination_up_to_date === undefined
+            ? ''
+            : me.vaccination_up_to_date
+            ? 'yes'
+            : 'no'
+        );
       })
       .catch(() => {
         if (profileCacheKey) {
@@ -124,6 +139,16 @@ const PatientDashboard: React.FC = () => {
               setChronicDiseases(normalizeText((me as any)?.chronic_diseases));
               setBloodType(((me as any)?.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
               setEmergencyNotes(normalizeText((me as any)?.emergency_notes));
+              setWeightKg((me as any)?.weight_kg === null || (me as any)?.weight_kg === undefined ? '' : String((me as any)?.weight_kg));
+              setHeightCm((me as any)?.height_cm === null || (me as any)?.height_cm === undefined ? '' : String((me as any)?.height_cm));
+              setSurgicalHistory(normalizeText((me as any)?.surgical_history));
+              setVaccinationUpToDate(
+                (me as any)?.vaccination_up_to_date === null || (me as any)?.vaccination_up_to_date === undefined
+                  ? ''
+                  : (me as any)?.vaccination_up_to_date
+                  ? 'yes'
+                  : 'no'
+              );
               setMessage('Hors ligne: profil local charge.');
               return;
             } catch {
@@ -142,6 +167,16 @@ const PatientDashboard: React.FC = () => {
         setChronicDiseases(normalizeText(user?.chronic_diseases));
         setBloodType((user?.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
         setEmergencyNotes(normalizeText(user?.emergency_notes));
+        setWeightKg(user?.weight_kg === null || user?.weight_kg === undefined ? '' : String(user?.weight_kg));
+        setHeightCm(user?.height_cm === null || user?.height_cm === undefined ? '' : String(user?.height_cm));
+        setSurgicalHistory(normalizeText(user?.surgical_history));
+        setVaccinationUpToDate(
+          user?.vaccination_up_to_date === null || user?.vaccination_up_to_date === undefined
+            ? ''
+            : user?.vaccination_up_to_date
+            ? 'yes'
+            : 'no'
+        );
       });
   }, [
     profileCacheKey,
@@ -152,10 +187,14 @@ const PatientDashboard: React.FC = () => {
     user?.blood_type,
     user?.chronic_diseases,
     user?.emergency_notes,
+    user?.height_cm,
     user?.gender,
     user?.name,
     user?.ninu,
     user?.phone,
+    user?.surgical_history,
+    user?.vaccination_up_to_date,
+    user?.weight_kg,
     user?.whatsapp
   ]);
 
@@ -179,11 +218,15 @@ const PatientDashboard: React.FC = () => {
       allergies.trim(),
       chronicDiseases.trim(),
       bloodType,
-      emergencyNotes.trim()
+      emergencyNotes.trim(),
+      weightKg.trim(),
+      heightCm.trim(),
+      surgicalHistory.trim(),
+      vaccinationUpToDate
     ];
     const done = checks.filter(Boolean).length;
     return Math.round((done / checks.length) * 100);
-  }, [address, age, allergies, bloodType, chronicDiseases, emergencyNotes, gender, name, ninu, phone, whatsapp]);
+  }, [address, age, allergies, bloodType, chronicDiseases, emergencyNotes, gender, heightCm, name, ninu, phone, surgicalHistory, vaccinationUpToDate, weightKg, whatsapp]);
 
   const saveProfile = async () => {
     if (!token) {
@@ -208,7 +251,11 @@ const PatientDashboard: React.FC = () => {
         allergies: allergies.trim() || null,
         chronic_diseases: chronicDiseases.trim() || null,
         blood_type: bloodType || null,
-        emergency_notes: emergencyNotes.trim() || null
+        emergency_notes: emergencyNotes.trim() || null,
+        weight_kg: weightKg.trim() ? Number(weightKg) : null,
+        height_cm: heightCm.trim() ? Number(heightCm) : null,
+        surgical_history: surgicalHistory.trim() || null,
+        vaccination_up_to_date: vaccinationUpToDate === '' ? null : vaccinationUpToDate === 'yes'
       });
       setMessage('Profil mis a jour.');
     } catch (err) {
@@ -386,6 +433,28 @@ const PatientDashboard: React.FC = () => {
                     <IonInput disabled={!editMode} value={allergies} onIonInput={(e) => setAllergies(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
+                    <IonLabel position="stacked">Poids (kg)</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      type="number"
+                      inputmode="decimal"
+                      step="0.1"
+                      value={weightKg}
+                      onIonInput={(e) => setWeightKg(e.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Taille (cm)</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      type="number"
+                      inputmode="decimal"
+                      step="0.1"
+                      value={heightCm}
+                      onIonInput={(e) => setHeightCm(e.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
                     <IonLabel position="stacked">Maladies chroniques</IonLabel>
                     <IonInput
                       disabled={!editMode}
@@ -413,6 +482,15 @@ const PatientDashboard: React.FC = () => {
                       <IonSelectOption value="O-">O-</IonSelectOption>
                     </IonSelect>
                   </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Antecedents chirurgicaux</IonLabel>
+                    <IonTextarea
+                      disabled={!editMode}
+                      autoGrow
+                      value={surgicalHistory}
+                      onIonInput={(e) => setSurgicalHistory(e.detail.value ?? '')}
+                    />
+                  </IonItem>
                 </>
               ) : null}
             </div>
@@ -433,6 +511,18 @@ const PatientDashboard: React.FC = () => {
                   <IonItem lines="none">
                     <IonLabel position="stacked">Notes d'urgence</IonLabel>
                     <IonInput disabled={!editMode} value={emergencyNotes} onIonInput={(e) => setEmergencyNotes(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Carnet de vaccination a jour</IonLabel>
+                    <IonSelect
+                      disabled={!editMode}
+                      value={vaccinationUpToDate}
+                      onIonChange={(e) => setVaccinationUpToDate((e.detail.value as '' | 'yes' | 'no') ?? '')}
+                    >
+                      <IonSelectOption value="">Non precise</IonSelectOption>
+                      <IonSelectOption value="yes">Oui</IonSelectOption>
+                      <IonSelectOption value="no">Non</IonSelectOption>
+                    </IonSelect>
                   </IonItem>
                   <div style={{ padding: '0 12px 12px' }}>
                     <IonButton
