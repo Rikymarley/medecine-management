@@ -31,6 +31,7 @@ const PatientPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [doctorFilter, setDoctorFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const pageSize = 12;
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
@@ -46,9 +47,7 @@ const PatientPrescriptionsPage: React.FC = () => {
         const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
         if (Array.isArray(cachedData)) {
           setPrescriptions(cachedData);
-          if (cachedData.length > 0) {
-            return;
-          }
+          // Keep cached data for instant paint, then refresh from API to avoid stale statuses.
         }
       } catch {
         localStorage.removeItem(cacheKey);
@@ -76,17 +75,31 @@ const PatientPrescriptionsPage: React.FC = () => {
       (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime()
     );
   }, [prescriptions]);
-  const totalPages = Math.max(1, Math.ceil(sortedPrescriptions.length / pageSize));
+  const doctorNames = useMemo(
+    () => Array.from(new Set(sortedPrescriptions.map((p) => p.doctor_name).filter(Boolean))).sort(),
+    [sortedPrescriptions]
+  );
+  const filteredPrescriptions = useMemo(() => {
+    if (doctorFilter === 'all') {
+      return sortedPrescriptions;
+    }
+    return sortedPrescriptions.filter((p) => p.doctor_name === doctorFilter);
+  }, [doctorFilter, sortedPrescriptions]);
+  const totalPages = Math.max(1, Math.ceil(filteredPrescriptions.length / pageSize));
   const pagedPrescriptions = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return sortedPrescriptions.slice(start, start + pageSize);
-  }, [page, sortedPrescriptions]);
+    return filteredPrescriptions.slice(start, start + pageSize);
+  }, [filteredPrescriptions, page]);
 
   useEffect(() => {
     if (page > totalPages) {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [doctorFilter]);
 
   return (
     <IonPage>
@@ -107,37 +120,64 @@ const PatientPrescriptionsPage: React.FC = () => {
                 <p>Aucune ordonnance pour le moment.</p>
               </IonText>
             ) : (
-              <IonList>
-                {pagedPrescriptions.map((prescription) => (
-                  <IonItem
-                    key={prescription.id}
-                    lines="full"
-                    button
-                    detail
-                    onClick={() => ionRouter.push(`/patient/prescriptions/${prescription.id}`, 'forward', 'push')}
+              <>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  <IonButton
+                    size="small"
+                    fill={doctorFilter === 'all' ? 'solid' : 'outline'}
+                    onClick={() => setDoctorFilter('all')}
                   >
-                    <IonLabel>
-                      <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <IonIcon icon={medkitOutline} color="success" />
-                        <span>Dr. {prescription.doctor_name}</span>
-                      </h3>
-                      <p>Code ordonnance: {getPrescriptionCode(prescription)}</p>
-                      <div className="status-row">
-                        <span>Statut:</span>
-                        <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
-                          {getPrescriptionStatusLabel(prescription.status)}
+                    Tous les docteurs
+                  </IonButton>
+                  {doctorNames.map((doctorName) => (
+                    <IonButton
+                      key={doctorName}
+                      size="small"
+                      fill={doctorFilter === doctorName ? 'solid' : 'outline'}
+                      onClick={() => setDoctorFilter(doctorName)}
+                    >
+                      {doctorName}
+                    </IonButton>
+                  ))}
+                </div>
+                {filteredPrescriptions.length === 0 ? (
+                  <IonText color="medium">
+                    <p>Aucune ordonnance pour ce docteur.</p>
+                  </IonText>
+                ) : (
+                  <IonList>
+                    {pagedPrescriptions.map((prescription) => (
+                      <IonItem
+                        key={prescription.id}
+                        lines="full"
+                        button
+                        detail
+                        onClick={() => ionRouter.push(`/patient/prescriptions/${prescription.id}`, 'forward', 'push')}
+                      >
+                        <IonLabel>
+                          <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <IonIcon icon={medkitOutline} color="success" />
+                            <span>Dr. {prescription.doctor_name}</span>
+                          </h3>
+                          <p>Code ordonnance: {getPrescriptionCode(prescription)}</p>
+                          <div className="status-row">
+                            <span>Statut:</span>
+                            <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
+                              {getPrescriptionStatusLabel(prescription.status)}
+                            </IonBadge>
+                          </div>
+                          <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
+                        </IonLabel>
+                        <IonBadge slot="end" color="primary">
+                          {prescription.medicine_requests.length}
                         </IonBadge>
-                      </div>
-                      <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
-                    </IonLabel>
-                    <IonBadge slot="end" color="primary">
-                      {prescription.medicine_requests.length}
-                    </IonBadge>
-                  </IonItem>
-                ))}
-              </IonList>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                )}
+              </>
             )}
-            {sortedPrescriptions.length > pageSize ? (
+            {filteredPrescriptions.length > pageSize ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
                 <IonButton fill="outline" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
                   Precedent

@@ -8,9 +8,19 @@ use App\Models\MedicalHistoryEntry;
 use App\Models\Prescription;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class MedicalHistoryController extends Controller
 {
+    private function generateEntryCode(): string
+    {
+        do {
+            $code = 'MH-' . strtoupper(Str::random(8));
+        } while (MedicalHistoryEntry::query()->where('entry_code', $code)->exists());
+
+        return $code;
+    }
+
     private function validatePayload(Request $request): array
     {
         $data = $request->validate([
@@ -55,7 +65,7 @@ class MedicalHistoryController extends Controller
             ->with([
                 'doctor:id,name',
                 'familyMember:id,name',
-                'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at',
+                'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
             ])
             ->orderByDesc('started_at')
             ->orderByDesc('created_at');
@@ -77,14 +87,29 @@ class MedicalHistoryController extends Controller
             ->exists();
     }
 
+    private function ensurePrescriptionBelongsToPatient(?int $prescriptionId, int $patientUserId): bool
+    {
+        if (!$prescriptionId) {
+            return true;
+        }
+
+        return Prescription::query()
+            ->where('id', $prescriptionId)
+            ->where('patient_user_id', $patientUserId)
+            ->exists();
+    }
+
     private function formatEntry(MedicalHistoryEntry $entry): array
     {
+        $canEditByPatient = $entry->doctor_user_id === null;
         return [
             ...$entry->toArray(),
             'doctor_name' => $entry->doctor?->name,
             'family_member_name' => $entry->familyMember?->name,
             'prescription_requested_at' => optional($entry->prescription?->requested_at)->toIso8601String(),
             'prescription_print_code' => $entry->prescription?->print_code,
+            'can_edit_by_patient' => $canEditByPatient,
+            'can_delete_by_patient' => $canEditByPatient,
         ];
     }
 
@@ -93,8 +118,7 @@ class MedicalHistoryController extends Controller
         $patient = $request->user();
         $familyMemberId = $request->query('family_member_id');
 
-        $query = $this->listBaseQuery($patient->id)
-            ->where('visibility', '!=', 'doctor_only');
+        $query = $this->listBaseQuery($patient->id);
 
         if ($familyMemberId !== null && $familyMemberId !== '') {
             $query->where('family_member_id', (int) $familyMemberId);
@@ -116,6 +140,7 @@ class MedicalHistoryController extends Controller
 
         $entry = MedicalHistoryEntry::create([
             ...$data,
+            'entry_code' => $this->generateEntryCode(),
             'patient_user_id' => $patient->id,
             'doctor_user_id' => null,
         ])->load(['doctor:id,name', 'familyMember:id,name']);
@@ -138,7 +163,7 @@ class MedicalHistoryController extends Controller
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
-        if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
+        if (!$this->ensurePrescriptionBelongsToPatient($data['prescription_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
@@ -173,7 +198,11 @@ class MedicalHistoryController extends Controller
         $familyMemberId = $request->query('family_member_id');
 
         $query = $this->listBaseQuery($patient->id)
-            ->where('visibility', '!=', 'patient_only');
+            ->where('visibility', '!=', 'patient_only')
+            ->where(function ($q) use ($doctor) {
+                $q->where('visibility', '!=', 'doctor_only')
+                    ->orWhere('doctor_user_id', $doctor->id);
+            });
 
         if ($familyMemberId !== null && $familyMemberId !== '') {
             $query->where('family_member_id', (int) $familyMemberId);
@@ -201,6 +230,7 @@ class MedicalHistoryController extends Controller
 
         $entry = MedicalHistoryEntry::create([
             ...$data,
+            'entry_code' => $this->generateEntryCode(),
             'patient_user_id' => $patient->id,
             'doctor_user_id' => $doctor->id,
         ])->load(['doctor:id,name', 'familyMember:id,name']);
@@ -218,6 +248,9 @@ class MedicalHistoryController extends Controller
         if ((int) $entry->patient_user_id !== (int) $patient->id) {
             return response()->json(['message' => 'Entree invalide.'], 422);
         }
+        if ($entry->visibility === 'doctor_only' && (int) $entry->doctor_user_id !== (int) $doctor->id) {
+            return response()->json(['message' => 'Acces interdit a cette entree doctor_only.'], 403);
+        }
 
         $data = $this->validatePayload($request);
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
@@ -230,5 +263,35 @@ class MedicalHistoryController extends Controller
         ]);
 
         return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name'])));
+    }
+
+    public function doctorLinkPrescription(Request $request, User $patient, MedicalHistoryEntry $entry)
+    {
+        $doctor = $request->user();
+        if ($patient->role !== 'patient' || !$this->doctorHasPatientLink($doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        if ((int) $entry->patient_user_id !== (int) $patient->id) {
+            return response()->json(['message' => 'Entree invalide.'], 422);
+        }
+        if ($entry->visibility === 'doctor_only' && (int) $entry->doctor_user_id !== (int) $doctor->id) {
+            return response()->json(['message' => 'Acces interdit a cette entree doctor_only.'], 403);
+        }
+
+        $data = $request->validate([
+            'prescription_id' => ['required', 'integer', 'exists:prescriptions,id'],
+        ]);
+
+        if (!$this->ensurePrescriptionLinkForDoctor((int) $data['prescription_id'], $doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
+        }
+
+        $entry->update([
+            'prescription_id' => (int) $data['prescription_id'],
+            'doctor_user_id' => $doctor->id,
+        ]);
+
+        return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name', 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code'])));
     }
 }

@@ -23,6 +23,10 @@ Route::get('/pharmacy/me', [PharmacyController::class, 'me'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 Route::patch('/pharmacy/me', [PharmacyController::class, 'updateMe'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:30,1']);
+Route::post('/pharmacy/me/logo', [PharmacyController::class, 'uploadLogo'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:20,1']);
+Route::post('/pharmacy/me/storefront-image', [PharmacyController::class, 'uploadStorefrontImage'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:20,1']);
 Route::get('/medicines', [MedicineController::class, 'index']);
 Route::get('/medicines/{medicine}', [MedicineController::class, 'show']);
 
@@ -43,6 +47,8 @@ Route::get('/doctor/prescriptions/{prescription}/print-data', [PrescriptionContr
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::patch('/doctor/prescriptions/{prescription}/link-patient-by-ninu', [PrescriptionController::class, 'linkPatientByNinu'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
+Route::post('/doctor/prescriptions/{prescription}/create-and-link-patient', [PrescriptionController::class, 'createAndLinkPatient'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 Route::get('/doctor/patients/{patient}', [PrescriptionController::class, 'doctorPatientProfile'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/patients/{patient}/family-members', [FamilyMemberController::class, 'indexForDoctor'])
@@ -61,6 +67,8 @@ Route::get('/prescriptions/{prescription}', [PrescriptionController::class, 'sho
 
 Route::post('/pharmacy-responses', [PharmacyResponseController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:120,1']);
+Route::patch('/pharmacy/prescriptions/{prescription}/reactivate', [PrescriptionController::class, 'reactivateForPharmacy'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:30,1']);
 Route::get('/patient/prescriptions/{prescription}/purchases', [PatientMedicinePurchaseController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/patient/prescriptions/{prescription}/purchases', [PatientMedicinePurchaseController::class, 'upsert'])
@@ -96,6 +104,8 @@ Route::get('/doctor/patients/{patient}/medical-history', [MedicalHistoryControll
 Route::post('/doctor/patients/{patient}/medical-history', [MedicalHistoryController::class, 'doctorStore'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/medical-history/{entry}', [MedicalHistoryController::class, 'doctorUpdate'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
+Route::patch('/doctor/patients/{patient}/medical-history/{entry}/link-prescription', [MedicalHistoryController::class, 'doctorLinkPrescription'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 
 Route::middleware('auth:sanctum')->group(function () {

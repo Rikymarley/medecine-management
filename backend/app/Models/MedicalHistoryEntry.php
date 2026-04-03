@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class MedicalHistoryEntry extends Model
 {
     protected $fillable = [
+        'entry_code',
         'patient_user_id',
         'family_member_id',
         'doctor_user_id',

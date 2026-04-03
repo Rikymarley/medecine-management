@@ -237,3 +237,8 @@ ion-badge.status-completed {
     transform: translateY(0);
   }
 }
+
+.time-input-no-icon::-webkit-calendar-picker-indicator {
+  display: none;
+  -webkit-appearance: none;
+}

@@ -13,20 +13,21 @@ import {
   IonItem,
   IonLabel,
   IonList,
+  IonModal,
   IonPage,
+  IonSpinner,
   IonText,
   IonTitle,
-  IonToolbar,
-  useIonRouter
+  IonToolbar
 } from '@ionic/react';
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiPrescription } from '../services/api';
+import { api, ApiMedicalHistoryEntry, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
-import { formatDateTime } from '../utils/time';
+import { formatDateHaiti, formatDateTime } from '../utils/time';
 
 const escapeHtml = (value: string): string =>
   value
@@ -54,15 +55,33 @@ const formatPrintDate = (value: string | null): string => {
 };
 
 const DoctorPrescriptionDetailPage: React.FC = () => {
-  const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const [prescription, setPrescription] = useState<ApiPrescription | null>(null);
   const [printMessage, setPrintMessage] = useState<string | null>(null);
   const [linkNinu, setLinkNinu] = useState('');
+  const [linkDob, setLinkDob] = useState('');
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
+  const [showHistoryPicker, setShowHistoryPicker] = useState(false);
+  const [loadingHistoryEntries, setLoadingHistoryEntries] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<ApiMedicalHistoryEntry[]>([]);
+  const [historyPickerError, setHistoryPickerError] = useState<string | null>(null);
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
+  const familyMemberIdFromQuery = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get('familyMemberId');
+    if (!raw) {
+      return null;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [location.search]);
+  const historyScope = useMemo(() => new URLSearchParams(location.search).get('scope'), [location.search]);
+  const familyMemberNameFromQuery = useMemo(
+    () => new URLSearchParams(location.search).get('familyMemberName'),
+    [location.search]
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -193,6 +212,102 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
     }
   };
 
+  const createAndLinkPatient = async () => {
+    if (!token || !prescription) {
+      return;
+    }
+    setIsLinking(true);
+    setLinkMessage(null);
+    try {
+      const updated = await api.createAndLinkDoctorPrescriptionPatient(token, prescription.id, {
+        ninu: linkNinu.trim() || undefined,
+        date_of_birth: linkDob || undefined
+      });
+      setPrescription(updated);
+      setLinkMessage('Patient cree/lie avec succes. Historique medical active.');
+      if (cacheKey) {
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          try {
+            const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
+            if (Array.isArray(cachedData)) {
+              const next = cachedData.map((row) => (row.id === updated.id ? updated : row));
+              localStorage.setItem(cacheKey, JSON.stringify(next));
+            }
+          } catch {
+            localStorage.removeItem(cacheKey);
+          }
+        }
+      }
+    } catch (err) {
+      setLinkMessage(err instanceof Error ? err.message : 'Echec de creation/liaison patient.');
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const openHistoryPicker = async () => {
+    if (!token || !prescription?.patient_user_id) {
+      return;
+    }
+    const targetFamilyMemberId =
+      historyScope === 'principal'
+        ? null
+        : familyMemberIdFromQuery ?? prescription.family_member_id ?? null;
+    setShowHistoryPicker(true);
+    setLoadingHistoryEntries(true);
+    setHistoryPickerError(null);
+    try {
+      const rows = await api.getDoctorPatientMedicalHistory(token, prescription.patient_user_id, {
+        family_member_id: targetFamilyMemberId ?? undefined
+      });
+      setHistoryEntries(
+        targetFamilyMemberId
+          ? rows.filter((entry) => entry.family_member_id === targetFamilyMemberId)
+          : rows.filter((entry) => !entry.family_member_id)
+      );
+    } catch (err) {
+      setHistoryPickerError(err instanceof Error ? err.message : "Impossible de charger l'historique.");
+      setHistoryEntries([]);
+    } finally {
+      setLoadingHistoryEntries(false);
+    }
+  };
+
+  const linkPrescriptionToHistory = async (entry: ApiMedicalHistoryEntry) => {
+    if (!token || !prescription?.patient_user_id) {
+      return;
+    }
+    setIsLinking(true);
+    setHistoryPickerError(null);
+    try {
+      await api.linkDoctorPatientMedicalHistoryPrescription(
+        token,
+        prescription.patient_user_id,
+        entry.id,
+        prescription.id
+      );
+      setShowHistoryPicker(false);
+      setLinkMessage(`Ordonnance liee a l'historique ${entry.entry_code ?? `MH-${entry.id}`}.`);
+      const params = new URLSearchParams(location.search);
+      const familyMemberId = params.get('familyMemberId');
+      const familyMemberName = params.get('familyMemberName');
+      const patientName = prescription.patient_name ?? '';
+      const targetPath = `/doctor/patients/${encodeURIComponent(patientName)}`;
+      const targetQuery = new URLSearchParams();
+      if (familyMemberId && familyMemberName) {
+        targetQuery.set('familyMemberId', familyMemberId);
+        targetQuery.set('familyMemberName', familyMemberName);
+      }
+      const query = targetQuery.toString();
+      window.location.assign(query ? `${targetPath}?${query}` : targetPath);
+    } catch (err) {
+      setHistoryPickerError(err instanceof Error ? err.message : 'Echec de liaison.');
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -213,7 +328,12 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
           <>
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>{prescription.patient_name}</IonCardTitle>
+                <IonCardTitle>
+                  {prescription.familyMember?.name ||
+                    prescription.family_member?.name ||
+                    familyMemberNameFromQuery ||
+                    prescription.patient_name}
+                </IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
                 <div className="status-row">
@@ -230,32 +350,29 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                 <IonButton
                   fill="outline"
                   disabled={!prescription.patient_user_id}
-                  onClick={() => {
-                    if (!prescription.patient_user_id) {
-                      return;
-                    }
-                    const base = `/doctor/patients/${encodeURIComponent(prescription.patient_name)}`;
-                    const params = new URLSearchParams();
-                    params.set('prescriptionId', String(prescription.id));
-                    if (prescription.family_member_id) {
-                      params.set('familyMemberId', String(prescription.family_member_id));
-                    }
-                    ionRouter.push(`${base}?${params.toString()}`, 'forward', 'push');
-                  }}
+                  onClick={() => openHistoryPicker().catch(() => undefined)}
                 >
                   Ajouter a l historique
                 </IonButton>
                 {!prescription.patient_user_id ? (
                   <>
                     <p style={{ marginTop: '8px' }}>
-                      Historique medical indisponible pour un patient non inscrit.
+                      Historique medical indisponible tant que cette ordonnance n'est pas liee a un patient.
                     </p>
                     <IonItem lines="none">
-                      <IonLabel position="stacked">Lier patient par NINU</IonLabel>
+                      <IonLabel position="stacked">NINU (optionnel)</IonLabel>
                       <IonInput
                         value={linkNinu}
-                        placeholder="Entrer le NINU du patient inscrit"
+                        placeholder="Entrer le NINU du patient"
                         onIonInput={(event) => setLinkNinu(event.detail.value ?? '')}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Date de naissance (optionnel)</IonLabel>
+                      <IonInput
+                        type="date"
+                        value={linkDob}
+                        onIonInput={(event) => setLinkDob(event.detail.value ?? '')}
                       />
                     </IonItem>
                     <IonButton
@@ -263,7 +380,15 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                       disabled={isLinking || !linkNinu.trim()}
                       onClick={() => linkPatientWithNinu().catch(() => undefined)}
                     >
-                      {isLinking ? 'Liaison...' : 'Lier et activer historique'}
+                      {isLinking ? 'Liaison...' : 'Lier patient existant (NINU)'}
+                    </IonButton>
+                    <IonButton
+                      fill="outline"
+                      color="success"
+                      disabled={isLinking}
+                      onClick={() => createAndLinkPatient().catch(() => undefined)}
+                    >
+                      {isLinking ? 'Creation...' : 'Creer/Lier et activer historique'}
                     </IonButton>
                   </>
                 ) : null}
@@ -271,6 +396,49 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                 {printMessage ? <p style={{ marginTop: '8px' }}>{printMessage}</p> : null}
               </IonCardContent>
             </IonCard>
+            <IonModal isOpen={showHistoryPicker} onDidDismiss={() => setShowHistoryPicker(false)}>
+              <IonContent className="ion-padding app-content">
+                <h2 style={{ marginTop: 0 }}>Selectionner un historique</h2>
+                <IonText color="medium">
+                  <p>Choisissez le code d'historique pour lier cette ordonnance.</p>
+                </IonText>
+
+                {loadingHistoryEntries ? (
+                  <div style={{ display: 'grid', placeItems: 'center', minHeight: '160px' }}>
+                    <IonSpinner name="crescent" />
+                  </div>
+                ) : historyEntries.length === 0 ? (
+                  <IonText color="medium">
+                    <p>Aucune entree d'historique disponible pour ce patient.</p>
+                  </IonText>
+                ) : (
+                  <IonList>
+                    {historyEntries.map((entry) => (
+                      <IonItem
+                        key={entry.id}
+                        button
+                        detail={false}
+                        onClick={() => linkPrescriptionToHistory(entry).catch(() => undefined)}
+                      >
+                        <IonLabel>
+                          <h3 id={`history-code-${entry.id}`}>{entry.entry_code ?? `MH-${entry.id}`}</h3>
+                          <p id={`history-title-${entry.id}`}>{entry.title}</p>
+                          {entry.details ? <p id={`history-details-${entry.id}`}>{entry.details}</p> : null}
+                        </IonLabel>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                )}
+                {historyPickerError ? (
+                  <IonText color="danger">
+                    <p>{historyPickerError}</p>
+                  </IonText>
+                ) : null}
+                <IonButton expand="block" fill="outline" color="medium" onClick={() => setShowHistoryPicker(false)}>
+                  Fermer
+                </IonButton>
+              </IonContent>
+            </IonModal>
 
             <IonCard className="surface-card">
               <IonCardHeader>

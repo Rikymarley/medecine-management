@@ -201,10 +201,19 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const prefilledPatient = params.get('patient');
+    const prefilledFamilyMemberName = params.get('familyMemberName');
+    const prefilledFamilyMemberIdRaw = params.get('familyMemberId');
+    const prefilledFamilyMemberId = prefilledFamilyMemberIdRaw ? Number(prefilledFamilyMemberIdRaw) : null;
     if (prefilledPatient) {
       setPatientName(prefilledPatient);
       const matching = prescriptions.find((p) => p.patient_name === prefilledPatient && p.patient_user_id);
       setSelectedPatientUserId(matching?.patient_user_id ?? null);
+      if (prefilledFamilyMemberName) {
+        setFamilyMemberName(prefilledFamilyMemberName);
+      }
+      if (prefilledFamilyMemberId && Number.isFinite(prefilledFamilyMemberId)) {
+        setSelectedFamilyMemberId(prefilledFamilyMemberId);
+      }
     }
   }, [location.search, prescriptions]);
 
@@ -367,7 +376,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
 
     if (!selectedPatientUserId) {
-      setError("Selectionnez un patient existant ou creez d'abord un patient non inscrit.");
+      setError("Selectionnez un patient existant ou creez d'abord un patient.");
       return;
     }
 
@@ -462,9 +471,9 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         return next;
       });
       setSelectedPatientUserId(created.id);
-      setGuestMessage('Patient non inscrit cree et selectionne.');
+      setGuestMessage('Patient cree et selectionne.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Echec de creation du patient non inscrit.');
+      setError(err instanceof Error ? err.message : 'Echec de creation du patient.');
     } finally {
       setLoading(false);
     }
@@ -560,12 +569,15 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       notes: ''
     }));
 
+    const dbIds = new Set(fromDb.map((row) => row.patientUserId));
+
     const fromGuests = guestPatients
+      .filter((g) => !dbIds.has(g.id))
       .filter((g) => g.name.toLowerCase().includes(query))
       .map((g) => ({
         key: `guest-${g.id}`,
         label: g.name,
-        subtitle: [g.phone ? `Tel: ${g.phone}` : null, 'Non inscrit'].filter(Boolean).join(' · '),
+        subtitle: [g.phone ? `Tel: ${g.phone}` : null, 'Patient cree'].filter(Boolean).join(' · '),
         patientUserId: g.id,
         phone: g.phone ?? '',
         ninu: g.ninu ?? '',
@@ -687,7 +699,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                   />
                 </IonItem>
                 <IonItem>
-                  <IonLabel position="stacked">Adresse (patient non inscrit)</IonLabel>
+                  <IonLabel position="stacked">Adresse (optionnel)</IonLabel>
                   <IonInput
                     value={patientAddress}
                     placeholder="Adresse"
@@ -721,7 +733,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                   <IonTextarea
                     autoGrow
                     value={patientNotes}
-                    placeholder="Infos utiles pour ce patient non inscrit"
+                    placeholder="Infos utiles pour ce patient"
                     onIonInput={(event) => setPatientNotes(event.detail.value ?? '')}
                   />
                 </IonItem>
@@ -748,7 +760,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                     disabled={loading || !patientName.trim()}
                     onClick={() => createGuestPatient().catch(() => undefined)}
                   >
-                    Creer ce patient non inscrit
+                    Creer ce patient
                   </IonButton>
                 ) : null}
                 {guestMessage ? (

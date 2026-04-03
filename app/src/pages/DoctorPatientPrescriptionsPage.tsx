@@ -8,8 +8,6 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
-  IonFab,
-  IonFabButton,
   IonHeader,
   IonIcon,
   IonInput,
@@ -24,9 +22,17 @@ import {
   IonTextarea,
   IonTitle,
   IonToolbar,
-  useIonRouter
+  useIonRouter,
+  useIonViewWillEnter
 } from '@ionic/react';
-import { addOutline, createOutline, medicalOutline } from 'ionicons/icons';
+import {
+  chevronDownOutline,
+  chevronUpOutline,
+  createOutline,
+  documentTextOutline,
+  medicalOutline,
+  personOutline
+} from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router';
 import { useParams } from 'react-router';
@@ -68,6 +74,12 @@ const visibilityLabel: Record<ApiMedicalHistoryEntry['visibility'], string> = {
   doctor_only: 'Docteur seulement'
 };
 
+const visibilityColor: Record<ApiMedicalHistoryEntry['visibility'], string> = {
+  shared: 'primary',
+  patient_only: 'medium',
+  doctor_only: 'dark'
+};
+
 const DoctorPatientPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
@@ -78,6 +90,11 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<number | null>(null);
   const [medicalHistory, setMedicalHistory] = useState<ApiMedicalHistoryEntry[]>([]);
   const [patientProfile, setPatientProfile] = useState<ApiDoctorPatientProfile | null>(null);
+  const [isProfileCollapsed, setIsProfileCollapsed] = useState(false);
+  const [isFamilyCollapsed, setIsFamilyCollapsed] = useState(true);
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(true);
+  const [isPrescriptionsCollapsed, setIsPrescriptionsCollapsed] = useState(true);
+  const [expandedLinkedPrescriptions, setExpandedLinkedPrescriptions] = useState<Record<number, boolean>>({});
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [editingHistoryId, setEditingHistoryId] = useState<number | null>(null);
   const [savingHistory, setSavingHistory] = useState(false);
@@ -126,9 +143,6 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
         if (Array.isArray(cachedData)) {
           setPrescriptions(cachedData);
-          if (cachedData.length > 0) {
-            return;
-          }
         }
       } catch {
         localStorage.removeItem(cacheKey);
@@ -147,14 +161,21 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     loadPrescriptions().catch(() => undefined);
   }, [loadPrescriptions]);
 
+  useIonViewWillEnter(() => {
+    loadPrescriptions().catch(() => undefined);
+  });
+
   const patientPrescriptions = useMemo(() => {
     return prescriptions
       .filter((p) => p.patient_name.trim().toLowerCase() === decodedPatientName.trim().toLowerCase())
-      .filter((p) => (familyMemberId ? p.family_member_id === familyMemberId : true))
+      .filter((p) => (familyMemberId ? p.family_member_id === familyMemberId : !p.family_member_id))
       .sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime());
   }, [decodedPatientName, familyMemberId, prescriptions]);
 
-  const patientUserId = patientPrescriptions.find((p) => p.patient_user_id)?.patient_user_id ?? null;
+  const patientUserId =
+    prescriptions.find(
+      (p) => p.patient_name.trim().toLowerCase() === decodedPatientName.trim().toLowerCase() && p.patient_user_id
+    )?.patient_user_id ?? null;
 
   useEffect(() => {
     if (!token || !patientUserId) {
@@ -183,7 +204,11 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         family_member_id: familyMemberId ?? undefined
       })
       .then((rows) => {
-        const sorted = [...rows].sort((a, b) => {
+        const scopedRows = familyMemberId
+          ? rows
+          : rows.filter((entry) => !entry.family_member_id);
+
+        const sorted = [...scopedRows].sort((a, b) => {
           const aDate = a.started_at ?? a.created_at;
           const bDate = b.started_at ?? b.created_at;
           return new Date(bDate).getTime() - new Date(aDate).getTime();
@@ -192,14 +217,6 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       })
       .catch(() => setMedicalHistory([]));
   }, [familyMemberId, patientUserId, token]);
-
-  const statusCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    patientPrescriptions.forEach((p) => {
-      map[p.status] = (map[p.status] ?? 0) + 1;
-    });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [patientPrescriptions]);
 
   const totalMedicinesRequested = useMemo(
     () =>
@@ -216,6 +233,40 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     () => familyMembers.find((member) => member.id === selectedFamilyMemberId) ?? null,
     [familyMembers, selectedFamilyMemberId]
   );
+  const profileFamilyMember = useMemo(
+    () => familyMembers.find((member) => member.id === (familyMemberId ?? selectedFamilyMemberId)) ?? null,
+    [familyMemberId, familyMembers, selectedFamilyMemberId]
+  );
+  const scopedMedicalHistory = useMemo(
+    () =>
+      familyMemberId
+        ? medicalHistory.filter((entry) => entry.family_member_id === familyMemberId)
+        : medicalHistory.filter((entry) => !entry.family_member_id),
+    [familyMemberId, medicalHistory]
+  );
+  const historyCodesByPrescriptionId = useMemo(() => {
+    const map: Record<number, string[]> = {};
+    scopedMedicalHistory.forEach((entry) => {
+      if (!entry.prescription_id) {
+        return;
+      }
+      const code = entry.entry_code ?? `MH-${entry.id}`;
+      if (!map[entry.prescription_id]) {
+        map[entry.prescription_id] = [];
+      }
+      if (!map[entry.prescription_id].includes(code)) {
+        map[entry.prescription_id].push(code);
+      }
+    });
+    return map;
+  }, [scopedMedicalHistory]);
+  const activePatientName = profileFamilyMember?.name ?? familyMemberName ?? decodedPatientName;
+  const toggleLinkedPrescriptionDetails = (historyEntryId: number) => {
+    setExpandedLinkedPrescriptions((prev) => ({
+      ...prev,
+      [historyEntryId]: !prev[historyEntryId]
+    }));
+  };
 
   const resetHistoryForm = () => {
     setHistoryForm({
@@ -234,6 +285,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
 
   useEffect(() => {
     resetHistoryForm();
+    setHistoryPrefillApplied(false);
   }, [familyMemberId, prefillPrescriptionId]);
 
   useEffect(() => {
@@ -281,7 +333,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     }
 
     if (!patientUserId) {
-      setHistoryError("Impossible d'ajouter un historique: patient non inscrit.");
+      setHistoryError("Impossible d'ajouter un historique: patient introuvable.");
       return;
     }
 
@@ -342,84 +394,143 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         <InstallBanner />
         <IonCard className="surface-card">
           <IonCardHeader>
-            <IonCardTitle>Profil patient</IonCardTitle>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+              <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <IonIcon icon={personOutline} /> Profil patient
+              </IonCardTitle>
+              <IonButton fill="clear" size="small" onClick={() => setIsProfileCollapsed((prev) => !prev)}>
+                <IonIcon icon={isProfileCollapsed ? chevronDownOutline : chevronUpOutline} />
+              </IonButton>
+            </div>
           </IonCardHeader>
-          <IonCardContent>
-            <p>
-              <strong>Nom:</strong> {familyMemberName ?? decodedPatientName}
-            </p>
-            <p>
-              <strong>Telephone:</strong> {patientProfile?.phone ?? 'Non renseigne'}
-            </p>
-            <p>
-              <strong>NINU:</strong> {patientProfile?.ninu ?? 'Non renseigne'}
-            </p>
-            <p>
-              <strong>Date de naissance:</strong>{' '}
-              {patientProfile?.date_of_birth ? formatDateHaiti(patientProfile.date_of_birth) : 'Non renseignee'}
-            </p>
-            <p>
-              <strong>WhatsApp:</strong> {patientProfile?.whatsapp ?? 'Non renseigne'}
-            </p>
-            <p>
-              <strong>Adresse:</strong> {patientProfile?.address ?? 'Non renseignee'}
-            </p>
-            <p>
-              <strong>Age:</strong>{' '}
-              {patientProfile?.age === null || patientProfile?.age === undefined
-                ? 'Non precise'
-                : `${patientProfile.age} ans`}
-            </p>
-            <p>
-              <strong>Genre:</strong>{' '}
-              {patientProfile?.gender === 'male'
-                ? 'M'
-                : patientProfile?.gender === 'female'
-                ? 'F'
-                : 'Non precise'}
-            </p>
-            <p>
-              <strong>Allergies:</strong> {patientProfile?.allergies ?? 'Aucune'}
-            </p>
-            <p>
-              <strong>Maladies chroniques:</strong> {patientProfile?.chronic_diseases ?? 'Aucune'}
-            </p>
-            <p>
-              <strong>Groupe sanguin:</strong> {patientProfile?.blood_type ?? 'Non precise'}
-            </p>
-            <p>
-              <strong>Notes urgence:</strong> {patientProfile?.emergency_notes ?? 'Aucune'}
-            </p>
-            {familyMemberName ? (
-              <p>
-                <strong>Patient principal:</strong> {decodedPatientName}
-              </p>
-            ) : null}
-            <p>
-              <strong>Total ordonnances:</strong> {patientPrescriptions.length}
-            </p>
-            <p>
-              <strong>Total medicaments demandes:</strong> {totalMedicinesRequested}
-            </p>
-            <p>
-              <strong>Derniere ordonnance:</strong>{' '}
-              {patientPrescriptions[0] ? formatDateTime(patientPrescriptions[0].requested_at) : 'Aucune'}
-            </p>
-            {statusCounts.length > 0 ? (
-              <div>
-                <strong>Statuts:</strong>
-                {statusCounts.map(([status, count]) => (
-                  <p key={status}>
-                    {getPrescriptionStatusLabel(status)}: {count}
+          {!isProfileCollapsed ? (
+            <IonCardContent>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div
+                  style={{
+                    border: '1px solid var(--ion-color-light-shade)',
+                    borderRadius: '12px',
+                    padding: '10px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{activePatientName}</h2>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '1rem' }}>
+                        {patientProfile?.phone ?? 'Telephone: N/D'}
+                      </p>
+                      <p style={{ margin: '2px 0 0 0', fontSize: '1rem' }}>
+                        {patientProfile?.whatsapp ?? 'WhatsApp: N/D'}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '6px' }}>
+                      <IonBadge color="light">
+                        {profileFamilyMember?.age ?? patientProfile?.age ?? 'Age ?'} {(profileFamilyMember?.age ?? patientProfile?.age) ? 'ans' : ''}
+                      </IonBadge>
+                      {!profileFamilyMember ? (
+                        <IonBadge color="light">{patientProfile?.ninu ? 'NINU renseigne' : 'NINU manquant'}</IonBadge>
+                      ) : null}
+                      {profileFamilyMember ? <IonBadge color="medium">Membre de famille</IonBadge> : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <IonButton
+                    size="small"
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      params.set('patient', decodedPatientName);
+                      if (familyMemberId) {
+                        params.set('familyMemberId', String(familyMemberId));
+                      }
+                      if (familyMemberName) {
+                        params.set('familyMemberName', familyMemberName);
+                      }
+                      ionRouter.push(`/doctor/create-prescription?${params.toString()}`, 'forward', 'push');
+                    }}
+                  >
+                    ORDONNANCE +
+                  </IonButton>
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    onClick={() => {
+                      resetHistoryForm();
+                      setShowHistoryModal(true);
+                    }}
+                    disabled={!patientUserId}
+                  >
+                    HISTORIQUE +
+                  </IonButton>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+                  <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
+                    <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Identite</p>
+                    <p><strong>Date de naissance:</strong> {patientProfile?.date_of_birth ? formatDateHaiti(patientProfile.date_of_birth) : 'N/D'}</p>
+                    <p>
+                      <strong>Genre:</strong>{' '}
+                      {profileFamilyMember
+                        ? profileFamilyMember.gender === 'male'
+                          ? 'M'
+                          : profileFamilyMember.gender === 'female'
+                          ? 'F'
+                          : 'Non precise'
+                        : patientProfile?.gender === 'male'
+                        ? 'M'
+                        : patientProfile?.gender === 'female'
+                        ? 'F'
+                        : 'Non precise'}
+                    </p>
+                    <p><strong>Adresse:</strong> {patientProfile?.address ?? 'N/D'}</p>
+                    {!profileFamilyMember ? <p><strong>NINU:</strong> {patientProfile?.ninu ?? 'N/D'}</p> : null}
+                    {profileFamilyMember ? (
+                      <p><strong>Relation:</strong> {profileFamilyMember.relationship ?? 'Non precisee'}</p>
+                    ) : null}
+                    {profileFamilyMember ? (
+                      <p><strong>Patient principal:</strong> {decodedPatientName}</p>
+                    ) : null}
+                  </div>
+                  <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
+                    <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Sante</p>
+                    <p><strong>Groupe sanguin:</strong> {profileFamilyMember?.blood_type ?? patientProfile?.blood_type ?? 'Non precise'}</p>
+                    <p><strong>Allergies:</strong> {profileFamilyMember?.allergies ?? patientProfile?.allergies ?? 'Aucune'}</p>
+                    <p><strong>Maladies chroniques:</strong> {profileFamilyMember?.chronic_diseases ?? patientProfile?.chronic_diseases ?? 'Aucune'}</p>
+                    <p><strong>Notes urgence:</strong> {profileFamilyMember?.emergency_notes ?? patientProfile?.emergency_notes ?? 'Aucune'}</p>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Statistiques</p>
+                  <p><strong>Total ordonnances:</strong> {patientPrescriptions.length}</p>
+                  <p><strong>Total medicaments demandes:</strong> {totalMedicinesRequested}</p>
+                  <p>
+                    <strong>Derniere ordonnance:</strong>{' '}
+                    {patientPrescriptions[0] ? formatDateTime(patientPrescriptions[0].requested_at) : 'Aucune'}
                   </p>
-                ))}
+                </div>
               </div>
-            ) : null}
-            {!familyMemberId ? (
-              <div>
-                <strong>Membres de famille:</strong>
+            </IonCardContent>
+          ) : null}
+        </IonCard>
+
+        {!familyMemberId ? (
+          <IonCard className="surface-card">
+            <IonCardHeader>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                <IonCardTitle>Membres de famille</IonCardTitle>
+                <IonButton fill="clear" size="small" onClick={() => setIsFamilyCollapsed((prev) => !prev)}>
+                  <IonIcon icon={isFamilyCollapsed ? chevronDownOutline : chevronUpOutline} />
+                </IonButton>
+              </div>
+            </IonCardHeader>
+            {!isFamilyCollapsed ? (
+              <IonCardContent>
                 {familyMembers.length === 0 ? (
-                  <p>Aucun</p>
+                  <IonText color="medium">
+                    <p>Aucun membre de famille.</p>
+                  </IonText>
                 ) : (
                   <>
                     <IonList>
@@ -443,39 +554,23 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                     {selectedFamilyMember ? (
                       <IonCard className="surface-card" style={{ marginTop: '8px' }}>
                         <IonCardContent>
-                          <p>
-                            <strong>Nom:</strong> {selectedFamilyMember.name}
-                          </p>
-                          <p>
-                            <strong>Age:</strong> {selectedFamilyMember.age ?? 'Non precise'}
-                          </p>
-                          <p>
-                            <strong>Genre:</strong> {selectedFamilyMember.gender ?? 'Non precise'}
-                          </p>
-                          <p>
-                            <strong>Relation:</strong> {selectedFamilyMember.relationship ?? 'Non precisee'}
-                          </p>
-                          <p>
-                            <strong>Allergies:</strong> {selectedFamilyMember.allergies ?? 'Aucune'}
-                          </p>
-                          <p>
-                            <strong>Maladies chroniques:</strong> {selectedFamilyMember.chronic_diseases ?? 'Aucune'}
-                          </p>
-                          <p>
-                            <strong>Groupe sanguin:</strong> {selectedFamilyMember.blood_type ?? 'Non precise'}
-                          </p>
-                          <p>
-                            <strong>Notes urgence:</strong> {selectedFamilyMember.emergency_notes ?? 'Aucune'}
-                          </p>
+                          <p><strong>Nom:</strong> {selectedFamilyMember.name}</p>
+                          <p><strong>Age:</strong> {selectedFamilyMember.age ?? 'Non precise'}</p>
+                          <p><strong>Genre:</strong> {selectedFamilyMember.gender ?? 'Non precise'}</p>
+                          <p><strong>Relation:</strong> {selectedFamilyMember.relationship ?? 'Non precisee'}</p>
+                          <p><strong>Allergies:</strong> {selectedFamilyMember.allergies ?? 'Aucune'}</p>
+                          <p><strong>Maladies chroniques:</strong> {selectedFamilyMember.chronic_diseases ?? 'Aucune'}</p>
+                          <p><strong>Groupe sanguin:</strong> {selectedFamilyMember.blood_type ?? 'Non precise'}</p>
+                          <p><strong>Notes urgence:</strong> {selectedFamilyMember.emergency_notes ?? 'Aucune'}</p>
                         </IonCardContent>
                       </IonCard>
                     ) : null}
                   </>
                 )}
-              </div>
+              </IonCardContent>
             ) : null}
-          </IonCardContent>
-        </IonCard>
+          </IonCard>
+        ) : null}
 
         <IonCard className="surface-card">
           <IonCardHeader>
@@ -483,27 +578,36 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <IonIcon icon={medicalOutline} /> Historique medical
               </IonCardTitle>
-              <IonButton
-                size="small"
-                onClick={() => {
-                  resetHistoryForm();
-                  setShowHistoryModal(true);
-                }}
-              >
-                Ajouter
-              </IonButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IonButton
+                  size="small"
+                  onClick={() => {
+                    resetHistoryForm();
+                    setShowHistoryModal(true);
+                  }}
+                >
+                  Ajouter
+                </IonButton>
+                <IonButton fill="clear" size="small" onClick={() => setIsHistoryCollapsed((prev) => !prev)}>
+                  <IonIcon icon={isHistoryCollapsed ? chevronDownOutline : chevronUpOutline} />
+                </IonButton>
+              </div>
             </div>
           </IonCardHeader>
-          <IonCardContent>
-            {medicalHistory.length === 0 ? (
+          {!isHistoryCollapsed ? (
+            <IonCardContent>
+            {scopedMedicalHistory.length === 0 ? (
               <IonText color="medium">
                 <p>Aucun historique medical enregistre.</p>
               </IonText>
             ) : (
               <IonList>
-                {medicalHistory.map((entry) => (
+                {scopedMedicalHistory.map((entry) => (
                   <IonItem key={entry.id} lines="full">
                     <IonLabel>
+                      <p style={{ marginBottom: 2 }}>
+                        <strong>Reference:</strong> {entry.entry_code ?? `MH-${entry.id}`}
+                      </p>
                       <div
                         style={{
                           display: 'flex',
@@ -513,46 +617,117 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                         }}
                       >
                         <h3 style={{ marginBottom: 2 }}>{entry.title}</h3>
-                        <IonBadge color={historyStatusColor[entry.status]}>{historyStatusLabel[entry.status]}</IonBadge>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <IonBadge color={historyStatusColor[entry.status]}>{historyStatusLabel[entry.status]}</IonBadge>
+                          <IonBadge color={visibilityColor[entry.visibility]}>{visibilityLabel[entry.visibility]}</IonBadge>
+                          <IonButton fill="clear" size="small" onClick={() => startHistoryEdit(entry)}>
+                            <IonIcon icon={createOutline} />
+                          </IonButton>
+                        </div>
                       </div>
-                      <p>
-                        {historyTypeLabel[entry.type]} · {visibilityLabel[entry.visibility]}
-                      </p>
-                      <p>{entry.family_member_name ? `Membre: ${entry.family_member_name}` : 'Patient principal'}</p>
+                      <p>{historyTypeLabel[entry.type]}</p>
                       <p>
                         Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'Non precise'} · Fin:{' '}
                         {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'Non precise'}
                       </p>
+                      {entry.details ? <p>{entry.details}</p> : null}
                       {entry.prescription_id ? (
-                        <p>
-                          Ordonnance liee: {entry.prescription_print_code ?? entry.prescription_id}{' '}
+                        <div
+                          style={{
+                            marginTop: '8px',
+                            border: '1px solid var(--ion-color-light-shade)',
+                            borderRadius: '10px',
+                            padding: '8px 10px',
+                            background: 'var(--ion-color-light)'
+                          }}
+                        >
+                          <p style={{ margin: 0 }}>
+                            <strong>Ordonnance liee:</strong> {entry.prescription_print_code ?? 'Code indisponible'}
+                          </p>
+                          {entry.prescription_requested_at ? (
+                            <p style={{ margin: '4px 0 0 0' }}>
+                              <strong>Date:</strong> {formatDateTime(entry.prescription_requested_at)}
+                            </p>
+                          ) : null}
                           <IonButton
                             size="small"
-                            fill="clear"
-                            onClick={() => ionRouter.push(`/doctor/prescriptions/${entry.prescription_id}`, 'forward', 'push')}
+                            fill="outline"
+                            style={{ marginTop: '6px' }}
+                            onClick={() => toggleLinkedPrescriptionDetails(entry.id)}
                           >
-                            Ouvrir
+                            {expandedLinkedPrescriptions[entry.id] ? 'Masquer details' : 'Afficher details'}
                           </IonButton>
-                        </p>
+                          {expandedLinkedPrescriptions[entry.id] ? (
+                            <div
+                              style={{
+                                marginTop: '8px',
+                                borderTop: '1px solid var(--ion-color-light-shade)',
+                                paddingTop: '8px'
+                              }}
+                            >
+                              {(() => {
+                                const linked = prescriptions.find((p) => p.id === entry.prescription_id);
+                                if (!linked) {
+                                  return <p style={{ margin: 0 }}>Details indisponibles.</p>;
+                                }
+                                return (
+                                  <>
+                                    <p style={{ margin: '0 0 4px 0' }}>
+                                      <strong>Medicaments:</strong>
+                                    </p>
+                                    {linked.medicine_requests.map((med) => (
+                                      <p key={`${entry.id}-${med.id}`} style={{ margin: '0 0 4px 0' }}>
+                                        - {med.name} · {med.form || 'Forme N/A'} · {med.strength || 'Dosage N/A'} · Qt: {med.quantity ?? 1}
+                                      </p>
+                                    ))}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ) : null}
+                        </div>
                       ) : null}
-                      {entry.details ? <p>{entry.details}</p> : null}
-                      <p>Maj: {formatDateTime(entry.updated_at)}</p>
+                      <p>Mise a jour: {formatDateTime(entry.updated_at)}</p>
                     </IonLabel>
-                    <IonButton slot="end" fill="clear" onClick={() => startHistoryEdit(entry)}>
-                      <IonIcon icon={createOutline} />
-                    </IonButton>
                   </IonItem>
                 ))}
               </IonList>
             )}
-          </IonCardContent>
+            </IonCardContent>
+          ) : null}
         </IonCard>
 
         <IonCard className="surface-card">
           <IonCardHeader>
-            <IonCardTitle>Ordonnances</IonCardTitle>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <IonIcon icon={documentTextOutline} /> Ordonnances
+              </IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IonButton
+                  size="small"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    params.set('patient', decodedPatientName);
+                    if (familyMemberId) {
+                      params.set('familyMemberId', String(familyMemberId));
+                    }
+                    if (familyMemberName) {
+                      params.set('familyMemberName', familyMemberName);
+                    }
+                    ionRouter.push(`/doctor/create-prescription?${params.toString()}`, 'forward', 'push');
+                  }}
+                >
+                  Ajouter
+                </IonButton>
+                <IonButton fill="clear" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
+                  <IonIcon icon={isPrescriptionsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                </IonButton>
+              </div>
+            </div>
           </IonCardHeader>
-          <IonCardContent>
+          {!isPrescriptionsCollapsed ? (
+            <IonCardContent>
             {patientPrescriptions.length === 0 ? (
               <IonText color="medium">
                 <p>Aucune ordonnance pour ce patient.</p>
@@ -565,9 +740,30 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                     lines="full"
                     button
                     detail
-                    onClick={() => ionRouter.push(`/doctor/prescriptions/${prescription.id}`, 'forward', 'push')}
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      if (familyMemberId) {
+                        params.set('familyMemberId', String(familyMemberId));
+                        params.set('scope', 'family');
+                      } else {
+                        params.set('scope', 'principal');
+                      }
+                      if (familyMemberName) {
+                        params.set('familyMemberName', familyMemberName);
+                      }
+                      const suffix = params.toString() ? `?${params.toString()}` : '';
+                      ionRouter.push(`/doctor/prescriptions/${prescription.id}${suffix}`, 'forward', 'push');
+                    }}
                   >
                     <IonLabel>
+                      <h3 style={{ marginBottom: '4px' }}>
+                        Reference: {getPrescriptionCode(prescription)}
+                      </h3>
+                      {historyCodesByPrescriptionId[prescription.id]?.length ? (
+                        <p>
+                          Historique lie: {historyCodesByPrescriptionId[prescription.id].join(', ')}
+                        </p>
+                      ) : null}
                       <div className="status-row">
                         <span>Statut:</span>
                         <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
@@ -580,10 +776,17 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                 ))}
               </IonList>
             )}
-          </IonCardContent>
+            </IonCardContent>
+          ) : null}
         </IonCard>
 
-        <IonModal isOpen={showHistoryModal} onDidDismiss={() => setShowHistoryModal(false)}>
+        <IonModal
+          isOpen={showHistoryModal}
+          onDidDismiss={() => {
+            setShowHistoryModal(false);
+            window.location.reload();
+          }}
+        >
           <IonContent className="ion-padding app-content">
             <h1 style={{ marginTop: 0 }}>{editingHistoryId === null ? 'Ajouter un historique' : 'Modifier un historique'}</h1>
             <IonText color="medium">Le docteur peut creer et modifier l'historique lie au patient.</IonText>
@@ -725,20 +928,6 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
           </IonContent>
         </IonModal>
 
-        <IonFab vertical="bottom" horizontal="center" slot="fixed">
-          <IonFabButton
-            color="success"
-            onClick={() =>
-              ionRouter.push(
-                `/doctor/create-prescription?patient=${encodeURIComponent(decodedPatientName)}`,
-                'forward',
-                'push'
-              )
-            }
-          >
-            <IonIcon icon={addOutline} />
-          </IonFabButton>
-        </IonFab>
       </IonContent>
     </IonPage>
   );

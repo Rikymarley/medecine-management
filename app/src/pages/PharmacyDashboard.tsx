@@ -7,6 +7,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -21,11 +22,19 @@ import {
   IonTitle,
   IonToolbar
 } from '@ionic/react';
+import { chevronDownOutline, chevronUpOutline, storefrontOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy, ApiPrescription, ApiPharmacyResponse } from '../services/api';
+import {
+  enqueuePharmacyResponse,
+  flushPharmacyResponsesOutbox,
+  getPendingPharmacyResponseCount
+} from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
+import { getPrescriptionCode } from '../utils/prescriptionCode';
+import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { minutesAgo, minutesUntil } from '../utils/time';
 
 const STATUS_ACTIONS: { key: ApiPharmacyResponse['status']; label: string; color: string }[] = [
@@ -81,6 +90,17 @@ const SERVICE_OPTIONS = [
   'Renouvellement traitement',
   'Service de nuit'
 ];
+const ALL_PRESCRIPTION_STATUSES = [
+  'sent_to_pharmacies',
+  'partially_available',
+  'available',
+  'expired'
+];
+
+const getStatusTimeDiffLabel = (requestedAt: string) => {
+  const diffMinutes = Math.max(0, Math.round((Date.now() - new Date(requestedAt).getTime()) / 60000));
+  return `il y a ${diffMinutes} min`;
+};
 
 const defaultSchedule = (): DaySchedule[] =>
   WEEK_DAYS.map((day) => ({ day, open: false, from: '08:00', to: '18:00' }));
@@ -134,10 +154,25 @@ const PharmacyDashboard: React.FC = () => {
   const [myPharmacy, setMyPharmacy] = useState<ApiPharmacy | null>(null);
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(getPendingPharmacyResponseCount());
   const [profileSaving, setProfileSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingStorefront, setUploadingStorefront] = useState(false);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [storefrontPreviewUrl, setStorefrontPreviewUrl] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
-  const [profileExpanded, setProfileExpanded] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [profileCardExpanded, setProfileCardExpanded] = useState(false);
+  const [identitySectionExpanded, setIdentitySectionExpanded] = useState(true);
+  const [hoursSectionExpanded, setHoursSectionExpanded] = useState(false);
+  const [servicesSectionExpanded, setServicesSectionExpanded] = useState(false);
+  const [businessSectionExpanded, setBusinessSectionExpanded] = useState(false);
+  const [gpsSectionExpanded, setGpsSectionExpanded] = useState(false);
   const [expandedPrescriptions, setExpandedPrescriptions] = useState<Record<number, boolean>>({});
+  const [statusFilter, setStatusFilter] = useState<string>('sent_to_pharmacies');
+  const [reactivatingPrescriptionId, setReactivatingPrescriptionId] = useState<number | null>(null);
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(defaultSchedule());
   const [profileForm, setProfileForm] = useState({
     pharmacy_mode: 'quick_manual' as 'quick_manual' | 'pos_integrated',
@@ -165,64 +200,158 @@ const PharmacyDashboard: React.FC = () => {
   });
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>([]);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const dashboardCacheKey = user ? `pharmacy-dashboard-cache-${user.id}` : null;
+
+  const applyMyPharmacyToForm = (meData: ApiPharmacy | null) => {
+    if (!meData) {
+      return;
+    }
+    setProfileForm({
+      pharmacy_mode: meData.pharmacy_mode ?? 'quick_manual',
+      phone: maskHaitiPhone(meData.phone ?? ''),
+      open_now: !!meData.open_now,
+      closes_at: meData.closes_at ?? '',
+      opening_hours: meData.opening_hours ?? '',
+      temporary_closed: !!meData.temporary_closed,
+      emergency_available: !!meData.emergency_available,
+      address: meData.address ?? '',
+      latitude: meData.latitude ?? '',
+      longitude: meData.longitude ?? '',
+      services: meData.services ?? '',
+      payment_methods: meData.payment_methods ?? '',
+      price_range: meData.price_range ?? '',
+      average_wait_time:
+        meData.average_wait_time === null || meData.average_wait_time === undefined
+          ? ''
+          : String(meData.average_wait_time),
+      delivery_available: !!meData.delivery_available,
+      delivery_radius_km: meData.delivery_radius_km ?? '',
+      night_service: !!meData.night_service,
+      license_number: meData.license_number ?? '',
+      license_verified: !!meData.license_verified,
+      logo_url: meData.logo_url ?? '',
+      storefront_image_url: meData.storefront_image_url ?? '',
+      notes_for_patients: meData.notes_for_patients ?? ''
+    });
+    setSelectedPaymentMethods(
+      (meData.payment_methods ?? '')
+        .split(',')
+        .map((item) => normalizePaymentMethod(item))
+        .filter(Boolean)
+    );
+    setSelectedServices(
+      (meData.services ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    );
+    setWeeklySchedule(parseOpeningHours(meData.opening_hours));
+  };
 
   const loadData = async () => {
-    const calls: [Promise<ApiPharmacy[]>, Promise<ApiPrescription[]>, Promise<ApiPharmacy | null>] = [
-      api.getPharmacies(),
-      api.getPrescriptions(),
-      token ? api.getMyPharmacy(token).then((data) => data).catch(() => null) : Promise.resolve(null)
-    ];
-    const [pharmacyData, prescriptionData, meData] = await Promise.all(calls);
-    setPharmacies(pharmacyData);
-    setPrescriptions(prescriptionData);
-    setMyPharmacy(meData);
-    if (meData) {
-      setProfileForm({
-        pharmacy_mode: meData.pharmacy_mode ?? 'quick_manual',
-        phone: maskHaitiPhone(meData.phone ?? ''),
-        open_now: !!meData.open_now,
-        closes_at: meData.closes_at ?? '',
-        opening_hours: meData.opening_hours ?? '',
-        temporary_closed: !!meData.temporary_closed,
-        emergency_available: !!meData.emergency_available,
-        address: meData.address ?? '',
-        latitude: meData.latitude ?? '',
-        longitude: meData.longitude ?? '',
-        services: meData.services ?? '',
-        payment_methods: meData.payment_methods ?? '',
-        price_range: meData.price_range ?? '',
-        average_wait_time:
-          meData.average_wait_time === null || meData.average_wait_time === undefined
-            ? ''
-            : String(meData.average_wait_time),
-        delivery_available: !!meData.delivery_available,
-        delivery_radius_km: meData.delivery_radius_km ?? '',
-        night_service: !!meData.night_service,
-        license_number: meData.license_number ?? '',
-        license_verified: !!meData.license_verified,
-        logo_url: meData.logo_url ?? '',
-        storefront_image_url: meData.storefront_image_url ?? '',
-        notes_for_patients: meData.notes_for_patients ?? ''
-      });
-      setSelectedPaymentMethods(
-        (meData.payment_methods ?? '')
-          .split(',')
-          .map((item) => normalizePaymentMethod(item))
-          .filter(Boolean)
-      );
-      setSelectedServices(
-        (meData.services ?? '')
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean)
-      );
-      setWeeklySchedule(parseOpeningHours(meData.opening_hours));
+    try {
+      const calls: [Promise<ApiPharmacy[]>, Promise<ApiPrescription[]>, Promise<ApiPharmacy | null>] = [
+        api.getPharmacies(),
+        api.getPrescriptions(),
+        token ? api.getMyPharmacy(token).then((data) => data).catch(() => null) : Promise.resolve(null)
+      ];
+      const [pharmacyData, prescriptionData, meData] = await Promise.all(calls);
+      setPharmacies(pharmacyData);
+      setPrescriptions(prescriptionData);
+      setMyPharmacy(meData);
+      applyMyPharmacyToForm(meData);
+
+      if (dashboardCacheKey) {
+        localStorage.setItem(
+          dashboardCacheKey,
+          JSON.stringify({
+            pharmacies: pharmacyData,
+            prescriptions: prescriptionData,
+            myPharmacy: meData
+          })
+        );
+      }
+    } catch {
+      if (!dashboardCacheKey) {
+        return;
+      }
+      const raw = localStorage.getItem(dashboardCacheKey);
+      if (!raw) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as {
+          pharmacies?: ApiPharmacy[];
+          prescriptions?: ApiPrescription[];
+          myPharmacy?: ApiPharmacy | null;
+        };
+        setPharmacies(Array.isArray(parsed.pharmacies) ? parsed.pharmacies : []);
+        setPrescriptions(Array.isArray(parsed.prescriptions) ? parsed.prescriptions : []);
+        setMyPharmacy(parsed.myPharmacy ?? null);
+        applyMyPharmacyToForm(parsed.myPharmacy ?? null);
+        setSyncMessage('Hors ligne: donnees locales chargees.');
+      } catch {
+        localStorage.removeItem(dashboardCacheKey);
+      }
     }
   };
 
   useEffect(() => {
     loadData().catch(() => undefined);
   }, [token]);
+
+  useEffect(() => {
+    if (!dashboardCacheKey) {
+      return;
+    }
+    localStorage.setItem(
+      dashboardCacheKey,
+      JSON.stringify({
+        pharmacies,
+        prescriptions,
+        myPharmacy
+      })
+    );
+  }, [dashboardCacheKey, myPharmacy, pharmacies, prescriptions]);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline && editMode) {
+      setEditMode(false);
+      setSyncMessage("Hors ligne: la modification du profil est desactivee.");
+    }
+  }, [editMode, isOnline]);
+
+  useEffect(() => {
+    if (!token || !isOnline) {
+      setPendingOutboxCount(getPendingPharmacyResponseCount());
+      return;
+    }
+
+    flushPharmacyResponsesOutbox(token)
+      .then((remaining) => {
+        setPendingOutboxCount(remaining);
+        if (remaining === 0) {
+          setSyncMessage('Synchronisation terminee.');
+        } else {
+          setSyncMessage(`${remaining} action(s) en attente.`);
+        }
+        return loadData();
+      })
+      .catch(() => {
+        setPendingOutboxCount(getPendingPharmacyResponseCount());
+      });
+  }, [isOnline, token]);
 
   const pharmacy = myPharmacy ?? pharmacies.find((item) => item.id === user?.pharmacy_id) ?? null;
   const profileMissingFields = useMemo(() => {
@@ -237,6 +366,20 @@ const PharmacyDashboard: React.FC = () => {
     return missing;
   }, [pharmacy]);
   const profileIncomplete = profileMissingFields.length > 0;
+  const profileCompletion = useMemo(() => {
+    const checks = [
+      profileForm.phone.trim(),
+      profileForm.address.trim(),
+      profileForm.opening_hours.trim() || serializeOpeningHours(weeklySchedule).trim(),
+      profileForm.latitude.trim(),
+      profileForm.longitude.trim(),
+      profileForm.payment_methods.trim() || selectedPaymentMethods.join(', ').trim(),
+      profileForm.services.trim() || selectedServices.join(', ').trim(),
+      profileForm.license_number.trim()
+    ];
+    const done = checks.filter(Boolean).length;
+    return Math.round((done / checks.length) * 100);
+  }, [profileForm, selectedPaymentMethods, selectedServices, weeklySchedule]);
 
   const togglePrescription = (prescriptionId: number) => {
     setExpandedPrescriptions((prev) => ({
@@ -256,27 +399,95 @@ const PharmacyDashboard: React.FC = () => {
     return map;
   }, [prescriptions]);
 
+  const filteredPrescriptions = useMemo(() => {
+    return prescriptions.filter((p) => p.status === statusFilter);
+  }, [prescriptions, statusFilter]);
+
   const handleRespond = async (payload: {
     prescription_id: number;
     medicine_request_id: number;
     status: ApiPharmacyResponse['status'];
   }) => {
-    if (!token || !pharmacy) {
+    const currentPharmacyId = pharmacy?.id ?? user?.pharmacy_id ?? null;
+    if (!token || !currentPharmacyId) {
       setError('Veuillez vous reconnecter.');
       return;
     }
     setError(null);
+    setSyncMessage(null);
+    const queuePayload = {
+      pharmacy_id: currentPharmacyId,
+      prescription_id: payload.prescription_id,
+      medicine_request_id: payload.medicine_request_id,
+      status: payload.status,
+      expires_at_minutes: 60
+    } as const;
+    const applyOptimisticResponse = () => {
+      const nowIso = new Date().toISOString();
+      const expiresAtIso = new Date(Date.now() + queuePayload.expires_at_minutes * 60_000).toISOString();
+      setPrescriptions((prev) =>
+        prev.map((rx) => {
+          if (rx.id !== queuePayload.prescription_id) {
+            return rx;
+          }
+          const nextResponses = rx.responses.filter(
+            (r) =>
+              !(
+                r.pharmacy_id === queuePayload.pharmacy_id &&
+                r.medicine_request_id === queuePayload.medicine_request_id
+              )
+          );
+          const nextResponse: ApiPharmacyResponse = {
+            id: -Date.now(),
+            pharmacy_id: queuePayload.pharmacy_id,
+            prescription_id: queuePayload.prescription_id,
+            medicine_request_id: queuePayload.medicine_request_id,
+            status: queuePayload.status,
+            responded_at: nowIso,
+            expires_at: expiresAtIso
+          };
+          nextResponses.push(nextResponse);
+          return { ...rx, responses: nextResponses };
+        })
+      );
+    };
+
+    // Always update UI immediately so button switches even if network signal is flaky.
+    applyOptimisticResponse();
+
+    if (!isOnline) {
+      const queued = enqueuePharmacyResponse(queuePayload);
+      setPendingOutboxCount(queued);
+      setSyncMessage(`Hors ligne: reponse en file d'attente (${queued}).`);
+      return;
+    }
+
     try {
-      await api.createPharmacyResponse(token, {
-        pharmacy_id: pharmacy.id,
-        prescription_id: payload.prescription_id,
-        medicine_request_id: payload.medicine_request_id,
-        status: payload.status,
-        expires_at_minutes: 60
-      });
+      await api.createPharmacyResponse(token, queuePayload);
       await loadData();
     } catch (err) {
+      const queued = enqueuePharmacyResponse(queuePayload);
+      setPendingOutboxCount(queued);
+      setSyncMessage(`Reseau indisponible: reponse en file d'attente (${queued}).`);
       setError(err instanceof Error ? err.message : "Echec de l'enregistrement de la reponse");
+    }
+  };
+
+  const handleReactivatePrescription = async (prescriptionId: number) => {
+    if (!token) {
+      setError('Veuillez vous reconnecter.');
+      return;
+    }
+    setError(null);
+    setReactivatingPrescriptionId(prescriptionId);
+    try {
+      await api.reactivatePharmacyPrescription(token, prescriptionId);
+      await loadData();
+      setStatusFilter('sent_to_pharmacies');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Echec de la reactivation.");
+    } finally {
+      setReactivatingPrescriptionId(null);
     }
   };
 
@@ -312,12 +523,61 @@ const PharmacyDashboard: React.FC = () => {
         storefront_image_url: profileForm.storefront_image_url.trim() || null,
         notes_for_patients: profileForm.notes_for_patients.trim() || null
       });
-      setMyPharmacy(updated);
-      setPharmacies((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      applyUpdatedPharmacy(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Echec de mise a jour du profil pharmacie');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const applyUpdatedPharmacy = (updated: ApiPharmacy) => {
+    setMyPharmacy(updated);
+    setPharmacies((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    setProfileForm((prev) => ({
+      ...prev,
+      logo_url: updated.logo_url ?? '',
+      storefront_image_url: updated.storefront_image_url ?? ''
+    }));
+  };
+
+  const handleLogoUpload = async (file: File | null) => {
+    if (!token || !file) {
+      return;
+    }
+    setUploadingLogo(true);
+    setError(null);
+    try {
+      const updated = await api.uploadMyPharmacyLogo(token, file);
+      applyUpdatedPharmacy(updated);
+      if (logoPreviewUrl) {
+        URL.revokeObjectURL(logoPreviewUrl);
+        setLogoPreviewUrl(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Echec de l'upload du logo.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleStorefrontUpload = async (file: File | null) => {
+    if (!token || !file) {
+      return;
+    }
+    setUploadingStorefront(true);
+    setError(null);
+    try {
+      const updated = await api.uploadMyPharmacyStorefrontImage(token, file);
+      applyUpdatedPharmacy(updated);
+      if (storefrontPreviewUrl) {
+        URL.revokeObjectURL(storefrontPreviewUrl);
+        setStorefrontPreviewUrl(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Echec de l'upload de la vitrine.");
+    } finally {
+      setUploadingStorefront(false);
     }
   };
 
@@ -348,6 +608,13 @@ const PharmacyDashboard: React.FC = () => {
     );
   };
 
+  useEffect(() => {
+    return () => {
+      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+      if (storefrontPreviewUrl) URL.revokeObjectURL(storefrontPreviewUrl);
+    };
+  }, [logoPreviewUrl, storefrontPreviewUrl]);
+
   return (
     <IonPage>
       <IonHeader>
@@ -360,6 +627,23 @@ const PharmacyDashboard: React.FC = () => {
       </IonHeader>
       <IonContent className="ion-padding app-content">
         <InstallBanner />
+        <IonCard className="surface-card">
+          <IonCardContent>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <IonBadge color={isOnline ? 'success' : 'warning'}>
+                {isOnline ? 'En ligne' : 'Hors ligne'}
+              </IonBadge>
+              <IonBadge color={pendingOutboxCount > 0 ? 'warning' : 'success'}>
+                Actions en attente: {pendingOutboxCount}
+              </IonBadge>
+            </div>
+            {syncMessage ? (
+              <IonText color="medium">
+                <p style={{ marginBottom: 0 }}>{syncMessage}</p>
+              </IonText>
+            ) : null}
+          </IonCardContent>
+        </IonCard>
         {!pharmacy ? (
           <IonCard className="surface-card">
             <IonCardContent>
@@ -369,9 +653,51 @@ const PharmacyDashboard: React.FC = () => {
         ) : (
           <IonCard className="hero-card">
             <IonCardHeader>
-              <IonCardTitle>{pharmacy.name}</IonCardTitle>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                <IonCardTitle>Profil pharmacie</IonCardTitle>
+                <IonButton fill="clear" size="small" onClick={() => setProfileCardExpanded((prev) => !prev)}>
+                  <IonIcon icon={profileCardExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
             </IonCardHeader>
-            <IonCardContent>
+            {profileCardExpanded ? <IonCardContent>
+              <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', gap: '10px', alignItems: 'center' }}>
+                <div
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '16px',
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: '#dbeafe'
+                  }}
+                >
+                  {profileForm.logo_url ? (
+                    <img
+                      src={profileForm.logo_url}
+                      alt="Logo pharmacie"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }}
+                    />
+                  ) : (
+                    <IonIcon icon={storefrontOutline} style={{ fontSize: '32px', color: '#1d4ed8' }} />
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{pharmacy.name}</div>
+                  <div style={{ color: '#64748b', fontSize: '0.95rem' }}>
+                    {profileForm.address || 'Adresse non renseignee'}
+                  </div>
+                </div>
+                <IonButton
+                  size="small"
+                  fill={editMode ? 'solid' : 'outline'}
+                  color={isOnline ? 'primary' : 'warning'}
+                  onClick={() => setEditMode((prev) => !prev)}
+                  disabled={!isOnline}
+                >
+                  {editMode ? 'Lecture' : 'Modifier'}
+                </IonButton>
+              </div>
               <p>
                 Fiabilite : {pharmacy.reliability_score}
                 {' ||| '}
@@ -389,301 +715,403 @@ const PharmacyDashboard: React.FC = () => {
                 <IonBadge color={pharmacy.pharmacy_mode === 'pos_integrated' ? 'tertiary' : 'medium'}>
                   Mode: {pharmacy.pharmacy_mode === 'pos_integrated' ? 'POS integre' : 'Rapide manuel'}
                 </IonBadge>
+                <IonBadge color="medium">Completion: {profileCompletion}%</IonBadge>
                 {pharmacy.closes_at ? <IonText>Ferme a {pharmacy.closes_at}</IonText> : null}
-                <IonButton
-                  size="small"
-                  fill="outline"
-                  onClick={() => setProfileExpanded((prev) => !prev)}
-                >
-                  {profileExpanded ? 'Masquer infos' : 'Afficher infos'}
-                </IonButton>
               </div>
               {profileIncomplete ? (
                 <IonText color="warning">
                   Champs manquants: {profileMissingFields.join(', ')}.
                 </IonText>
               ) : null}
-              {profileExpanded ? (
-                <>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Mode disponibilite</IonLabel>
-                <IonSelect
-                  value={profileForm.pharmacy_mode}
-                  onIonChange={(event) =>
-                    setProfileForm((prev) => ({
-                      ...prev,
-                      pharmacy_mode: (event.detail.value as 'quick_manual' | 'pos_integrated') ?? 'quick_manual'
-                    }))
-                  }
-                >
-                  <IonSelectOption value="quick_manual">Rapide manuel (boutons)</IonSelectOption>
-                  <IonSelectOption value="pos_integrated">POS integre (automatique)</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Telephone</IonLabel>
-                <IonInput
-                  value={profileForm.phone}
-                  placeholder="+509-xxxx-xxxx"
-                  onIonInput={(event) =>
-                    setProfileForm((prev) => ({ ...prev, phone: maskHaitiPhone(event.detail.value ?? '') }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Ouvert maintenant</IonLabel>
-                <IonToggle
-                  checked={profileForm.open_now}
-                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, open_now: event.detail.checked }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Fermeture temporaire</IonLabel>
-                <IonToggle
-                  checked={profileForm.temporary_closed}
-                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, temporary_closed: event.detail.checked }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Disponibilite urgence</IonLabel>
-                <IonToggle
-                  checked={profileForm.emergency_available}
-                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, emergency_available: event.detail.checked }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Heures d'ouverture</IonLabel>
-              </IonItem>
-              <div style={{ display: 'grid', gap: '8px', marginBottom: '10px' }}>
-                {weeklySchedule.map((row, index) => (
-                  <div
-                    key={row.day}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '90px auto 1fr 1fr',
-                      gap: '8px',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <strong style={{ fontSize: '0.9rem' }}>{row.day}</strong>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <IonToggle
-                        checked={row.open}
-                        onIonChange={(event) =>
-                          setWeeklySchedule((prev) =>
-                            prev.map((item, i) => (i === index ? { ...item, open: event.detail.checked } : item))
-                          )
-                        }
-                      />
-                      <span style={{ fontSize: '0.85rem' }}>{row.open ? 'Ouvert' : 'Ferme'}</span>
-                    </div>
-                    <IonInput
-                      type="time"
-                      value={row.from}
-                      disabled={!row.open}
-                      onIonInput={(event) =>
-                        setWeeklySchedule((prev) =>
-                          prev.map((item, i) => (i === index ? { ...item, from: event.detail.value ?? item.from } : item))
-                        )
-                      }
-                    />
-                    <IonInput
-                      type="time"
-                      value={row.to}
-                      disabled={!row.open}
-                      onIonInput={(event) =>
-                        setWeeklySchedule((prev) =>
-                          prev.map((item, i) => (i === index ? { ...item, to: event.detail.value ?? item.to } : item))
-                        )
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Adresse</IonLabel>
-                <IonInput
-                  value={profileForm.address}
-                  placeholder="Adresse"
-                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, address: event.detail.value ?? '' }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Services</IonLabel>
-              </IonItem>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                {SERVICE_OPTIONS.map((option) => (
-                  <IonItem key={option} lines="none">
-                    <IonCheckbox
-                      slot="start"
-                      checked={selectedServices.includes(option)}
-                      onIonChange={(event) =>
-                        setSelectedServices((prev) =>
-                          event.detail.checked
-                            ? Array.from(new Set([...prev, option]))
-                            : prev.filter((item) => item !== option)
-                        )
-                      }
-                    />
-                    <IonLabel>{option}</IonLabel>
-                  </IonItem>
-                ))}
-              </div>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Moyens de paiement</IonLabel>
-              </IonItem>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                {PAYMENT_OPTIONS.map((option) => (
-                  <IonItem key={option} lines="none">
-                    <IonCheckbox
-                      slot="start"
-                      checked={selectedPaymentMethods.includes(option)}
-                      onIonChange={(event) =>
-                        setSelectedPaymentMethods((prev) =>
-                          event.detail.checked
-                            ? Array.from(new Set([...prev, option]))
-                            : prev.filter((item) => item !== option)
-                        )
-                      }
-                    />
-                    <IonLabel>{option}</IonLabel>
-                  </IonItem>
-                ))}
-              </div>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Niveau de prix</IonLabel>
-                <IonSelect
-                  value={profileForm.price_range}
-                  placeholder="Selectionner"
-                  onIonChange={(event) =>
-                    setProfileForm((prev) => ({
-                      ...prev,
-                      price_range: (event.detail.value as '' | 'low' | 'medium' | 'high') ?? ''
-                    }))
-                  }
-                >
-                  <IonSelectOption value="">Non renseigne</IonSelectOption>
-                  <IonSelectOption value="low">Bas</IonSelectOption>
-                  <IonSelectOption value="medium">Moyen</IonSelectOption>
-                  <IonSelectOption value="high">Eleve</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Temps d'attente moyen (minutes)</IonLabel>
-                <IonInput
-                  type="number"
-                  value={profileForm.average_wait_time}
-                  onIonInput={(event) =>
-                    setProfileForm((prev) => ({ ...prev, average_wait_time: event.detail.value ?? '' }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Livraison disponible</IonLabel>
-                <IonToggle
-                  checked={profileForm.delivery_available}
-                  onIonChange={(event) =>
-                    setProfileForm((prev) => ({ ...prev, delivery_available: event.detail.checked }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Rayon de livraison (km)</IonLabel>
-                <IonInput
-                  type="number"
-                  value={profileForm.delivery_radius_km}
-                  onIonInput={(event) =>
-                    setProfileForm((prev) => ({ ...prev, delivery_radius_km: event.detail.value ?? '' }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Service de nuit</IonLabel>
-                <IonToggle
-                  checked={profileForm.night_service}
-                  onIonChange={(event) => setProfileForm((prev) => ({ ...prev, night_service: event.detail.checked }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Numero de licence</IonLabel>
-                <IonInput
-                  value={profileForm.license_number}
-                  onIonInput={(event) =>
-                    setProfileForm((prev) => ({ ...prev, license_number: event.detail.value ?? '' }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel>Licence verifiee</IonLabel>
-                <IonToggle
-                  checked={profileForm.license_verified}
-                  onIonChange={(event) =>
-                    setProfileForm((prev) => ({ ...prev, license_verified: event.detail.checked }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">URL logo</IonLabel>
-                <IonInput
-                  value={profileForm.logo_url}
-                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, logo_url: event.detail.value ?? '' }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">URL photo vitrine</IonLabel>
-                <IonInput
-                  value={profileForm.storefront_image_url}
-                  onIonInput={(event) =>
-                    setProfileForm((prev) => ({ ...prev, storefront_image_url: event.detail.value ?? '' }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Notes pour patients</IonLabel>
-                <IonTextarea
-                  autoGrow
-                  value={profileForm.notes_for_patients}
-                  onIonInput={(event) =>
-                    setProfileForm((prev) => ({ ...prev, notes_for_patients: event.detail.value ?? '' }))
-                  }
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Latitude</IonLabel>
-                <IonInput
-                  value={profileForm.latitude}
-                  placeholder="19.7510"
-                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, latitude: event.detail.value ?? '' }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Longitude</IonLabel>
-                <IonInput
-                  value={profileForm.longitude}
-                  placeholder="-72.2014"
-                  onIonInput={(event) => setProfileForm((prev) => ({ ...prev, longitude: event.detail.value ?? '' }))}
-                />
-              </IonItem>
               <div
                 style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  position: 'absolute',
-                  marginTop: '-85px',
-                  right: '10px',
-                  zIndex: 1
+                  width: '100%',
+                  height: '8px',
+                  borderRadius: '999px',
+                  background: '#e2e8f0',
+                  overflow: 'hidden',
+                  marginBottom: '8px'
                 }}
               >
-                <IonButton size="small" fill="outline" onClick={fillGpsFromDevice} disabled={isLocating}>
-                  {isLocating ? 'GPS...' : 'Obtenir GPS'}
-                </IonButton>
+                <div
+                  style={{
+                    width: `${profileCompletion}%`,
+                    height: '100%',
+                    background: profileCompletion >= 80 ? '#16a34a' : profileCompletion >= 50 ? '#d97706' : '#dc2626'
+                  }}
+                />
               </div>
-              <IonButton expand="block" onClick={saveProfile} disabled={profileSaving}>
-                {profileSaving ? 'Enregistrement...' : 'Mettre a jour le profil'}
-              </IonButton>
-                </>
+              <>
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setIdentitySectionExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Identite & Statut {identitySectionExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {identitySectionExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Mode disponibilite</IonLabel>
+                      <IonSelect
+                        disabled={!editMode}
+                        value={profileForm.pharmacy_mode}
+                        onIonChange={(event) =>
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            pharmacy_mode: (event.detail.value as 'quick_manual' | 'pos_integrated') ?? 'quick_manual'
+                          }))
+                        }
+                      >
+                        <IonSelectOption value="quick_manual">Rapide manuel (boutons)</IonSelectOption>
+                        <IonSelectOption value="pos_integrated">POS integre (automatique)</IonSelectOption>
+                      </IonSelect>
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Telephone</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={profileForm.phone}
+                        placeholder="+509-xxxx-xxxx"
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, phone: maskHaitiPhone(event.detail.value ?? '') }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Adresse</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={profileForm.address}
+                        placeholder="Adresse"
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, address: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel>Ouvert maintenant</IonLabel>
+                      <IonToggle
+                        disabled={!editMode}
+                        checked={profileForm.open_now}
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, open_now: event.detail.checked }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel>Fermeture temporaire</IonLabel>
+                      <IonToggle
+                        disabled={!editMode}
+                        checked={profileForm.temporary_closed}
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, temporary_closed: event.detail.checked }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel>Disponibilite urgence</IonLabel>
+                      <IonToggle
+                        disabled={!editMode}
+                        checked={profileForm.emergency_available}
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, emergency_available: event.detail.checked }))}
+                      />
+                    </IonItem>
+                  </>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setHoursSectionExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Horaires {hoursSectionExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {hoursSectionExpanded ? (
+                  <div style={{ display: 'grid', gap: '8px', margin: '8px 0 10px', padding: '0 10px' }}>
+                    {weeklySchedule.map((row, index) => (
+                      <div key={row.day} style={{ display: 'grid', gridTemplateColumns: '70px auto 1fr 1fr', gap: '8px', alignItems: 'center' }}>
+                        <strong style={{ fontSize: '0.9rem' }}>{row.day}</strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <IonToggle
+                            disabled={!editMode}
+                            checked={row.open}
+                            onIonChange={(event) =>
+                              setWeeklySchedule((prev) => prev.map((item, i) => (i === index ? { ...item, open: event.detail.checked } : item)))
+                            }
+                          />
+                        </div>
+                        <input
+                          type="time"
+                          className="time-input-no-icon"
+                          value={row.from}
+                          disabled={!row.open || !editMode}
+                          onClick={(event) => {
+                            const target = event.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                            target.showPicker?.();
+                          }}
+                          onChange={(event) =>
+                            setWeeklySchedule((prev) =>
+                              prev.map((item, i) => (i === index ? { ...item, from: event.currentTarget.value || item.from } : item))
+                            )
+                          }
+                          style={{
+                            width: '100%',
+                            minHeight: '44px',
+                            border: '1px solid #dbe7ef',
+                            borderRadius: '10px',
+                            padding: '0px 0px',
+                            textAlign: 'center'
+                          }}
+                        />
+                        <input
+                          type="time"
+                          className="time-input-no-icon"
+                          value={row.to}
+                          disabled={!row.open || !editMode}
+                          onClick={(event) => {
+                            const target = event.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                            target.showPicker?.();
+                          }}
+                          onChange={(event) =>
+                            setWeeklySchedule((prev) =>
+                              prev.map((item, i) => (i === index ? { ...item, to: event.currentTarget.value || item.to } : item))
+                            )
+                          }
+                          style={{
+                            width: '100%',
+                            minHeight: '44px',
+                            border: '1px solid #dbe7ef',
+                            borderRadius: '10px',
+                            padding: '0px 0px',
+                            textAlign: 'center'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setServicesSectionExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Services & Paiements {servicesSectionExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {servicesSectionExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Services</IonLabel>
+                    </IonItem>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                      {SERVICE_OPTIONS.map((option) => (
+                        <IonItem key={option} lines="none">
+                          <IonCheckbox
+                            disabled={!editMode}
+                            slot="start"
+                            checked={selectedServices.includes(option)}
+                            onIonChange={(event) =>
+                              setSelectedServices((prev) =>
+                                event.detail.checked ? Array.from(new Set([...prev, option])) : prev.filter((item) => item !== option)
+                              )
+                            }
+                          />
+                          <IonLabel>{option}</IonLabel>
+                        </IonItem>
+                      ))}
+                    </div>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Moyens de paiement</IonLabel>
+                    </IonItem>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                      {PAYMENT_OPTIONS.map((option) => (
+                        <IonItem key={option} lines="none">
+                          <IonCheckbox
+                            disabled={!editMode}
+                            slot="start"
+                            checked={selectedPaymentMethods.includes(option)}
+                            onIonChange={(event) =>
+                              setSelectedPaymentMethods((prev) =>
+                                event.detail.checked ? Array.from(new Set([...prev, option])) : prev.filter((item) => item !== option)
+                              )
+                            }
+                          />
+                          <IonLabel>{option}</IonLabel>
+                        </IonItem>
+                      ))}
+                    </div>
+                    <IonItem lines="none">
+                      <IonLabel>Livraison disponible</IonLabel>
+                      <IonToggle
+                        disabled={!editMode}
+                        checked={profileForm.delivery_available}
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, delivery_available: event.detail.checked }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Rayon de livraison (km)</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        type="number"
+                        value={profileForm.delivery_radius_km}
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, delivery_radius_km: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel>Service de nuit</IonLabel>
+                      <IonToggle
+                        disabled={!editMode}
+                        checked={profileForm.night_service}
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, night_service: event.detail.checked }))}
+                      />
+                    </IonItem>
+                  </>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setBusinessSectionExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Activite & Verification {businessSectionExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {businessSectionExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Niveau de prix</IonLabel>
+                      <IonSelect
+                        disabled={!editMode}
+                        value={profileForm.price_range}
+                        placeholder="Selectionner"
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, price_range: (event.detail.value as '' | 'low' | 'medium' | 'high') ?? '' }))}
+                      >
+                        <IonSelectOption value="">Non renseigne</IonSelectOption>
+                        <IonSelectOption value="low">Bas</IonSelectOption>
+                        <IonSelectOption value="medium">Moyen</IonSelectOption>
+                        <IonSelectOption value="high">Eleve</IonSelectOption>
+                      </IonSelect>
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Temps d'attente moyen (minutes)</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        type="number"
+                        value={profileForm.average_wait_time}
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, average_wait_time: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Numero de licence</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={profileForm.license_number}
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, license_number: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel>Licence verifiee</IonLabel>
+                      <IonToggle
+                        disabled={!editMode}
+                        checked={profileForm.license_verified}
+                        onIonChange={(event) => setProfileForm((prev) => ({ ...prev, license_verified: event.detail.checked }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Logo</IonLabel>
+                      <div style={{ width: '100%' }}>
+                        {(logoPreviewUrl || profileForm.logo_url) ? (
+                          <img
+                            src={logoPreviewUrl ?? profileForm.logo_url}
+                            alt="Logo pharmacie"
+                            style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #dbe7ef' }}
+                          />
+                        ) : (
+                          <IonText color="medium">Aucun logo</IonText>
+                        )}
+                        {editMode ? (
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0] ?? null;
+                              if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+                              setLogoPreviewUrl(file ? URL.createObjectURL(file) : null);
+                              handleLogoUpload(file).catch(() => undefined);
+                              event.currentTarget.value = '';
+                            }}
+                            disabled={uploadingLogo}
+                            style={{ marginTop: '8px', display: 'block' }}
+                          />
+                        ) : null}
+                        {uploadingLogo ? <IonText color="medium">Upload logo...</IonText> : null}
+                      </div>
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Photo vitrine</IonLabel>
+                      <div style={{ width: '100%' }}>
+                        {(storefrontPreviewUrl || profileForm.storefront_image_url) ? (
+                          <img
+                            src={storefrontPreviewUrl ?? profileForm.storefront_image_url}
+                            alt="Vitrine pharmacie"
+                            style={{ width: '100%', maxWidth: '280px', height: '120px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #dbe7ef' }}
+                          />
+                        ) : (
+                          <IonText color="medium">Aucune photo vitrine</IonText>
+                        )}
+                        {editMode ? (
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0] ?? null;
+                              if (storefrontPreviewUrl) URL.revokeObjectURL(storefrontPreviewUrl);
+                              setStorefrontPreviewUrl(file ? URL.createObjectURL(file) : null);
+                              handleStorefrontUpload(file).catch(() => undefined);
+                              event.currentTarget.value = '';
+                            }}
+                            disabled={uploadingStorefront}
+                            style={{ marginTop: '8px', display: 'block' }}
+                          />
+                        ) : null}
+                        {uploadingStorefront ? <IonText color="medium">Upload vitrine...</IonText> : null}
+                      </div>
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Notes pour patients</IonLabel>
+                      <IonTextarea
+                        disabled={!editMode}
+                        autoGrow
+                        value={profileForm.notes_for_patients}
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, notes_for_patients: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                  </>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setGpsSectionExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Localisation GPS {gpsSectionExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {gpsSectionExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Latitude</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={profileForm.latitude}
+                        placeholder="19.7510"
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, latitude: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Longitude</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={profileForm.longitude}
+                        placeholder="-72.2014"
+                        onIonInput={(event) => setProfileForm((prev) => ({ ...prev, longitude: event.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <div style={{ padding: '0 12px 12px' }}>
+                      <IonButton size="small" fill="outline" onClick={fillGpsFromDevice} disabled={isLocating || !editMode}>
+                        {isLocating ? 'GPS...' : 'Obtenir GPS'}
+                      </IonButton>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+              {editMode ? (
+                <IonButton expand="block" onClick={saveProfile} disabled={profileSaving}>
+                  {profileSaving ? 'Enregistrement...' : 'Enregistrer'}
+                </IonButton>
               ) : null}
-            </IonCardContent>
+              </>
+            </IonCardContent> : null}
           </IonCard>
         )}
 
@@ -693,23 +1121,63 @@ const PharmacyDashboard: React.FC = () => {
           </IonText>
         ) : null}
 
-        {pharmacy
-          ? prescriptions.map((prescription) => (
+        {pharmacy ? (
+          <>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+              {ALL_PRESCRIPTION_STATUSES.map((status) => (
+                <IonButton
+                  key={status}
+                  size="small"
+                  fill={statusFilter === status ? 'solid' : 'outline'}
+                  onClick={() => setStatusFilter(status)}
+                >
+                  {getPrescriptionStatusLabel(status)}
+                </IonButton>
+              ))}
+            </div>
+            {filteredPrescriptions.map((prescription) => (
               <IonCard key={prescription.id} className="surface-card" style={{ marginTop: '16px' }}>
                 <IonCardHeader>
-                  <IonCardTitle>Demande pour {prescription.patient_name}</IonCardTitle>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <IonCardTitle>Demande pour {prescription.patient_name}</IonCardTitle>
+                    <IonButton
+                      fill="clear"
+                      size="small"
+                      onClick={() => togglePrescription(prescription.id)}
+                      style={{ margin: 0 }}
+                      aria-label={expandedPrescriptions[prescription.id] ?? false ? 'Masquer' : 'Afficher'}
+                    >
+                      <IonIcon icon={(expandedPrescriptions[prescription.id] ?? false) ? chevronUpOutline : chevronDownOutline} />
+                    </IonButton>
+                  </div>
                   <IonBadge color="primary" style={{ width: 'fit-content', marginTop: '8px' }}>
                     {prescription.medicine_requests.length} medicament
                     {prescription.medicine_requests.length > 1 ? 's' : ''}
                   </IonBadge>
-                  <IonButton
-                    fill="outline"
-                    size="small"
-                    onClick={() => togglePrescription(prescription.id)}
-                    style={{ marginTop: '8px', width: 'fit-content', marginLeft: 'auto' }}
-                  >
-                    {expandedPrescriptions[prescription.id] ?? false ? 'Masquer' : 'Afficher'}
-                  </IonButton>
+                  <IonText color="medium" style={{ marginTop: '6px' }}>
+                    Code ordonnance: {getPrescriptionCode(prescription)}
+                  </IonText>
+                  <div className="status-row" style={{ marginTop: '8px' }}>
+                    <span>Statut:</span>
+                    <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
+                      {getPrescriptionStatusLabel(prescription.status)}
+                    </IonBadge>
+                    <IonText color="medium" style={{ marginLeft: '6px' }}>
+                      {getStatusTimeDiffLabel(prescription.requested_at)}
+                    </IonText>
+                    {prescription.status === 'expired' ? (
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color="warning"
+                        onClick={() => handleReactivatePrescription(prescription.id).catch(() => undefined)}
+                        disabled={reactivatingPrescriptionId === prescription.id}
+                        style={{ marginLeft: 'auto' }}
+                      >
+                        {reactivatingPrescriptionId === prescription.id ? 'Reactivation...' : 'Reactiver'}
+                      </IonButton>
+                    ) : null}
+                  </div>
                 </IonCardHeader>
                 <IonCardContent style={{ display: (expandedPrescriptions[prescription.id] ?? false) ? 'block' : 'none' }}>
                   <IonList>
@@ -772,8 +1240,9 @@ const PharmacyDashboard: React.FC = () => {
                   </IonList>
                 </IonCardContent>
               </IonCard>
-            ))
-          : null}
+            ))}
+          </>
+        ) : null}
       </IonContent>
     </IonPage>
   );

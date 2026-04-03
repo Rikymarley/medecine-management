@@ -5,9 +5,49 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Pharmacy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class PharmacyController extends Controller
 {
+    private function deleteIfLocalStorageUrl(?string $url): void
+    {
+        if (!$url) {
+            return;
+        }
+
+        $path = parse_url($url, PHP_URL_PATH);
+        if (!$path || !str_starts_with($path, '/storage/')) {
+            return;
+        }
+
+        $relative = ltrim(substr($path, strlen('/storage/')), '/');
+        if ($relative !== '') {
+            Storage::disk('public')->delete($relative);
+        }
+    }
+
+    private function uploadPharmacyImage(
+        Request $request,
+        Pharmacy $pharmacy,
+        string $requestFileKey,
+        string $databaseField,
+        string $directory
+    ): Pharmacy
+    {
+        $request->validate([
+            $requestFileKey => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+        ]);
+
+        $uploaded = $request->file($requestFileKey);
+        $path = $uploaded->store($directory, 'public');
+        $publicUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
+        $this->deleteIfLocalStorageUrl($pharmacy->{$databaseField});
+        $pharmacy->update([$databaseField => $publicUrl]);
+
+        return $pharmacy->fresh();
+    }
+
     public function index()
     {
         return response()->json(
@@ -135,5 +175,35 @@ class PharmacyController extends Controller
         $pharmacy->update($data);
 
         return response()->json($pharmacy->fresh());
+    }
+
+    public function uploadLogo(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->pharmacy_id) {
+            return response()->json(['message' => 'Aucune pharmacie liee a ce compte.'], 422);
+        }
+
+        $pharmacy = Pharmacy::query()->find($user->pharmacy_id);
+        if (!$pharmacy) {
+            return response()->json(['message' => 'Pharmacie introuvable.'], 404);
+        }
+
+        return response()->json($this->uploadPharmacyImage($request, $pharmacy, 'logo', 'logo_url', 'pharmacies/logos'));
+    }
+
+    public function uploadStorefrontImage(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->pharmacy_id) {
+            return response()->json(['message' => 'Aucune pharmacie liee a ce compte.'], 422);
+        }
+
+        $pharmacy = Pharmacy::query()->find($user->pharmacy_id);
+        if (!$pharmacy) {
+            return response()->json(['message' => 'Pharmacie introuvable.'], 404);
+        }
+
+        return response()->json($this->uploadPharmacyImage($request, $pharmacy, 'storefront_image', 'storefront_image_url', 'pharmacies/storefronts'));
     }
 }

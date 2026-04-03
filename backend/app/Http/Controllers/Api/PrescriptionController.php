@@ -51,6 +51,7 @@ class PrescriptionController extends Controller
         return [
             'medicineRequests',
             'responses',
+            'familyMember:id,name',
             'patient:id,name,account_status,created_by_doctor_id,ninu,date_of_birth,phone',
             'doctor:id,name,phone,address,latitude,longitude,specialty,city,department,languages,teleconsultation_available,consultation_hours,license_number,license_verified,years_experience,consultation_fee_range,whatsapp,bio',
         ];
@@ -96,17 +97,55 @@ class PrescriptionController extends Controller
         }
 
         $limit = (int) ($data['limit'] ?? 8);
+        $normalizedQuery = mb_strtolower(Str::ascii($query));
+        $compactQuery = preg_replace('/[^a-z0-9]/', '', $normalizedQuery) ?? '';
+
+        $isFuzzyMatch = static function (string $needle, string $haystack): bool {
+            if ($needle === '' || $haystack === '') {
+                return false;
+            }
+
+            if (str_contains($haystack, $needle)) {
+                return true;
+            }
+
+            $tokens = preg_split('/\s+/', $haystack) ?: [];
+            $tokens[] = str_replace(' ', '', $haystack);
+
+            $threshold = mb_strlen($needle) >= 5 ? 2 : 1;
+            foreach ($tokens as $token) {
+                $compactToken = preg_replace('/[^a-z0-9]/', '', (string) $token) ?? '';
+                if ($compactToken === '') {
+                    continue;
+                }
+                if (levenshtein($needle, $compactToken) <= $threshold) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
         $rows = User::query()
             ->where('role', 'patient')
-            ->where(function ($builder) use ($query) {
-                $builder
-                    ->where('name', 'like', '%' . $query . '%')
-                    ->orWhere('phone', 'like', '%' . $query . '%')
-                    ->orWhere('ninu', 'like', '%' . $query . '%');
-            })
             ->orderBy('name')
-            ->limit($limit)
-            ->get(['id', 'name', 'phone', 'ninu', 'date_of_birth']);
+            ->get(['id', 'name', 'phone', 'ninu', 'date_of_birth'])
+            ->filter(function (User $user) use ($query, $normalizedQuery, $compactQuery, $isFuzzyMatch) {
+                $name = mb_strtolower((string) $user->name);
+                $normalizedName = mb_strtolower(Str::ascii((string) $user->name));
+                $phone = mb_strtolower((string) ($user->phone ?? ''));
+                $ninu = mb_strtolower((string) ($user->ninu ?? ''));
+                $rawQuery = mb_strtolower($query);
+                $compactName = preg_replace('/[^a-z0-9]/', '', $normalizedName) ?? '';
+
+                return str_contains($name, $rawQuery)
+                    || str_contains($normalizedName, $normalizedQuery)
+                    || ($compactQuery !== '' && ($isFuzzyMatch($compactQuery, $compactName) || $isFuzzyMatch($compactQuery, $normalizedName)))
+                    || str_contains($phone, $rawQuery)
+                    || str_contains($ninu, $rawQuery);
+            })
+            ->take($limit)
+            ->values();
 
         return response()->json($rows);
     }
@@ -171,12 +210,6 @@ class PrescriptionController extends Controller
 
         if (!$patientUser) {
             return response()->json(['message' => 'Patient invalide.'], 422);
-        }
-
-        if ($patientUser->account_status === 'provisional' && (int) $patientUser->created_by_doctor_id !== (int) $request->user()->id) {
-            return response()->json([
-                'message' => 'Ce patient provisoire appartient a un autre medecin.'
-            ], 422);
         }
 
         if (!empty($data['family_member_id'])) {
@@ -317,6 +350,73 @@ class PrescriptionController extends Controller
         return response()->json($prescription->fresh()->load($this->baseRelations()));
     }
 
+    public function createAndLinkPatient(Request $request, Prescription $prescription)
+    {
+        $doctor = $request->user();
+        if ((int) $prescription->doctor_user_id !== (int) $doctor->id) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        if ($prescription->patient_user_id) {
+            return response()->json($prescription->fresh()->load($this->baseRelations()));
+        }
+
+        $data = $request->validate([
+            'ninu' => ['nullable', 'string', 'max:50', 'unique:users,ninu'],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
+        ]);
+
+        $name = trim((string) $prescription->patient_name);
+        $phone = trim((string) ($prescription->patient_phone ?? ''));
+        $phoneDigits = preg_replace('/\D+/', '', $phone) ?? '';
+        $ninu = trim((string) ($data['ninu'] ?? ''));
+
+        $patient = null;
+        if ($ninu !== '') {
+            $patient = User::query()
+                ->where('role', 'patient')
+                ->where('ninu', $ninu)
+                ->first();
+        }
+
+        if (!$patient && $name !== '' && $phoneDigits !== '') {
+            $patient = User::query()
+                ->where('role', 'patient')
+                ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                ->get()
+                ->first(function (User $candidate) use ($phoneDigits) {
+                    $candidateDigits = preg_replace('/\D+/', '', (string) ($candidate->phone ?? '')) ?? '';
+                    return $candidateDigits !== '' && $candidateDigits === $phoneDigits;
+                });
+        }
+
+        if (!$patient) {
+            $patient = User::create([
+                'name' => $name !== '' ? $name : 'Patient',
+                'email' => 'patient+' . Str::uuid()->toString() . '@retel.local',
+                'phone' => $phone !== '' ? $phone : null,
+                'ninu' => $ninu !== '' ? $ninu : null,
+                'date_of_birth' => $data['date_of_birth'] ?? null,
+                'password' => Str::password(32),
+                'role' => 'patient',
+                'account_status' => 'active',
+                'created_by_doctor_id' => $doctor->id,
+                'verification_status' => 'approved',
+                'verified_at' => now(),
+            ]);
+        }
+
+        $prescription->update([
+            'patient_user_id' => $patient->id,
+            'guest_patient_id' => null,
+            'patient_name' => $patient->name,
+            'patient_phone' => $patient->phone ?? $prescription->patient_phone,
+            'source' => 'app',
+        ]);
+
+        return response()->json($prescription->fresh()->load($this->baseRelations()));
+    }
+
     public function doctorPatientProfile(Request $request, User $patient)
     {
         if ($patient->role !== 'patient') {
@@ -392,6 +492,27 @@ class PrescriptionController extends Controller
         }
 
         $prescription->update(['family_member_id' => $data['family_member_id'] ?? null]);
+
+        return response()->json($prescription->load($this->baseRelations()));
+    }
+
+    public function reactivateForPharmacy(Request $request, Prescription $prescription)
+    {
+        $user = $request->user();
+        if (!$user || !$user->pharmacy_id) {
+            return response()->json(['message' => 'Aucune pharmacie liee a ce compte.'], 422);
+        }
+
+        if ($prescription->status !== 'expired') {
+            return response()->json(['message' => "Seules les ordonnances expirees peuvent etre reactivees."], 422);
+        }
+
+        $prescription->update([
+            'requested_at' => now(),
+        ]);
+        $prescription->changeStatus('sent_to_pharmacies', $user->id, 'pharmacy_reactivated', [
+            'pharmacy_id' => $user->pharmacy_id,
+        ]);
 
         return response()->json($prescription->load($this->baseRelations()));
     }

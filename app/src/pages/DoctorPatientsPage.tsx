@@ -206,7 +206,7 @@ const DoctorPatientsPage: React.FC = () => {
                         detail
                         onClick={() =>
                           ionRouter.push(
-                            `/doctor/create-prescription?patient=${encodeURIComponent(row.name)}`,
+                            `/doctor/patients/${encodeURIComponent(row.name)}`,
                             'forward',
                             'push'
                           )

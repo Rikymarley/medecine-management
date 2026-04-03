@@ -27,6 +27,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember, ApiPatientMedicinePurchase, ApiPharmacy, ApiPrescription } from '../services/api';
+import {
+  enqueuePatientPurchase,
+  flushPatientPurchasesOutbox,
+  getPendingPatientPurchaseCount
+} from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
@@ -54,6 +59,9 @@ const PatientPrescriptionDetailPage: React.FC = () => {
   const [pendingChanges, setPendingChanges] = useState<
     Record<string, { pharmacy_id: number; medicine_request_id: number; purchased: boolean; quantity?: number }>
   >({});
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(getPendingPatientPurchaseCount());
   const [isBatchSaving, setIsBatchSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
@@ -116,6 +124,17 @@ const PatientPrescriptionDetailPage: React.FC = () => {
   }, [token]);
 
   useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!token || !id) {
       return;
     }
@@ -139,6 +158,28 @@ const PatientPrescriptionDetailPage: React.FC = () => {
 
     const timeout = window.setTimeout(async () => {
       const snapshot = { ...pendingChanges };
+      if (!isOnline) {
+        Object.values(snapshot).forEach((item) => {
+          enqueuePatientPurchase({
+            prescription_id: Number(id),
+            pharmacy_id: item.pharmacy_id,
+            medicine_request_id: item.medicine_request_id,
+            purchased: item.purchased,
+            quantity: item.quantity
+          });
+        });
+        setPendingOutboxCount(getPendingPatientPurchaseCount());
+        setSyncMessage(`Hors ligne: ${Object.keys(snapshot).length} action(s) en attente.`);
+        setPendingChanges((prev) => {
+          const next = { ...prev };
+          Object.keys(snapshot).forEach((key) => {
+            delete next[key];
+          });
+          return next;
+        });
+        return;
+      }
+
       setIsBatchSaving(true);
       try {
         await api.setPatientMedicinePurchasesBatch(token, {
@@ -155,6 +196,24 @@ const PatientPrescriptionDetailPage: React.FC = () => {
           return next;
         });
       } catch (error) {
+        Object.values(snapshot).forEach((item) => {
+          enqueuePatientPurchase({
+            prescription_id: Number(id),
+            pharmacy_id: item.pharmacy_id,
+            medicine_request_id: item.medicine_request_id,
+            purchased: item.purchased,
+            quantity: item.quantity
+          });
+        });
+        setPendingOutboxCount(getPendingPatientPurchaseCount());
+        setSyncMessage('Reseau indisponible: actions enregistrees hors ligne.');
+        setPendingChanges((prev) => {
+          const next = { ...prev };
+          Object.keys(snapshot).forEach((key) => {
+            delete next[key];
+          });
+          return next;
+        });
         console.error('[PURCHASE BATCH] failed', error);
       } finally {
         setIsBatchSaving(false);
@@ -162,7 +221,34 @@ const PatientPrescriptionDetailPage: React.FC = () => {
     }, 700);
 
     return () => window.clearTimeout(timeout);
-  }, [id, isBatchSaving, isCompleted, pendingChanges, token]);
+  }, [id, isBatchSaving, isCompleted, isOnline, pendingChanges, token]);
+
+  useEffect(() => {
+    if (!token || !id || !isOnline) {
+      setPendingOutboxCount(getPendingPatientPurchaseCount());
+      return;
+    }
+
+    flushPatientPurchasesOutbox(token)
+      .then(async (remaining) => {
+        setPendingOutboxCount(remaining);
+        if (remaining === 0) {
+          setSyncMessage('Synchronisation terminee.');
+        } else {
+          setSyncMessage(`${remaining} action(s) en attente.`);
+        }
+        const refreshed = await api.getPatientMedicinePurchases(token, Number(id));
+        setPurchases(refreshed);
+        const next: Record<string, number> = {};
+        refreshed.forEach((row) => {
+          next[`${row.pharmacy_id}-${row.medicine_request_id}`] = row.quantity > 0 ? row.quantity : 1;
+        });
+        setPurchasedMap(next);
+      })
+      .catch(() => {
+        setPendingOutboxCount(getPendingPatientPurchaseCount());
+      });
+  }, [id, isOnline, token]);
 
   const setPurchased = (pharmacyId: number, medicineId: number, value: boolean, quantity?: number) => {
     if (isCompleted) {
@@ -365,6 +451,21 @@ const PatientPrescriptionDetailPage: React.FC = () => {
       </IonHeader>
       <IonContent className="ion-padding app-content">
         <InstallBanner />
+        <IonCard className="surface-card">
+          <IonCardContent>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <IonBadge color={isOnline ? 'success' : 'warning'}>
+                {isOnline ? 'En ligne' : 'Hors ligne'}
+              </IonBadge>
+              {pendingOutboxCount > 0 ? <IonBadge color="warning">Actions en attente: {pendingOutboxCount}</IonBadge> : null}
+            </div>
+            {syncMessage ? (
+              <IonText color="medium">
+                <p style={{ marginBottom: 0 }}>{syncMessage}</p>
+              </IonText>
+            ) : null}
+          </IonCardContent>
+        </IonCard>
         {!prescription ? (
           <IonText color="medium">
             <p>Ordonnance introuvable.</p>
@@ -553,6 +654,13 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                           {items.map((item) => {
                             const key = `${pharmacy.id}-${item.medicine.id}`;
                             const currentQty = purchasedMap[key] ?? 0;
+                            const hasNoResponse = !item.latestResponse;
+                            const isRupture =
+                              !!item.latestResponse &&
+                              item.isActive &&
+                              (item.latestResponse.status === 'out_of_stock' ||
+                                item.latestResponse.status === 'not_available');
+                            const disablePurchaseControls = isCompleted || isRupture || hasNoResponse;
                             return (
                               <IonItem key={item.medicine.id} lines="none">
                                 <IonLabel>
@@ -561,7 +669,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                                     <IonCheckbox
                                       style={{ marginLeft: 'auto' }}
                                       checked={currentQty > 0}
-                                      disabled={isCompleted}
+                                      disabled={disablePurchaseControls}
                                       onIonChange={(event) => {
                                         if (event.detail.checked) {
                                           setPurchased(pharmacy.id, item.medicine.id, true, currentQty > 0 ? currentQty : 1);
@@ -581,12 +689,22 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                                         : 'Pas de reponse'}
                                     </span>
                                   </p>
+                                  {hasNoResponse ? (
+                                    <p style={{ color: 'var(--ion-color-warning)' }}>
+                                      Pas de reponse: selection indisponible.
+                                    </p>
+                                  ) : null}
+                                  {isRupture ? (
+                                    <p style={{ color: 'var(--ion-color-danger)' }}>
+                                      Rupture: selection indisponible.
+                                    </p>
+                                  ) : null}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <strong style={{ fontSize: '0.82rem' }}>QUANTITE :</strong>
                                     <IonButton
                                       size="small"
                                       fill="outline"
-                                      disabled={isCompleted || currentQty <= 0}
+                                      disabled={disablePurchaseControls || currentQty <= 0}
                                       onClick={() => {
                                         if (currentQty <= 1) {
                                           setPurchased(pharmacy.id, item.medicine.id, false);
@@ -603,7 +721,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                                       inputmode="numeric"
                                       value={String(currentQty)}
                                       style={{ width: '64px', textAlign: 'center' }}
-                                      disabled={isCompleted}
+                                      disabled={disablePurchaseControls}
                                       onIonInput={(event) => {
                                         const raw = (event.detail.value ?? '').trim();
                                         if (raw === '') {
@@ -625,7 +743,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                                     <IonButton
                                       size="small"
                                       fill="outline"
-                                      disabled={isCompleted}
+                                      disabled={disablePurchaseControls}
                                       onClick={() => setPurchased(pharmacy.id, item.medicine.id, true, currentQty + 1 || 1)}
                                     >
                                       +

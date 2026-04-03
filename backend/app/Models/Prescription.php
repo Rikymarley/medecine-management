@@ -111,30 +111,45 @@ class Prescription extends Model
             : $this->medicineRequests()->get(['id']);
         $responses = $this->relationLoaded('responses')
             ? $this->responses
-            : $this->responses()->get(['medicine_request_id', 'status', 'expires_at']);
+            : $this->responses()->get(['id', 'pharmacy_id', 'medicine_request_id', 'status', 'responded_at', 'expires_at']);
 
         $totalMedicines = $medicineRequests->count();
         if ($totalMedicines === 0) {
             $targetStatus = 'sent_to_pharmacies';
         } else {
             $medicineIdSet = array_flip($medicineRequests->pluck('id')->all());
-            $coveredMedicineIds = $responses
+            $latestResponsesPerPharmacyMedicine = $responses
+                ->sortByDesc(function ($response) {
+                    return Carbon::parse($response->responded_at ?? $response->created_at ?? now())->getTimestamp();
+                })
+                ->unique(function ($response) {
+                    return ($response->pharmacy_id ?? 0) . '-' . $response->medicine_request_id;
+                })
+                ->values();
+
+            $activeResponses = $latestResponsesPerPharmacyMedicine
                 ->filter(function ($response) use ($medicineIdSet) {
                     return isset($medicineIdSet[$response->medicine_request_id]) &&
-                        in_array($response->status, ['very_low', 'low', 'available', 'high', 'equivalent'], true) &&
                         Carbon::parse($response->expires_at)->isFuture();
+                });
+
+            $coveredMedicineIds = $activeResponses
+                ->filter(function ($response) {
+                    return in_array($response->status, ['very_low', 'low', 'available', 'high', 'equivalent'], true);
                 })
                 ->pluck('medicine_request_id')
                 ->unique()
                 ->values();
 
             $coveredCount = $coveredMedicineIds->count();
-            if ($coveredCount === 0) {
+            if ($activeResponses->count() === 0) {
                 $targetStatus = 'sent_to_pharmacies';
-            } elseif ($coveredCount < $totalMedicines) {
-                $targetStatus = 'partially_available';
-            } else {
+            } elseif ($coveredCount === $totalMedicines) {
                 $targetStatus = 'available';
+            } else {
+                // At least one active pharmacy response exists, but not all medicines are covered.
+                // This includes explicit rupture/out_of_stock on one or more medicines.
+                $targetStatus = 'partially_available';
             }
         }
 

@@ -21,10 +21,14 @@ import {
 } from '@ionic/react';
 import {
   callOutline,
+  chevronDownOutline,
+  chevronUpOutline,
   documentTextOutline,
   medkitOutline,
   peopleOutline,
+  personCircleOutline,
   pulseOutline,
+  shieldCheckmarkOutline,
   storefrontOutline
 } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -51,10 +55,34 @@ const PatientDashboard: React.FC = () => {
   >('');
   const [emergencyNotes, setEmergencyNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [profileExpanded, setProfileExpanded] = useState(false);
+  const [profileCardExpanded, setProfileCardExpanded] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [contactExpanded, setContactExpanded] = useState(false);
+  const [personalExpanded, setPersonalExpanded] = useState(false);
+  const [emergencyExpanded, setEmergencyExpanded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
 
   const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline && editMode) {
+      setEditMode(false);
+      setMessage('Hors ligne: modification du profil desactivee.');
+    }
+  }, [editMode, isOnline]);
 
   useEffect(() => {
     if (!token) {
@@ -64,6 +92,9 @@ const PatientDashboard: React.FC = () => {
     api
       .me(token)
       .then((me) => {
+        if (profileCacheKey) {
+          localStorage.setItem(profileCacheKey, JSON.stringify(me));
+        }
         setName(normalizeText(me.name));
         setPhone(maskHaitiPhone(normalizeText(me.phone)));
         setNinu(normalizeText(me.ninu));
@@ -77,6 +108,29 @@ const PatientDashboard: React.FC = () => {
         setEmergencyNotes(normalizeText(me.emergency_notes));
       })
       .catch(() => {
+        if (profileCacheKey) {
+          const cached = localStorage.getItem(profileCacheKey);
+          if (cached) {
+            try {
+              const me = JSON.parse(cached) as typeof user;
+              setName(normalizeText(me?.name));
+              setPhone(maskHaitiPhone(normalizeText(me?.phone)));
+              setNinu(normalizeText((me as any)?.ninu));
+              setWhatsapp(maskHaitiPhone(normalizeText((me as any)?.whatsapp)));
+              setAddress(normalizeText((me as any)?.address));
+              setAge((me as any)?.age === null || (me as any)?.age === undefined ? '' : String((me as any).age));
+              setGender(((me as any)?.gender as '' | 'male' | 'female' | null) ?? '');
+              setAllergies(normalizeText((me as any)?.allergies));
+              setChronicDiseases(normalizeText((me as any)?.chronic_diseases));
+              setBloodType(((me as any)?.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
+              setEmergencyNotes(normalizeText((me as any)?.emergency_notes));
+              setMessage('Hors ligne: profil local charge.');
+              return;
+            } catch {
+              localStorage.removeItem(profileCacheKey);
+            }
+          }
+        }
         setName(normalizeText(user?.name));
         setPhone(maskHaitiPhone(normalizeText(user?.phone)));
         setNinu(normalizeText(user?.ninu));
@@ -90,6 +144,7 @@ const PatientDashboard: React.FC = () => {
         setEmergencyNotes(normalizeText(user?.emergency_notes));
       });
   }, [
+    profileCacheKey,
     token,
     user?.address,
     user?.age,
@@ -112,9 +167,30 @@ const PatientDashboard: React.FC = () => {
     return missing;
   }, [address, name, phone]);
   const profileIncomplete = profileMissingFields.length > 0;
+  const profileCompletion = useMemo(() => {
+    const checks = [
+      name.trim(),
+      phone.trim(),
+      address.trim(),
+      ninu.trim(),
+      whatsapp.trim(),
+      age.trim(),
+      gender,
+      allergies.trim(),
+      chronicDiseases.trim(),
+      bloodType,
+      emergencyNotes.trim()
+    ];
+    const done = checks.filter(Boolean).length;
+    return Math.round((done / checks.length) * 100);
+  }, [address, age, allergies, bloodType, chronicDiseases, emergencyNotes, gender, name, ninu, phone, whatsapp]);
 
   const saveProfile = async () => {
     if (!token) {
+      return;
+    }
+    if (!isOnline) {
+      setMessage('Hors ligne: vous pouvez consulter, mais pas modifier le profil.');
       return;
     }
 
@@ -154,101 +230,229 @@ const PatientDashboard: React.FC = () => {
       </IonHeader>
       <IonContent className="ion-padding app-content">
         <InstallBanner />
+        <IonCard className="surface-card">
+          <IonCardContent>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <IonBadge color={isOnline ? 'success' : 'warning'}>
+                {isOnline ? 'En ligne' : 'Hors ligne'}
+              </IonBadge>
+            </div>
+          </IonCardContent>
+        </IonCard>
         <IonCard className="hero-card">
           <IonCardHeader>
-            <IonCardTitle>{name || user?.name || 'Profil patient'}</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <IonBadge color={profileIncomplete ? 'warning' : 'success'}>
-                {profileIncomplete ? `Infos incompletes (${profileMissingFields.length})` : 'Infos completes'}
-              </IonBadge>
-              <IonButton size="small" fill="outline" onClick={() => setProfileExpanded((prev) => !prev)}>
-                {profileExpanded ? 'Masquer infos' : 'Afficher infos'}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+              <IonCardTitle>Profil patient</IonCardTitle>
+              <IonButton fill="clear" size="small" onClick={() => setProfileCardExpanded((prev) => !prev)}>
+                <IonIcon icon={profileCardExpanded ? chevronUpOutline : chevronDownOutline} />
               </IonButton>
+            </div>
+          </IonCardHeader>
+          {profileCardExpanded ? <IonCardContent>
+            <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', gap: '10px', alignItems: 'center' }}>
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '16px',
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: '#dbeafe'
+                }}
+              >
+                <IonIcon icon={personCircleOutline} style={{ fontSize: '32px', color: '#1d4ed8' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{name || user?.name || 'Profil patient'}</div>
+                <div style={{ color: '#64748b', fontSize: '0.95rem' }}>{phone || 'Telephone non renseigne'}</div>
+              </div>
+              <IonButton
+                size="small"
+                fill={editMode ? 'solid' : 'outline'}
+                color={isOnline ? 'primary' : 'warning'}
+                onClick={() => setEditMode((prev) => !prev)}
+                disabled={!isOnline}
+              >
+                {editMode ? 'Lecture' : 'Modifier'}
+              </IonButton>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+              <IonBadge color={profileIncomplete ? 'warning' : 'success'}>
+                {profileIncomplete ? `Profil incomplet (${profileMissingFields.length})` : 'Profil complet'}
+              </IonBadge>
+              <IonBadge color="medium">Completion: {profileCompletion}%</IonBadge>
             </div>
             {profileIncomplete ? (
               <IonText color="warning">
                 <p>Champs manquants: {profileMissingFields.join(', ')}.</p>
               </IonText>
             ) : null}
+            <div
+              style={{
+                width: '100%',
+                height: '8px',
+                borderRadius: '999px',
+                background: '#e2e8f0',
+                overflow: 'hidden',
+                marginTop: '8px'
+              }}
+            >
+              <div
+                style={{
+                  width: `${profileCompletion}%`,
+                  height: '100%',
+                  background: profileCompletion >= 80 ? '#16a34a' : profileCompletion >= 50 ? '#d97706' : '#dc2626'
+                }}
+              />
+            </div>
             {message ? (
               <IonText color="medium">
                 <p>{message}</p>
               </IonText>
             ) : null}
 
-            {profileExpanded ? (
-              <>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Nom</IonLabel>
-                  <IonInput value={name} onIonInput={(e) => setName(e.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Telephone</IonLabel>
-                  <IonInput value={phone} onIonInput={(e) => setPhone(maskHaitiPhone(e.detail.value ?? ''))} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">NINU</IonLabel>
-                  <IonInput value={ninu} onIonInput={(e) => setNinu(e.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">WhatsApp</IonLabel>
-                  <IonInput value={whatsapp} onIonInput={(e) => setWhatsapp(maskHaitiPhone(e.detail.value ?? ''))} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Adresse</IonLabel>
-                  <IonInput value={address} onIonInput={(e) => setAddress(e.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Age</IonLabel>
-                  <IonInput type="number" value={age} onIonInput={(e) => setAge(e.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Genre</IonLabel>
-                  <IonSelect value={gender} onIonChange={(e) => setGender((e.detail.value as '' | 'male' | 'female') ?? '')}>
-                    <IonSelectOption value="">Non precise</IonSelectOption>
-                    <IonSelectOption value="male">M</IonSelectOption>
-                    <IonSelectOption value="female">F</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Allergies</IonLabel>
-                  <IonInput value={allergies} onIonInput={(e) => setAllergies(e.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Maladies chroniques</IonLabel>
-                  <IonInput value={chronicDiseases} onIonInput={(e) => setChronicDiseases(e.detail.value ?? '')} />
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Groupe sanguin</IonLabel>
-                  <IonSelect
-                    value={bloodType}
-                    onIonChange={(e) =>
-                      setBloodType((e.detail.value as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-') ?? '')
-                    }
-                  >
-                    <IonSelectOption value="">Non precise</IonSelectOption>
-                    <IonSelectOption value="A+">A+</IonSelectOption>
-                    <IonSelectOption value="A-">A-</IonSelectOption>
-                    <IonSelectOption value="B+">B+</IonSelectOption>
-                    <IonSelectOption value="B-">B-</IonSelectOption>
-                    <IonSelectOption value="AB+">AB+</IonSelectOption>
-                    <IonSelectOption value="AB-">AB-</IonSelectOption>
-                    <IonSelectOption value="O+">O+</IonSelectOption>
-                    <IonSelectOption value="O-">O-</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Notes d'urgence</IonLabel>
-                  <IonInput value={emergencyNotes} onIonInput={(e) => setEmergencyNotes(e.detail.value ?? '')} />
-                </IonItem>
-                <IonButton expand="block" onClick={() => saveProfile().catch(() => undefined)} disabled={saving}>
-                  {saving ? 'Enregistrement...' : 'Mettre a jour le profil'}
-                </IonButton>
-              </>
+            <div style={{ marginTop: '10px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setContactExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                Coordonnees {contactExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {contactExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Nom</IonLabel>
+                    <IonInput disabled={!editMode} value={name} onIonInput={(e) => setName(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Telephone</IonLabel>
+                    <IonInput disabled={!editMode} value={phone} onIonInput={(e) => setPhone(maskHaitiPhone(e.detail.value ?? ''))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">WhatsApp</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      value={whatsapp}
+                      onIonInput={(e) => setWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">NINU</IonLabel>
+                    <IonInput disabled={!editMode} value={ninu} onIonInput={(e) => setNinu(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Adresse</IonLabel>
+                    <IonInput disabled={!editMode} value={address} onIonInput={(e) => setAddress(e.detail.value ?? '')} />
+                  </IonItem>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: '10px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setPersonalExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                Informations personnelles{' '}
+                {personalExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {personalExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Age</IonLabel>
+                    <IonInput disabled={!editMode} type="number" value={age} onIonInput={(e) => setAge(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Genre</IonLabel>
+                    <IonSelect
+                      disabled={!editMode}
+                      value={gender}
+                      onIonChange={(e) => setGender((e.detail.value as '' | 'male' | 'female') ?? '')}
+                    >
+                      <IonSelectOption value="">Non precise</IonSelectOption>
+                      <IonSelectOption value="male">M</IonSelectOption>
+                      <IonSelectOption value="female">F</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Allergies</IonLabel>
+                    <IonInput disabled={!editMode} value={allergies} onIonInput={(e) => setAllergies(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Maladies chroniques</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      value={chronicDiseases}
+                      onIonInput={(e) => setChronicDiseases(e.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Groupe sanguin</IonLabel>
+                    <IonSelect
+                      disabled={!editMode}
+                      value={bloodType}
+                      onIonChange={(e) =>
+                        setBloodType((e.detail.value as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-') ?? '')
+                      }
+                    >
+                      <IonSelectOption value="">Non precise</IonSelectOption>
+                      <IonSelectOption value="A+">A+</IonSelectOption>
+                      <IonSelectOption value="A-">A-</IonSelectOption>
+                      <IonSelectOption value="B+">B+</IonSelectOption>
+                      <IonSelectOption value="B-">B-</IonSelectOption>
+                      <IonSelectOption value="AB+">AB+</IonSelectOption>
+                      <IonSelectOption value="AB-">AB-</IonSelectOption>
+                      <IonSelectOption value="O+">O+</IonSelectOption>
+                      <IonSelectOption value="O-">O-</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: '10px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setEmergencyExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                <IonIcon icon={shieldCheckmarkOutline} slot="start" />
+                Urgence {emergencyExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {emergencyExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Notes d'urgence</IonLabel>
+                    <IonInput disabled={!editMode} value={emergencyNotes} onIonInput={(e) => setEmergencyNotes(e.detail.value ?? '')} />
+                  </IonItem>
+                  <div style={{ padding: '0 12px 12px' }}>
+                    <IonButton
+                      expand="block"
+                      fill="outline"
+                      onClick={() => ionRouter.push('/patient/emergency-contacts', 'forward', 'push')}
+                    >
+                      Voir contacts d'urgence
+                    </IonButton>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {editMode ? (
+              <IonButton expand="block" style={{ marginTop: '12px' }} onClick={() => saveProfile().catch(() => undefined)} disabled={saving}>
+                {saving ? 'Enregistrement...' : 'Enregistrer'}
+              </IonButton>
             ) : null}
-          </IonCardContent>
+          </IonCardContent> : null}
         </IonCard>
 
         <div className="dashboard-grid">

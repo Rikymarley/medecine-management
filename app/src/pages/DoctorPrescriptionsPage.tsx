@@ -43,19 +43,17 @@ const DoctorPrescriptionsPage: React.FC = () => {
     }
 
     const cachedRaw = localStorage.getItem(cacheKey);
-    if (cachedRaw) {
-      try {
-        const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
-        if (Array.isArray(cachedData)) {
-          setPrescriptions(cachedData);
-          if (cachedData.length > 0) {
-            return;
+      if (cachedRaw) {
+        try {
+          const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
+          if (Array.isArray(cachedData)) {
+            setPrescriptions(cachedData);
+            // Continue to refresh from API so new family-member labels are not stuck in stale cache.
           }
+        } catch {
+          localStorage.removeItem(cacheKey);
         }
-      } catch {
-        localStorage.removeItem(cacheKey);
       }
-    }
 
     if (!token) {
       return;
@@ -119,11 +117,8 @@ const DoctorPrescriptionsPage: React.FC = () => {
                     onClick={() => ionRouter.push(`/doctor/prescriptions/${prescription.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
-                      <h3>{prescription.patient_name}</h3>
+                      <h3>{prescription.familyMember?.name || prescription.family_member?.name || prescription.patient_name}</h3>
                       <p>Code ordonnance: {getPrescriptionCode(prescription)}</p>
-                      {!prescription.patient_user_id || prescription.patient?.account_status === 'provisional' ? (
-                        <IonBadge color="warning">Patient non inscrit</IonBadge>
-                      ) : null}
                       <div className="status-row">
                         <span>Statut:</span>
                         <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>

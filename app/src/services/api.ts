@@ -34,6 +34,37 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
   return response.json() as Promise<T>;
 };
 
+const requestFormData = async <T>(path: string, formData: FormData, token?: string): Promise<T> => {
+  const headers: Record<string, string> = {
+    Accept: 'application/json'
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    const message = errorBody.message ?? 'Echec de la requete';
+    console.error('[API ERROR]', {
+      url: `${API_URL}${path}`,
+      method: 'POST',
+      status: response.status,
+      statusText: response.statusText,
+      body: errorBody
+    });
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<T>;
+};
+
 export type ApiUser = {
   id: number;
   name: string;
@@ -188,6 +219,14 @@ export type ApiPrescription = {
     date_of_birth: string | null;
     phone: string | null;
   } | null;
+  familyMember?: {
+    id: number;
+    name: string;
+  } | null;
+  family_member?: {
+    id: number;
+    name: string;
+  } | null;
   medicine_requests: ApiMedicineRequest[];
   responses: ApiPharmacyResponse[];
   guestPatient?: {
@@ -325,6 +364,7 @@ export type ApiPatientLookup = {
 
 export type ApiMedicalHistoryEntry = {
   id: number;
+  entry_code: string | null;
   patient_user_id: number;
   family_member_id: number | null;
   doctor_user_id: number | null;
@@ -340,6 +380,8 @@ export type ApiMedicalHistoryEntry = {
   family_member_name?: string | null;
   prescription_requested_at?: string | null;
   prescription_print_code?: string | null;
+  can_edit_by_patient?: boolean;
+  can_delete_by_patient?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -452,6 +494,16 @@ export const api = {
       token,
       body: JSON.stringify(payload)
     }),
+  uploadMyPharmacyLogo: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    return requestFormData<ApiPharmacy>('/pharmacy/me/logo', formData, token);
+  },
+  uploadMyPharmacyStorefrontImage: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('storefront_image', file);
+    return requestFormData<ApiPharmacy>('/pharmacy/me/storefront-image', formData, token);
+  },
   getMedicines: (params?: { q?: string; category?: ApiMedicine['category']; limit?: number }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set('q', params.q);
@@ -568,6 +620,19 @@ export const api = {
       token,
       body: JSON.stringify({ ninu })
     }),
+  createAndLinkDoctorPrescriptionPatient: (
+    token: string,
+    prescriptionId: number,
+    payload?: {
+      ninu?: string;
+      date_of_birth?: string;
+    }
+  ) =>
+    request<ApiPrescription>(`/doctor/prescriptions/${prescriptionId}/create-and-link-patient`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
   completePrescriptionAsPatient: (token: string, prescriptionId: number) =>
     request<ApiPrescription>(`/patient/prescriptions/${prescriptionId}/complete`, {
       method: 'PATCH',
@@ -599,6 +664,11 @@ export const api = {
       method: 'POST',
       token,
       body: JSON.stringify(payload)
+    }),
+  reactivatePharmacyPrescription: (token: string, prescriptionId: number) =>
+    request<ApiPrescription>(`/pharmacy/prescriptions/${prescriptionId}/reactivate`, {
+      method: 'PATCH',
+      token
     }),
   getPatientMedicinePurchases: (token: string, prescriptionId: number) =>
     request<ApiPatientMedicinePurchase[]>(`/patient/prescriptions/${prescriptionId}/purchases`, { token }),
@@ -850,5 +920,16 @@ export const api = {
       method: 'PATCH',
       token,
       body: JSON.stringify(payload)
+    }),
+  linkDoctorPatientMedicalHistoryPrescription: (
+    token: string,
+    patientUserId: number,
+    id: number,
+    prescription_id: number
+  ) =>
+    request<ApiMedicalHistoryEntry>(`/doctor/patients/${patientUserId}/medical-history/${id}/link-prescription`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ prescription_id })
     })
 };

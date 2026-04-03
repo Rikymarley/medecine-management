@@ -45,7 +45,6 @@ class GuestPatientController extends Controller
 
         $query = User::query()
             ->where('role', 'patient')
-            ->where('account_status', 'provisional')
             ->where('created_by_doctor_id', $doctorUserId)
             ->whereRaw('LOWER(name) = ?', [mb_strtolower(trim($name))]);
 
@@ -118,7 +117,6 @@ class GuestPatientController extends Controller
     {
         $rows = User::query()
             ->where('role', 'patient')
-            ->where('account_status', 'provisional')
             ->where('created_by_doctor_id', $request->user()->id)
             ->orderBy('name')
             ->get(['id', 'created_by_doctor_id', 'name', 'phone', 'ninu', 'date_of_birth', 'address', 'age', 'gender', 'emergency_notes', 'created_at', 'updated_at']);
@@ -158,7 +156,7 @@ class GuestPatientController extends Controller
             ], 422);
         }
 
-        $placeholderEmail = 'provisional+' . Str::uuid()->toString() . '@retel.local';
+        $placeholderEmail = 'patient+' . Str::uuid()->toString() . '@retel.local';
 
         $row = User::create([
             'name' => trim($data['name']),
@@ -172,7 +170,7 @@ class GuestPatientController extends Controller
             'emergency_notes' => $data['notes'] ?? null,
             'password' => Hash::make(Str::random(32)),
             'role' => 'patient',
-            'account_status' => 'provisional',
+            'account_status' => 'active',
             'created_by_doctor_id' => $request->user()->id,
             'verification_status' => 'approved',
             'verified_at' => now(),
@@ -199,7 +197,6 @@ class GuestPatientController extends Controller
         $row = User::query()
             ->where('id', $guestPatient)
             ->where('role', 'patient')
-            ->where('account_status', 'provisional')
             ->where('created_by_doctor_id', $request->user()->id)
             ->first();
 

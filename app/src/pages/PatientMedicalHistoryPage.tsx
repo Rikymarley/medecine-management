@@ -298,9 +298,15 @@ const PatientMedicalHistoryPage: React.FC = () => {
                         <div style={{ flex: 1, width: '2px', background: '#dbe7ef', marginTop: '6px' }} />
                       </div>
                       <IonLabel>
+                      <p style={{ marginBottom: 2 }}>
+                        <strong>Reference:</strong> {entry.entry_code ?? `MH-${entry.id}`}
+                      </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                         <h3 style={{ marginBottom: 2 }}>{entry.title}</h3>
-                        <IonBadge color={statusColor[entry.status]}>{statusLabel[entry.status]}</IonBadge>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {!entry.can_edit_by_patient ? <IonBadge color="medium">Verrouille (docteur)</IonBadge> : null}
+                          <IonBadge color={statusColor[entry.status]}>{statusLabel[entry.status]}</IonBadge>
+                        </div>
                       </div>
                       <p>
                         {typeLabel[entry.type]} · {visibilityLabel[entry.visibility]}
@@ -313,14 +319,16 @@ const PatientMedicalHistoryPage: React.FC = () => {
                       {entry.details ? <p>{entry.details}</p> : null}
                       <p>Mise a jour: {formatDateTime(entry.updated_at)}</p>
                     </IonLabel>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <IonButton fill="clear" color="danger" onClick={() => setDeleteTargetId(entry.id)}>
-                      <IonIcon icon={trashOutline} />
-                      </IonButton>
-                      <IonButton fill="clear" onClick={() => startEdit(entry)}>
-                      <IonIcon icon={createOutline} />
-                      </IonButton>
-                    </div>
+                    {entry.can_edit_by_patient ? (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <IonButton fill="clear" color="danger" onClick={() => setDeleteTargetId(entry.id)}>
+                          <IonIcon icon={trashOutline} />
+                        </IonButton>
+                        <IonButton fill="clear" onClick={() => startEdit(entry)}>
+                          <IonIcon icon={createOutline} />
+                        </IonButton>
+                      </div>
+                    ) : null}
                     </div>
                   </IonItem>
                 ))}
