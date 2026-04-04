@@ -10,7 +10,6 @@ class Prescription extends Model
     protected $fillable = [
         'doctor_user_id',
         'patient_user_id',
-        'guest_patient_id',
         'family_member_id',
         'patient_name',
         'patient_phone',
@@ -50,11 +49,6 @@ class Prescription extends Model
     public function familyMember()
     {
         return $this->belongsTo(FamilyMember::class);
-    }
-
-    public function guestPatient()
-    {
-        return $this->belongsTo(GuestPatient::class);
     }
 
     public function responses()

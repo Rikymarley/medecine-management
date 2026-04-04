@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
-class GuestPatientController extends Controller
+class DoctorPatientController extends Controller
 {
     private function normalizedPhone(?string $value): ?string
     {
@@ -192,10 +192,10 @@ class GuestPatientController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, int $guestPatient)
+    public function update(Request $request, int $patient)
     {
         $row = User::query()
-            ->where('id', $guestPatient)
+            ->where('id', $patient)
             ->where('role', 'patient')
             ->where('created_by_doctor_id', $request->user()->id)
             ->first();

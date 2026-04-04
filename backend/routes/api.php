@@ -7,7 +7,7 @@ use App\Http\Controllers\Api\AdminAccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmergencyContactController;
 use App\Http\Controllers\Api\FamilyMemberController;
-use App\Http\Controllers\Api\GuestPatientController;
+use App\Http\Controllers\Api\DoctorPatientController;
 use App\Http\Controllers\Api\MedicalHistoryController;
 use App\Http\Controllers\Api\PatientMedicinePurchaseController;
 use App\Http\Controllers\Api\MedicineController;
@@ -46,13 +46,13 @@ Route::get('/doctor/prescriptions', [PrescriptionController::class, 'mine'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/patients/search', [PrescriptionController::class, 'searchPatients'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
-Route::get('/doctor/guest-patients', [GuestPatientController::class, 'index'])
+Route::get('/doctor/patients', [DoctorPatientController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
-Route::get('/doctor/guest-patients/availability', [GuestPatientController::class, 'availability'])
+Route::get('/doctor/patients/availability', [DoctorPatientController::class, 'availability'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
-Route::post('/doctor/guest-patients', [GuestPatientController::class, 'store'])
+Route::post('/doctor/patients', [DoctorPatientController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
-Route::patch('/doctor/guest-patients/{guestPatient}', [GuestPatientController::class, 'update'])
+Route::patch('/doctor/patients/{patient}/basic', [DoctorPatientController::class, 'update'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 Route::get('/doctor/prescriptions/{prescription}/print-data', [PrescriptionController::class, 'printDataForDoctor'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);

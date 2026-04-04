@@ -1,7 +1,6 @@
 import {
   IonBackButton,
   IonBadge,
-  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -13,6 +12,7 @@ import {
   IonList,
   IonPage,
   IonText,
+  IonToggle,
   IonTitle,
   IonToolbar,
 } from '@ionic/react';
@@ -21,30 +21,28 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory } from '../services/api';
+import { useAuth } from '../state/AuthState';
+import { formatDateTime } from '../utils/time';
 
 type RouteParams = {
   doctorId: string;
 };
 
 const DoctorDoctorDetailPage: React.FC = () => {
+  const { token, user, loading: authLoading } = useAuth();
   const { doctorId } = useParams<RouteParams>();
   const [doctor, setDoctor] = useState<ApiDoctorDirectory | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [approving, setApproving] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ id: number; can_verify_accounts?: boolean } | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [permissionLoaded, setPermissionLoaded] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('user');
-      setCurrentUser(raw ? JSON.parse(raw) : null);
-      setToken(localStorage.getItem('token'));
-    } catch {
-      setCurrentUser(null);
-      setToken(null);
+    if (!authLoading) {
+      setPermissionLoaded(true);
     }
-  }, []);
+  }, [authLoading]);
 
   useEffect(() => {
     let active = true;
@@ -78,12 +76,21 @@ const DoctorDoctorDetailPage: React.FC = () => {
     };
   }, [doctorId, token]);
 
-  const canVerify = useMemo(() => {
-    if (!doctor || !currentUser) {
+  const canVerify = !!user?.can_verify_accounts;
+
+  const canManageLicense = useMemo(() => {
+    if (!permissionLoaded || !doctor || !user) {
       return false;
     }
-    return !!currentUser.can_verify_accounts && currentUser.id !== doctor.id && !doctor.license_verified;
-  }, [currentUser, doctor]);
+    return !!user.can_verify_accounts && user.id !== doctor.id;
+  }, [permissionLoaded, user, doctor]);
+
+  const isOwnDoctorProfile = useMemo(() => {
+    if (!doctor || !user) {
+      return false;
+    }
+    return user.id === doctor.id;
+  }, [doctor, user]);
 
   const verifyDoctor = async () => {
     if (!token || !doctor) {
@@ -92,10 +99,11 @@ const DoctorDoctorDetailPage: React.FC = () => {
 
     try {
       setUpdating(true);
+      setActionMessage(null);
       const updated = await api.verifyDoctorLicense(token, doctor.id, { verified: true });
-      setDoctor(updated);
+      setDoctor((prev) => (prev ? { ...prev, ...updated } : updated));
     } catch (error) {
-      console.error(error);
+      setActionMessage(error instanceof Error ? error.message : 'Verification impossible.');
     } finally {
       setUpdating(false);
     }
@@ -107,10 +115,11 @@ const DoctorDoctorDetailPage: React.FC = () => {
     }
     try {
       setUpdating(true);
+      setActionMessage(null);
       const updated = await api.verifyDoctorLicense(token, doctor.id, { verified: false });
-      setDoctor(updated);
+      setDoctor((prev) => (prev ? { ...prev, ...updated } : updated));
     } catch (error) {
-      console.error(error);
+      setActionMessage(error instanceof Error ? error.message : 'Action impossible.');
     } finally {
       setUpdating(false);
     }
@@ -122,12 +131,31 @@ const DoctorDoctorDetailPage: React.FC = () => {
     }
     try {
       setApproving(true);
+      setActionMessage(null);
       await api.approveDoctorAccount(token, doctor.id);
       const rows = await api.getDoctorsDirectoryForDoctor(token);
       const refreshed = rows.find((row) => row.id === doctor.id) ?? doctor;
       setDoctor(refreshed);
     } catch (error) {
-      console.error(error);
+      setActionMessage(error instanceof Error ? error.message : 'Action impossible.');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const unapproveDoctor = async () => {
+    if (!token || !doctor) {
+      return;
+    }
+    try {
+      setApproving(true);
+      setActionMessage(null);
+      await api.unapproveDoctorAccount(token, doctor.id);
+      const rows = await api.getDoctorsDirectoryForDoctor(token);
+      const refreshed = rows.find((row) => row.id === doctor.id) ?? doctor;
+      setDoctor(refreshed);
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : 'Action impossible.');
     } finally {
       setApproving(false);
     }
@@ -163,38 +191,52 @@ const DoctorDoctorDetailPage: React.FC = () => {
                     <h2>{doctor.name}</h2>
                     <p>{doctor.specialty || 'Specialite non renseignee'}</p>
                   </IonLabel>
+                  {!isOwnDoctorProfile ? (
+                    <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#475569' }}>Approbation :</span>
+                      <IonToggle
+                        checked={doctor.account_verification_status === 'approved'}
+                        disabled={!canVerify || updating || approving}
+                        onIonChange={(event) => {
+                          const enabled = !!event.detail.checked;
+                          if (enabled) {
+                            void approveDoctor();
+                          } else {
+                            void unapproveDoctor();
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </IonItem>
-
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '4px 0 8px' }}>
                   <IonBadge color={doctor.account_verification_status === 'approved' ? 'success' : 'warning'}>
                     {doctor.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
                   </IonBadge>
                   <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
                     {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
                   </IonBadge>
-                  {doctor.account_verification_status === 'approved' && doctor.account_verified_by_name ? (
-                    <IonBadge color="light">Approuve par {doctor.account_verified_by_name}</IonBadge>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px' }}>
+                  {doctor.account_verification_status === 'approved' && doctor.approved_by ? (
+                    <IonBadge color="light">
+                      Approuvee par {doctor.approved_by}
+                      {doctor.approved_at ? `, Le ${formatDateTime(doctor.approved_at)}` : ''}
+                    </IonBadge>
                   ) : null}
                   {doctor.license_verified && doctor.license_verified_by_doctor_name ? (
-                    <IonBadge color="light">Verifiee par {doctor.license_verified_by_doctor_name}</IonBadge>
+                    <IonBadge color="light">
+                      Verifiee par {doctor.license_verified_by_doctor_name}
+                      {doctor.license_verified_at ? `, Le ${formatDateTime(doctor.license_verified_at)}` : ''}
+                    </IonBadge>
                   ) : null}
                   {doctor.teleconsultation_available ? <IonBadge color="tertiary">Teleconsultation</IonBadge> : null}
                 </div>
-
-                {doctor.account_verification_status !== 'approved' && !!currentUser?.can_verify_accounts && currentUser.id !== doctor.id ? (
-                  <IonButton size="small" color="tertiary" fill="outline" disabled={approving} onClick={approveDoctor}>
-                    Approuver le compte
-                  </IonButton>
-                ) : null}
-                {canVerify ? (
-                  <IonButton size="small" color="success" fill="outline" disabled={updating} onClick={verifyDoctor}>
-                    Verifier la licence
-                  </IonButton>
-                ) : null}
-                {!!currentUser?.can_verify_accounts && currentUser.id !== doctor.id && doctor.license_verified ? (
-                  <IonButton size="small" color="warning" fill="outline" disabled={updating} onClick={unverifyDoctor}>
-                    Retirer verification licence
-                  </IonButton>
+                {actionMessage ? (
+                  <IonText color="danger">
+                    <p>{actionMessage}</p>
+                  </IonText>
                 ) : null}
 
                 <IonList>
@@ -245,6 +287,34 @@ const DoctorDoctorDetailPage: React.FC = () => {
                       <h3>Numero de licence</h3>
                       <p>{doctor.license_number || 'N/D'}</p>
                     </IonLabel>
+                    {doctor.license_number && canManageLicense ? (
+                      <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.9rem', color: '#475569' }}>Verification</span>
+                        <IonToggle
+                          checked={!!doctor.license_verified}
+                          disabled={updating}
+                          onIonChange={(event) => {
+                            const enabled = !!event.detail.checked;
+                            if (enabled) {
+                              void verifyDoctor();
+                            } else {
+                              void unverifyDoctor();
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : doctor.license_number ? (
+                      <div
+                        slot="end"
+                        style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '220px', textAlign: 'right', width: '50%' }}
+                      >
+                        {!permissionLoaded
+                          ? 'Verification des permissions en cours...'
+                          : canVerify
+                          ? 'Vous ne pouvez pas verifier votre propre compte.'
+                          : 'Delegation requise pour verifier/deverifier la licence.'}
+                      </div>
+                    ) : null}
                   </IonItem>
                   <IonItem lines="full">
                     <IonLabel>

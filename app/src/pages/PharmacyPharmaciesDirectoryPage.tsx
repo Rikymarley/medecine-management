@@ -19,7 +19,7 @@ import {
   useIonRouter,
   useIonViewWillEnter
 } from '@ionic/react';
-import { callOutline, locateOutline, logoWhatsapp, storefrontOutline } from 'ionicons/icons';
+import { chevronForwardOutline, storefrontOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
@@ -30,6 +30,9 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const [pharmacies, setPharmacies] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'
+  >('all');
 
   const loadPharmacies = async () => {
     if (authLoading) {
@@ -50,7 +53,7 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const rows = q
+    const searched = q
       ? pharmacies.filter((pharmacy) =>
           `${pharmacy.name} ${pharmacy.address ?? ''}`
             .toLowerCase()
@@ -58,8 +61,19 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
         )
       : pharmacies;
 
+    const rows = searched.filter((pharmacy) => {
+      if (statusFilter === 'open') return !!pharmacy.open_now && !pharmacy.temporary_closed;
+      if (statusFilter === 'closed') return !pharmacy.open_now || !!pharmacy.temporary_closed;
+      if (statusFilter === 'approved') return pharmacy.account_verification_status === 'approved';
+      if (statusFilter === 'pending') return pharmacy.account_verification_status !== 'approved';
+      if (statusFilter === 'licensed') return !!pharmacy.license_verified;
+      if (statusFilter === 'unlicensed') return !pharmacy.license_verified;
+      if (statusFilter === 'emergency') return !!pharmacy.emergency_available;
+      return true;
+    });
+
     return [...rows].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [pharmacies, query]);
+  }, [pharmacies, query, statusFilter]);
 
   return (
     <IonPage>
@@ -80,6 +94,34 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
               placeholder="Rechercher nom, adresse..."
               onIonInput={(event) => setQuery(event.detail.value ?? '')}
             />
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 28px 8px 0' }}>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'open' ? 'solid' : 'outline'} onClick={() => setStatusFilter('open')}>Ouverte</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'closed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('closed')}>Fermee</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'emergency' ? 'solid' : 'outline'} onClick={() => setStatusFilter('emergency')}>Urgence</IonButton>
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 4,
+                  bottom: 8,
+                  width: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  background: 'linear-gradient(to right, rgba(255,255,255,0), var(--ion-background-color))',
+                  pointerEvents: 'none'
+                }}
+              >
+                <IonIcon icon={chevronForwardOutline} color="medium" style={{ fontSize: '22px' }} />
+              </div>
+            </div>
             {filtered.length === 0 ? (
               <IonText color="medium">
                 <p>Aucune pharmacie trouvee.</p>
@@ -87,74 +129,45 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
             ) : (
               <IonList>
                 {filtered.map((pharmacy) => (
-                  <IonItem key={pharmacy.id} lines="full">
-                    {pharmacy.logo_url ? (
-                      <img
-                        src={pharmacy.logo_url}
-                        alt={`Logo ${pharmacy.name}`}
-                        style={{
-                          width: '34px',
-                          height: '34px',
-                          objectFit: 'cover',
-                          borderRadius: '8px',
-                          border: '1px solid #dbe7ef',
-                          marginRight: '10px'
-                        }}
-                      />
-                    ) : (
-                      <IonIcon icon={storefrontOutline} slot="start" color="primary" />
-                    )}
+                  <IonItem
+                    key={pharmacy.id}
+                    lines="full"
+                    button
+                    onClick={() => ionRouter.push(`/pharmacy/pharmacies/${pharmacy.id}`, 'forward', 'push')}
+                  >
                     <IonLabel>
+                      {pharmacy.logo_url ? (
+                        <img
+                          src={pharmacy.logo_url}
+                          alt={`Logo ${pharmacy.name}`}
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            objectFit: 'cover',
+                            borderRadius: '8px',
+                            border: '1px solid rgb(219, 231, 239)',
+                            marginRight: '10px',
+                            float: 'left'
+                          }}
+                        />
+                      ) : (
+                        <IonIcon icon={storefrontOutline} color="primary" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
+                      )}
                       <h3>{pharmacy.name}</h3>
                       <p>{pharmacy.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                         <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
                           {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
                         </IonBadge>
-                        {pharmacy.account_verification_status !== 'approved' ? (
-                          <IonBadge color="warning">Compte en attente</IonBadge>
-                        ) : null}
-                        {!pharmacy.license_verified ? (
-                          <IonBadge color="warning">Licence non verifiee</IonBadge>
-                        ) : null}
+                        <IonBadge color={pharmacy.account_verification_status === 'approved' ? 'success' : 'warning'}>
+                          {pharmacy.account_verification_status === 'approved' ? 'Compte Approuve' : 'Compte en attente'}
+                        </IonBadge>
+                        <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
+                          {pharmacy.license_verified ? 'Licence Verifiee' : 'Licence non verifiee'}
+                        </IonBadge>
                         {pharmacy.emergency_available ? <IonBadge color="warning">Urgence</IonBadge> : null}
                       </div>
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                        <a href={pharmacy.phone ? `tel:${pharmacy.phone}` : '#'} style={{ pointerEvents: pharmacy.phone ? 'auto' : 'none', opacity: pharmacy.phone ? 1 : 0.4 }}>
-                          <IonIcon icon={callOutline} />
-                        </a>
-                        <a
-                          href={pharmacy.phone ? `https://wa.me/${pharmacy.phone.replace(/\D/g, '')}` : '#'}
-                          style={{ pointerEvents: pharmacy.phone ? 'auto' : 'none', opacity: pharmacy.phone ? 1 : 0.4 }}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <IonIcon icon={logoWhatsapp} />
-                        </a>
-                        <a
-                          href={
-                            pharmacy.latitude && pharmacy.longitude
-                              ? `https://www.google.com/maps/search/?api=1&query=${pharmacy.latitude},${pharmacy.longitude}`
-                              : '#'
-                          }
-                          style={{
-                            pointerEvents: pharmacy.latitude && pharmacy.longitude ? 'auto' : 'none',
-                            opacity: pharmacy.latitude && pharmacy.longitude ? 1 : 0.4
-                          }}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <IonIcon icon={locateOutline} />
-                        </a>
-                      </div>
                     </IonLabel>
-                    <IonButton
-                      slot="end"
-                      fill="clear"
-                      onClick={() => ionRouter.push(`/pharmacy/pharmacies/${pharmacy.id}`, 'forward', 'push')}
-                    >
-                      Voir
-                    </IonButton>
                   </IonItem>
                 ))}
               </IonList>

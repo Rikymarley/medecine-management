@@ -313,7 +313,7 @@ const PharmacyPharmacyDetailPage: React.FC = () => {
                       <h3>Numero de licence</h3>
                       <p>{pharmacy.license_number || 'N/D'}</p>
                     </IonLabel>
-                    {isOwnPharmacy ? (
+                    {!pharmacy.license_number ? null : isOwnPharmacy ? (
                       <div
                         slot="end"
                         style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '220px', textAlign: 'right', width: '50%' }}

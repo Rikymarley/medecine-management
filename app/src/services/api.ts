@@ -69,6 +69,7 @@ export type ApiUser = {
   id: number;
   name: string;
   email: string;
+  photo_url?: string | null;
   phone: string | null;
   ninu: string | null;
   date_of_birth: string | null;
@@ -219,7 +220,6 @@ export type ApiPrescription = {
   id: number;
   doctor_user_id: number | null;
   patient_user_id: number | null;
-  guest_patient_id?: number | null;
   family_member_id: number | null;
   patient_name: string;
   patient_phone?: string | null;
@@ -270,19 +270,9 @@ export type ApiPrescription = {
   } | null;
   medicine_requests: ApiMedicineRequest[];
   responses: ApiPharmacyResponse[];
-  guestPatient?: {
-    id: number;
-    doctor_user_id: number;
-    name: string;
-    phone: string | null;
-    address: string | null;
-    age: number | null;
-    gender: 'male' | 'female' | null;
-    notes: string | null;
-  } | null;
 };
 
-export type ApiGuestPatient = {
+export type ApiDoctorPatient = {
   id: number;
   doctor_user_id: number;
   name: string;
@@ -297,7 +287,7 @@ export type ApiGuestPatient = {
   updated_at: string;
 };
 
-export type ApiGuestPatientAvailability = {
+export type ApiDoctorPatientAvailability = {
   available: boolean;
   count: number;
   matches: Array<{
@@ -396,6 +386,7 @@ export type ApiDoctorPatientProfile = {
   gender: 'male' | 'female' | null;
   allergies: string | null;
   chronic_diseases: string | null;
+  surgical_history: string | null;
   blood_type: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
   emergency_notes: string | null;
 };
@@ -530,6 +521,7 @@ export const api = {
       latitude: number | null;
       longitude: number | null;
       whatsapp: string | null;
+      date_of_birth: string | null;
       age: number | null;
       gender: 'male' | 'female' | null;
       allergies: string | null;
@@ -620,6 +612,22 @@ export const api = {
       token,
       body: JSON.stringify(payload ?? {})
     }),
+  unapproveDoctorAccount: (
+    token: string,
+    doctorUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/doctor/verifications/doctor-accounts/${doctorUserId}/unapprove`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
   verifyPharmacyLicense: (
     token: string,
     pharmacyId: number,
@@ -642,6 +650,22 @@ export const api = {
       verified_by: number | null;
       verified_by_name?: string | null;
     }>(`/doctor/verifications/pharmacy-accounts/${pharmacyUserId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  unapprovePharmacyAccount: (
+    token: string,
+    pharmacyUserId: number,
+    payload?: { notes?: string | null }
+  ) =>
+    request<{
+      id: number;
+      verification_status: 'pending' | 'approved' | 'rejected';
+      verified_at: string | null;
+      verified_by: number | null;
+      verified_by_name?: string | null;
+    }>(`/doctor/verifications/pharmacy-accounts/${pharmacyUserId}/unapprove`, {
       method: 'POST',
       token,
       body: JSON.stringify(payload ?? {})
@@ -747,9 +771,9 @@ export const api = {
     search.set('limit', String(limit));
     return request<ApiPatientLookup[]>(`/doctor/patients/search?${search.toString()}`, { token });
   },
-  getDoctorGuestPatients: (token: string) =>
-    request<ApiGuestPatient[]>('/doctor/guest-patients', { token }),
-  checkDoctorGuestPatientAvailability: (
+  getDoctorPatients: (token: string) =>
+    request<ApiDoctorPatient[]>('/doctor/patients', { token }),
+  checkDoctorPatientAvailability: (
     token: string,
     payload: {
       name?: string;
@@ -765,9 +789,9 @@ export const api = {
     if (payload.ninu) search.set('ninu', payload.ninu);
     if (payload.date_of_birth) search.set('date_of_birth', payload.date_of_birth);
     if (payload.limit) search.set('limit', String(payload.limit));
-    return request<ApiGuestPatientAvailability>(`/doctor/guest-patients/availability?${search.toString()}`, { token });
+    return request<ApiDoctorPatientAvailability>(`/doctor/patients/availability?${search.toString()}`, { token });
   },
-  createDoctorGuestPatient: (
+  createDoctorPatient: (
     token: string,
     payload: {
       name: string;
@@ -780,14 +804,14 @@ export const api = {
       notes?: string | null;
     }
   ) =>
-    request<ApiGuestPatient>('/doctor/guest-patients', {
+    request<ApiDoctorPatient>('/doctor/patients', {
       method: 'POST',
       token,
       body: JSON.stringify(payload)
     }),
-  updateDoctorGuestPatient: (
+  updateDoctorPatientBasic: (
     token: string,
-    guestPatientId: number,
+    patientId: number,
     payload: Partial<{
       name: string;
       phone: string | null;
@@ -799,7 +823,7 @@ export const api = {
       notes: string | null;
     }>
   ) =>
-    request<ApiGuestPatient>(`/doctor/guest-patients/${guestPatientId}`, {
+    request<ApiDoctorPatient>(`/doctor/patients/${patientId}/basic`, {
       method: 'PATCH',
       token,
       body: JSON.stringify(payload)
@@ -810,7 +834,6 @@ export const api = {
     patient_name: string;
     patient_phone?: string | null;
     patient_user_id?: number;
-    guest_patient_id?: number;
     patient_address?: string | null;
     patient_age?: number | null;
     patient_gender?: 'male' | 'female' | null;

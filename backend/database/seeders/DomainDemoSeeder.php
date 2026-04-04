@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\EmergencyContact;
 use App\Models\FamilyMember;
-use App\Models\GuestPatient;
 use App\Models\MedicalHistoryEntry;
 use App\Models\MedicineRequest;
 use App\Models\PatientMedicinePurchase;
@@ -153,24 +152,12 @@ class DomainDemoSeeder extends Seeder
             ]
         );
 
-        $guest = GuestPatient::updateOrCreate(
-            ['doctor_user_id' => $doctor->id, 'name' => 'Patient Papier Demo'],
-            [
-                'phone' => '+509-3555-9000',
-                'address' => 'Carrefour',
-                'age' => 54,
-                'gender' => 'male',
-                'notes' => 'Patient sans smartphone.',
-            ]
-        );
-
         $rx = Prescription::updateOrCreate(
             ['print_code' => 'RX-DEMO-0001'],
             [
                 'doctor_user_id' => $doctor->id,
                 'patient_user_id' => $patient->id,
                 'family_member_id' => null,
-                'guest_patient_id' => null,
                 'patient_name' => $patient->name,
                 'patient_phone' => $patient->phone,
                 'doctor_name' => $doctor->name,
@@ -189,7 +176,6 @@ class DomainDemoSeeder extends Seeder
                 'doctor_user_id' => $doctor->id,
                 'patient_user_id' => $patient->id,
                 'family_member_id' => $family->id,
-                'guest_patient_id' => null,
                 'patient_name' => $patient->name,
                 'patient_phone' => $patient->phone,
                 'doctor_name' => $doctor->name,
@@ -199,23 +185,6 @@ class DomainDemoSeeder extends Seeder
                 'qr_token' => Str::random(32),
                 'print_count' => 1,
                 'printed_at' => now()->subMinutes(18),
-            ]
-        );
-
-        $rxGuest = Prescription::updateOrCreate(
-            ['print_code' => 'RX-DEMO-0003'],
-            [
-                'doctor_user_id' => $doctor->id,
-                'patient_user_id' => null,
-                'family_member_id' => null,
-                'guest_patient_id' => $guest->id,
-                'patient_name' => $guest->name,
-                'patient_phone' => $guest->phone,
-                'doctor_name' => $doctor->name,
-                'source' => 'paper',
-                'status' => 'sent_to_pharmacies',
-                'requested_at' => now()->subMinutes(10),
-                'qr_token' => Str::random(32),
             ]
         );
 

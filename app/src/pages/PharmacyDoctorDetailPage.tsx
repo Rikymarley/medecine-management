@@ -279,7 +279,7 @@ const PharmacyDoctorDetailPage: React.FC = () => {
                       <h3>Numero de licence</h3>
                       <p>{doctor.license_number || 'N/D'}</p>
                     </IonLabel>
-                    {canManageLicense ? (
+                    {doctor.license_number && canManageLicense ? (
                       <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '0.9rem', color: '#475569' }}>Verification</span>
                         <IonToggle
@@ -295,7 +295,7 @@ const PharmacyDoctorDetailPage: React.FC = () => {
                           }}
                         />
                       </div>
-                    ) : (
+                    ) : doctor.license_number ? (
                       <div
                         slot="end"
                         style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '220px', textAlign: 'right', width: '50%' }}
@@ -306,7 +306,7 @@ const PharmacyDoctorDetailPage: React.FC = () => {
                           ? 'Vous ne pouvez pas verifier votre propre compte.'
                           : 'Delegation requise pour verifier/deverifier la licence.'}
                       </div>
-                    )}
+                    ) : null}
                   </IonItem>
                   <IonItem lines="full">
                     <IonLabel>

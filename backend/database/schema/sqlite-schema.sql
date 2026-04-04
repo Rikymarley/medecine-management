@@ -222,23 +222,6 @@ CREATE INDEX "emergency_contacts_patient_user_id_priority_index" on "emergency_c
   "patient_user_id",
   "priority"
 );
-CREATE TABLE IF NOT EXISTS "guest_patients"(
-  "id" integer primary key autoincrement not null,
-  "doctor_user_id" integer not null,
-  "name" varchar not null,
-  "phone" varchar,
-  "address" varchar,
-  "age" integer,
-  "gender" varchar,
-  "notes" text,
-  "created_at" datetime,
-  "updated_at" datetime,
-  foreign key("doctor_user_id") references "users"("id") on delete cascade
-);
-CREATE INDEX "guest_patients_doctor_user_id_name_index" on "guest_patients"(
-  "doctor_user_id",
-  "name"
-);
 CREATE TABLE IF NOT EXISTS "prescriptions"(
   "id" integer primary key autoincrement not null,
   "patient_name" varchar not null,
@@ -258,11 +241,9 @@ CREATE TABLE IF NOT EXISTS "prescriptions"(
   "print_code" varchar,
   "printed_at" datetime,
   "print_count" integer not null default('0'),
-  "guest_patient_id" integer,
   foreign key("family_member_id") references family_members("id") on delete set null on update no action,
   foreign key("doctor_user_id") references users("id") on delete set null on update no action,
-  foreign key("patient_user_id") references users("id") on delete set null on update no action,
-  foreign key("guest_patient_id") references "guest_patients"("id") on delete set null
+  foreign key("patient_user_id") references users("id") on delete set null on update no action
 );
 CREATE INDEX "prescriptions_doctor_user_id_requested_at_index" on "prescriptions"(
   "doctor_user_id",
@@ -282,10 +263,6 @@ CREATE INDEX "prescriptions_requested_at_index" on "prescriptions"(
   "requested_at"
 );
 CREATE INDEX "prescriptions_status_index" on "prescriptions"("status");
-CREATE INDEX "prescriptions_guest_patient_id_requested_at_index" on "prescriptions"(
-  "guest_patient_id",
-  "requested_at"
-);
 CREATE TABLE IF NOT EXISTS "medical_history_entries"(
   "id" integer primary key autoincrement not null,
   "patient_user_id" integer not null,
@@ -472,28 +449,25 @@ INSERT INTO migrations VALUES(29,'2026_04_01_172652_add_profile_fields_to_pharma
 INSERT INTO migrations VALUES(30,'2026_04_01_183015_add_medical_profile_fields_to_users_table',22);
 INSERT INTO migrations VALUES(31,'2026_04_01_184001_add_pharmacy_mode_to_pharmacies_table',23);
 INSERT INTO migrations VALUES(32,'2026_04_01_210000_add_print_fields_to_prescriptions_table',24);
-INSERT INTO migrations VALUES(33,'2026_04_01_220000_create_guest_patients_table',25);
-INSERT INTO migrations VALUES(34,'2026_04_01_220100_add_guest_patient_id_to_prescriptions_table',25);
-INSERT INTO migrations VALUES(35,'2026_04_01_221000_add_prescription_id_to_medical_history_entries_table',26);
-INSERT INTO migrations VALUES(36,'2026_04_01_223000_add_ninu_to_users_table',27);
-INSERT INTO migrations VALUES(37,'2026_04_02_090000_add_provisional_fields_to_users_table',28);
-INSERT INTO migrations VALUES(38,'2026_04_02_110000_add_date_of_birth_to_users_table',29);
-INSERT INTO migrations VALUES(39,'2026_04_02_120000_promote_provisional_patients_to_active',30);
-INSERT INTO migrations VALUES(40,'2026_04_02_130000_add_entry_code_to_medical_history_entries_table',31);
-INSERT INTO migrations VALUES(41,'2026_04_02_140000_create_medical_history_entry_prescriptions_table',32);
-INSERT INTO migrations VALUES(42,'2026_04_02_231000_add_pharmacy_mode_column_to_pharmacies_table',33);
-INSERT INTO migrations VALUES(43,'2026_04_03_090000_add_date_of_birth_to_family_members_table',34);
-INSERT INTO migrations VALUES(44,'2026_04_03_103000_add_extended_medical_profile_fields_to_users_and_family_members',35);
-INSERT INTO migrations VALUES(45,'2026_04_03_120000_create_users_table_consolidated',36);
-INSERT INTO migrations VALUES(46,'2026_04_03_121000_create_pharmacies_table_consolidated',36);
-INSERT INTO migrations VALUES(47,'2026_04_03_122000_create_prescriptions_table_consolidated',36);
-INSERT INTO migrations VALUES(48,'2026_04_03_123000_create_medicine_requests_table_consolidated',36);
-INSERT INTO migrations VALUES(49,'2026_04_03_124000_create_family_members_table_consolidated',36);
-INSERT INTO migrations VALUES(50,'2026_04_03_125000_create_emergency_contacts_table_consolidated',36);
-INSERT INTO migrations VALUES(51,'2026_04_03_130000_create_medical_history_entries_table_consolidated',36);
-INSERT INTO migrations VALUES(52,'2026_04_03_131000_create_patient_medicine_purchases_table_consolidated',36);
-INSERT INTO migrations VALUES(53,'2026_04_03_132000_create_pharmacy_responses_table_consolidated',36);
-INSERT INTO migrations VALUES(54,'2026_04_03_133000_create_medicines_table_consolidated',36);
-INSERT INTO migrations VALUES(55,'2026_04_03_134000_create_guest_patients_table_consolidated',36);
-INSERT INTO migrations VALUES(56,'2026_04_03_135000_create_prescription_status_logs_table_consolidated',36);
-INSERT INTO migrations VALUES(57,'2026_04_03_141000_add_license_verifier_fields',37);
+INSERT INTO migrations VALUES(33,'2026_04_01_221000_add_prescription_id_to_medical_history_entries_table',26);
+INSERT INTO migrations VALUES(34,'2026_04_01_223000_add_ninu_to_users_table',27);
+INSERT INTO migrations VALUES(35,'2026_04_02_090000_add_provisional_fields_to_users_table',28);
+INSERT INTO migrations VALUES(36,'2026_04_02_110000_add_date_of_birth_to_users_table',29);
+INSERT INTO migrations VALUES(37,'2026_04_02_120000_promote_provisional_patients_to_active',30);
+INSERT INTO migrations VALUES(38,'2026_04_02_130000_add_entry_code_to_medical_history_entries_table',31);
+INSERT INTO migrations VALUES(39,'2026_04_02_140000_create_medical_history_entry_prescriptions_table',32);
+INSERT INTO migrations VALUES(40,'2026_04_02_231000_add_pharmacy_mode_column_to_pharmacies_table',33);
+INSERT INTO migrations VALUES(41,'2026_04_03_090000_add_date_of_birth_to_family_members_table',34);
+INSERT INTO migrations VALUES(42,'2026_04_03_103000_add_extended_medical_profile_fields_to_users_and_family_members',35);
+INSERT INTO migrations VALUES(43,'2026_04_03_120000_create_users_table_consolidated',36);
+INSERT INTO migrations VALUES(44,'2026_04_03_121000_create_pharmacies_table_consolidated',36);
+INSERT INTO migrations VALUES(45,'2026_04_03_122000_create_prescriptions_table_consolidated',36);
+INSERT INTO migrations VALUES(46,'2026_04_03_123000_create_medicine_requests_table_consolidated',36);
+INSERT INTO migrations VALUES(47,'2026_04_03_124000_create_family_members_table_consolidated',36);
+INSERT INTO migrations VALUES(48,'2026_04_03_125000_create_emergency_contacts_table_consolidated',36);
+INSERT INTO migrations VALUES(49,'2026_04_03_130000_create_medical_history_entries_table_consolidated',36);
+INSERT INTO migrations VALUES(50,'2026_04_03_131000_create_patient_medicine_purchases_table_consolidated',36);
+INSERT INTO migrations VALUES(51,'2026_04_03_132000_create_pharmacy_responses_table_consolidated',36);
+INSERT INTO migrations VALUES(52,'2026_04_03_133000_create_medicines_table_consolidated',36);
+INSERT INTO migrations VALUES(53,'2026_04_03_135000_create_prescription_status_logs_table_consolidated',36);
+INSERT INTO migrations VALUES(54,'2026_04_03_141000_add_license_verifier_fields',37);

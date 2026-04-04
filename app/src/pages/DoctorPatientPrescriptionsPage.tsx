@@ -94,6 +94,9 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [isFamilyCollapsed, setIsFamilyCollapsed] = useState(true);
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(true);
   const [isPrescriptionsCollapsed, setIsPrescriptionsCollapsed] = useState(true);
+  const [isIdentityCollapsed, setIsIdentityCollapsed] = useState(true);
+  const [isHealthCollapsed, setIsHealthCollapsed] = useState(true);
+  const [isStatsCollapsed, setIsStatsCollapsed] = useState(true);
   const [expandedLinkedPrescriptions, setExpandedLinkedPrescriptions] = useState<Record<number, boolean>>({});
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [editingHistoryId, setEditingHistoryId] = useState<number | null>(null);
@@ -467,48 +470,83 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
                   <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                    <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Identite</p>
-                    <p><strong>Date de naissance:</strong> {patientProfile?.date_of_birth ? formatDateHaiti(patientProfile.date_of_birth) : 'N/D'}</p>
-                    <p>
-                      <strong>Genre:</strong>{' '}
-                      {profileFamilyMember
-                        ? profileFamilyMember.gender === 'male'
-                          ? 'M'
-                          : profileFamilyMember.gender === 'female'
-                          ? 'F'
-                          : 'Non precise'
-                        : patientProfile?.gender === 'male'
-                        ? 'M'
-                        : patientProfile?.gender === 'female'
-                        ? 'F'
-                        : 'Non precise'}
-                    </p>
-                    <p><strong>Adresse:</strong> {patientProfile?.address ?? 'N/D'}</p>
-                    {!profileFamilyMember ? <p><strong>NINU:</strong> {patientProfile?.ninu ?? 'N/D'}</p> : null}
-                    {profileFamilyMember ? (
-                      <p><strong>Relation:</strong> {profileFamilyMember.relationship ?? 'Non precisee'}</p>
-                    ) : null}
-                    {profileFamilyMember ? (
-                      <p><strong>Patient principal:</strong> {decodedPatientName}</p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <p style={{ margin: 0, fontWeight: 600 }}>Identite</p>
+                      <IonButton fill="clear" size="small" onClick={() => setIsIdentityCollapsed((prev) => !prev)}>
+                        <IonIcon icon={isIdentityCollapsed ? chevronDownOutline : chevronUpOutline} />
+                      </IonButton>
+                    </div>
+                    {!isIdentityCollapsed ? (
+                      <>
+                        <p>
+                          <strong>Date de naissance:</strong>{' '}
+                          {profileFamilyMember?.date_of_birth
+                            ? formatDateHaiti(profileFamilyMember.date_of_birth)
+                            : patientProfile?.date_of_birth
+                            ? formatDateHaiti(patientProfile.date_of_birth)
+                            : 'N/D'}
+                        </p>
+                        <p>
+                          <strong>Genre:</strong>{' '}
+                          {profileFamilyMember
+                            ? profileFamilyMember.gender === 'male'
+                              ? 'M'
+                              : profileFamilyMember.gender === 'female'
+                              ? 'F'
+                              : 'Non precise'
+                            : patientProfile?.gender === 'male'
+                            ? 'M'
+                            : patientProfile?.gender === 'female'
+                            ? 'F'
+                            : 'Non precise'}
+                        </p>
+                        <p><strong>Adresse:</strong> {profileFamilyMember ? 'N/D' : patientProfile?.address ?? 'N/D'}</p>
+                        {!profileFamilyMember ? <p><strong>NINU:</strong> {patientProfile?.ninu ?? 'N/D'}</p> : null}
+                        {profileFamilyMember ? (
+                          <p><strong>Relation:</strong> {profileFamilyMember.relationship ?? 'Non precisee'}</p>
+                        ) : null}
+                        {profileFamilyMember ? (
+                          <p><strong>Patient principal:</strong> {decodedPatientName}</p>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
                   <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                    <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Sante</p>
-                    <p><strong>Groupe sanguin:</strong> {profileFamilyMember?.blood_type ?? patientProfile?.blood_type ?? 'Non precise'}</p>
-                    <p><strong>Allergies:</strong> {profileFamilyMember?.allergies ?? patientProfile?.allergies ?? 'Aucune'}</p>
-                    <p><strong>Maladies chroniques:</strong> {profileFamilyMember?.chronic_diseases ?? patientProfile?.chronic_diseases ?? 'Aucune'}</p>
-                    <p><strong>Notes urgence:</strong> {profileFamilyMember?.emergency_notes ?? patientProfile?.emergency_notes ?? 'Aucune'}</p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <p style={{ margin: 0, fontWeight: 600 }}>Sante</p>
+                      <IonButton fill="clear" size="small" onClick={() => setIsHealthCollapsed((prev) => !prev)}>
+                        <IonIcon icon={isHealthCollapsed ? chevronDownOutline : chevronUpOutline} />
+                      </IonButton>
+                    </div>
+                    {!isHealthCollapsed ? (
+                      <>
+                        <p><strong>Groupe sanguin:</strong> {profileFamilyMember?.blood_type ?? patientProfile?.blood_type ?? 'Non precise'}</p>
+                        <p><strong>Allergies:</strong> {profileFamilyMember?.allergies ?? patientProfile?.allergies ?? 'Aucune'}</p>
+                        <p><strong>Antecedents medicaux:</strong> {profileFamilyMember?.chronic_diseases ?? patientProfile?.chronic_diseases ?? 'Aucun'}</p>
+                        <p><strong>Antecedents chirurgicaux:</strong> {profileFamilyMember?.surgical_history ?? patientProfile?.surgical_history ?? 'Aucun'}</p>
+                        <p><strong>Notes urgence:</strong> {profileFamilyMember?.emergency_notes ?? patientProfile?.emergency_notes ?? 'Aucune'}</p>
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
                 <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                  <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Statistiques</p>
-                  <p><strong>Total ordonnances:</strong> {patientPrescriptions.length}</p>
-                  <p><strong>Total medicaments demandes:</strong> {totalMedicinesRequested}</p>
-                  <p>
-                    <strong>Derniere ordonnance:</strong>{' '}
-                    {patientPrescriptions[0] ? formatDateTime(patientPrescriptions[0].requested_at) : 'Aucune'}
-                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <p style={{ margin: 0, fontWeight: 600 }}>Statistiques</p>
+                    <IonButton fill="clear" size="small" onClick={() => setIsStatsCollapsed((prev) => !prev)}>
+                      <IonIcon icon={isStatsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                    </IonButton>
+                  </div>
+                  {!isStatsCollapsed ? (
+                    <>
+                      <p><strong>Total ordonnances:</strong> {patientPrescriptions.length}</p>
+                      <p><strong>Total medicaments demandes:</strong> {totalMedicinesRequested}</p>
+                      <p>
+                        <strong>Derniere ordonnance:</strong>{' '}
+                        {patientPrescriptions[0] ? formatDateTime(patientPrescriptions[0].requested_at) : 'Aucune'}
+                      </p>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </IonCardContent>
@@ -608,6 +646,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                       <p style={{ marginBottom: 2 }}>
                         <strong>Reference:</strong> {entry.entry_code ?? `MH-${entry.id}`}
                       </p>
+                      <p>Cree le: {formatDateTime(entry.created_at)}</p>
                       <div
                         style={{
                           display: 'flex',
@@ -677,7 +716,8 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                                     </p>
                                     {linked.medicine_requests.map((med) => (
                                       <p key={`${entry.id}-${med.id}`} style={{ margin: '0 0 4px 0' }}>
-                                        - {med.name} · {med.form || 'Forme N/A'} · {med.strength || 'Dosage N/A'} · Qt: {med.quantity ?? 1}
+                                        - {med.name} · {med.form || 'Forme N/A'} · {med.strength || 'Dosage N/A'} · Qt: {med.quantity ?? 1} · Dose journaliere:{' '}
+                                        {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
                                       </p>
                                     ))}
                                   </>
@@ -771,6 +811,14 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                         </IonBadge>
                       </div>
                       <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
+                      <div style={{ marginTop: '6px' }}>
+                        <p style={{ margin: '0 0 4px 0' }}><strong>Notes par medicament:</strong></p>
+                        {prescription.medicine_requests.map((med) => (
+                          <p key={`note-${prescription.id}-${med.id}`} style={{ margin: '0 0 4px 0' }}>
+                            - {med.name} · Dose journaliere: {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
+                          </p>
+                        ))}
+                      </div>
                     </IonLabel>
                   </IonItem>
                 ))}

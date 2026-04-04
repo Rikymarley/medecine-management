@@ -367,7 +367,6 @@ class PrescriptionController extends Controller
 
         $prescription = Prescription::create([
             'patient_user_id' => $patientUser->id,
-            'guest_patient_id' => null,
             'doctor_user_id' => $doctor->id,
             'patient_name' => $resolvedPatientName,
             'patient_phone' => $resolvedPatientPhone,
@@ -474,7 +473,6 @@ class PrescriptionController extends Controller
 
         $prescription->update([
             'patient_user_id' => $patient->id,
-            'guest_patient_id' => null,
             'patient_name' => $patient->name,
             'patient_phone' => $patient->phone,
             'source' => 'app',
@@ -541,7 +539,6 @@ class PrescriptionController extends Controller
 
         $prescription->update([
             'patient_user_id' => $patient->id,
-            'guest_patient_id' => null,
             'patient_name' => $patient->name,
             'patient_phone' => $patient->phone ?? $prescription->patient_phone,
             'source' => 'app',
@@ -578,6 +575,7 @@ class PrescriptionController extends Controller
             'gender' => $patient->gender,
             'allergies' => $patient->allergies,
             'chronic_diseases' => $patient->chronic_diseases,
+            'surgical_history' => $patient->surgical_history,
             'blood_type' => $patient->blood_type,
             'emergency_notes' => $patient->emergency_notes,
         ]);

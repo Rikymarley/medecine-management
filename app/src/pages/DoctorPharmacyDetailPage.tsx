@@ -1,7 +1,6 @@
 import {
   IonBackButton,
   IonBadge,
-  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -14,6 +13,7 @@ import {
   IonPage,
   IonText,
   IonTitle,
+  IonToggle,
   IonToolbar,
 } from '@ionic/react';
 import { callOutline, locateOutline, logoWhatsapp, storefrontOutline } from 'ionicons/icons';
@@ -21,31 +21,31 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { useAuth } from '../state/AuthState';
+import { formatDateTime } from '../utils/time';
 
 type RouteParams = {
   pharmacyId: string;
 };
 
 const DoctorPharmacyDetailPage: React.FC = () => {
+  const { token, user, loading: authLoading } = useAuth();
   const { pharmacyId } = useParams<RouteParams>();
   const [pharmacy, setPharmacy] = useState<ApiPharmacy | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [canVerify, setCanVerify] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
+  const [permissionLoaded, setPermissionLoaded] = useState(false);
   const [approvingAccount, setApprovingAccount] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('user');
-      const user = raw ? JSON.parse(raw) : null;
-      setCanVerify(!!user?.can_verify_accounts);
-      setToken(localStorage.getItem('token'));
-    } catch {
-      setCanVerify(false);
-      setToken(null);
+    if (authLoading) {
+      return;
     }
-  }, []);
+    setCanVerify(!!user?.can_verify_accounts);
+    setPermissionLoaded(true);
+  }, [authLoading, user]);
 
   useEffect(() => {
     let active = true;
@@ -73,20 +73,23 @@ const DoctorPharmacyDetailPage: React.FC = () => {
     };
   }, [pharmacyId, token]);
 
-  const canVerifyThisPharmacy = useMemo(
-    () => canVerify && !!pharmacy && !pharmacy.license_verified,
-    [canVerify, pharmacy]
-  );
+  const canManageLicense = useMemo(() => {
+    if (!permissionLoaded || !pharmacy) {
+      return false;
+    }
+    return !!user?.can_verify_accounts;
+  }, [permissionLoaded, pharmacy, user]);
 
   const verifyPharmacy = async () => {
     if (!token || !pharmacy) return;
 
     try {
       setUpdating(true);
+      setActionMessage(null);
       const updated = await api.verifyPharmacyLicense(token, pharmacy.id, { verified: true });
-      setPharmacy(updated);
+      setPharmacy((prev) => (prev ? { ...prev, ...updated } : updated));
     } catch (error) {
-      console.error(error);
+      setActionMessage(error instanceof Error ? error.message : 'Verification impossible.');
     } finally {
       setUpdating(false);
     }
@@ -97,10 +100,11 @@ const DoctorPharmacyDetailPage: React.FC = () => {
 
     try {
       setUpdating(true);
+      setActionMessage(null);
       const updated = await api.verifyPharmacyLicense(token, pharmacy.id, { verified: false });
-      setPharmacy(updated);
+      setPharmacy((prev) => (prev ? { ...prev, ...updated } : updated));
     } catch (error) {
-      console.error(error);
+      setActionMessage(error instanceof Error ? error.message : 'Action impossible.');
     } finally {
       setUpdating(false);
     }
@@ -110,12 +114,29 @@ const DoctorPharmacyDetailPage: React.FC = () => {
     if (!token || !pharmacy?.pharmacy_user_id) return;
     try {
       setApprovingAccount(true);
+      setActionMessage(null);
       await api.approvePharmacyAccount(token, pharmacy.pharmacy_user_id);
       const rows = await api.getPharmaciesForDoctor(token);
       const refreshed = rows.find((row) => row.id === pharmacy.id) ?? pharmacy;
       setPharmacy(refreshed);
     } catch (error) {
-      console.error(error);
+      setActionMessage(error instanceof Error ? error.message : 'Action impossible.');
+    } finally {
+      setApprovingAccount(false);
+    }
+  };
+
+  const unapproveAccount = async () => {
+    if (!token || !pharmacy?.pharmacy_user_id) return;
+    try {
+      setApprovingAccount(true);
+      setActionMessage(null);
+      await api.unapprovePharmacyAccount(token, pharmacy.pharmacy_user_id);
+      const rows = await api.getPharmaciesForDoctor(token);
+      const refreshed = rows.find((row) => row.id === pharmacy.id) ?? pharmacy;
+      setPharmacy(refreshed);
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : 'Action impossible.');
     } finally {
       setApprovingAccount(false);
     }
@@ -146,45 +167,87 @@ const DoctorPharmacyDetailPage: React.FC = () => {
             ) : (
               <>
                 <IonItem lines="none">
-                  <IonIcon icon={storefrontOutline} slot="start" color="primary" />
+                  {pharmacy.logo_url ? (
+                    <img
+                      src={pharmacy.logo_url}
+                      alt={`Logo ${pharmacy.name}`}
+                      style={{
+                        width: '44px',
+                        height: '44px',
+                        objectFit: 'cover',
+                        borderRadius: '10px',
+                        border: '1px solid #dbe7ef',
+                        marginRight: '10px'
+                      }}
+                    />
+                  ) : (
+                    <IonIcon icon={storefrontOutline} slot="start" color="primary" />
+                  )}
                   <IonLabel>
                     <h2>{pharmacy.name}</h2>
                     <p>{pharmacy.address || 'Adresse non renseignee'}</p>
                   </IonLabel>
+                  <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.9rem', color: '#475569' }}>Approbation :</span>
+                    <IonToggle
+                      checked={pharmacy.account_verification_status === 'approved'}
+                      disabled={!canVerify || approvingAccount || updating || !pharmacy.pharmacy_user_id}
+                      onIonChange={(event) => {
+                        const enabled = !!event.detail.checked;
+                        if (enabled) {
+                          void approveAccount();
+                        } else {
+                          void unapproveAccount();
+                        }
+                      }}
+                    />
+                  </div>
                 </IonItem>
-
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px' }}>
-                  {pharmacy.account_verification_status !== 'approved' ? (
-                    <IonBadge color="warning">Compte en attente</IonBadge>
-                  ) : null}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '4px 0 8px' }}>
+                  <IonBadge color={pharmacy.account_verification_status === 'approved' ? 'success' : 'warning'}>
+                    {pharmacy.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                  </IonBadge>
                   <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
                     {pharmacy.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
                   </IonBadge>
                   <IonBadge color={pharmacy.open_now ? 'success' : 'medium'}>
                     {pharmacy.open_now ? 'Ouverte' : 'Fermee'}
                   </IonBadge>
-                  {pharmacy.license_verified && pharmacy.license_verified_by_doctor_name ? (
-                    <IonBadge color="light">Verifiee par {pharmacy.license_verified_by_doctor_name}</IonBadge>
-                  ) : null}
-                  {pharmacy.account_verification_status === 'approved' && pharmacy.account_verified_by_name ? (
-                    <IonBadge color="light">Approuvee par {pharmacy.account_verified_by_name}</IonBadge>
-                  ) : null}
+                </div>
+                <div style={{ display: 'grid', gap: '10px', marginTop: '8px', marginBottom: '8px' }}>
+                  <div>
+                    {pharmacy.storefront_image_url ? (
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <img
+                          src={pharmacy.storefront_image_url}
+                          alt={`Vitrine ${pharmacy.name}`}
+                          style={{ width: '100%', maxWidth: '300px', height: '140px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #dbe7ef' }}
+                        />
+                      </div>
+                    ) : (
+                      <IonText color="medium">Aucune photo vitrine</IonText>
+                    )}
+                  </div>
                 </div>
 
-                {canVerify && pharmacy.account_verification_status !== 'approved' && pharmacy.pharmacy_user_id ? (
-                  <IonButton size="small" color="tertiary" fill="outline" disabled={approvingAccount} onClick={approveAccount}>
-                    Approuver le compte
-                  </IonButton>
-                ) : null}
-                {canVerifyThisPharmacy ? (
-                  <IonButton size="small" color="success" fill="outline" disabled={updating} onClick={verifyPharmacy}>
-                    Verifier la licence
-                  </IonButton>
-                ) : null}
-                {canVerify && pharmacy.license_verified ? (
-                  <IonButton size="small" color="warning" fill="outline" disabled={updating} onClick={unverifyPharmacy}>
-                    Retirer verification licence
-                  </IonButton>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px' }}>
+                  {pharmacy.account_verification_status === 'approved' && pharmacy.approved_by ? (
+                    <IonBadge color="light">
+                      Approuvee par {pharmacy.approved_by}
+                      {pharmacy.approved_at ? `, Le ${formatDateTime(pharmacy.approved_at)}` : ''}
+                    </IonBadge>
+                  ) : null}
+                  {pharmacy.license_verified && pharmacy.license_verified_by_doctor_name ? (
+                    <IonBadge color="light">
+                      Verifiee par {pharmacy.license_verified_by_doctor_name}
+                      {pharmacy.license_verified_at ? `, Le ${formatDateTime(pharmacy.license_verified_at)}` : ''}
+                    </IonBadge>
+                  ) : null}
+                </div>
+                {actionMessage ? (
+                  <IonText color="danger">
+                    <p>{actionMessage}</p>
+                  </IonText>
                 ) : null}
 
                 <IonList>
@@ -215,6 +278,32 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                       <h3>Numero de licence</h3>
                       <p>{pharmacy.license_number || 'N/D'}</p>
                     </IonLabel>
+                    {pharmacy.license_number && canManageLicense ? (
+                      <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.9rem', color: '#475569' }}>Verification</span>
+                        <IonToggle
+                          checked={!!pharmacy.license_verified}
+                          disabled={updating}
+                          onIonChange={(event) => {
+                            const enabled = !!event.detail.checked;
+                            if (enabled) {
+                              void verifyPharmacy();
+                            } else {
+                              void unverifyPharmacy();
+                            }
+                          }}
+                        />
+                      </div>
+                    ) : pharmacy.license_number ? (
+                      <div
+                        slot="end"
+                        style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '220px', textAlign: 'right', width: '50%' }}
+                      >
+                        {!permissionLoaded
+                          ? 'Verification des permissions en cours...'
+                          : 'Delegation requise pour verifier/deverifier la licence.'}
+                      </div>
+                    ) : null}
                   </IonItem>
                   <IonItem lines="full">
                     <IonLabel>

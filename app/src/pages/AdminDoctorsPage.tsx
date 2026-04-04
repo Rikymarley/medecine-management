@@ -11,32 +11,26 @@ import {
   IonPage,
   IonSearchbar,
   IonText,
-  IonToggle,
   IonTitle,
-  IonToolbar
+  IonToolbar,
+  useIonViewWillEnter
 } from '@ionic/react';
-import { chevronDownOutline, chevronUpOutline } from 'ionicons/icons';
+import { medkitOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
+import { useHistory } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiUser } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
-const formatDate = (value?: string | null) => {
-  if (!value) return 'N/D';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? 'N/D' : d.toLocaleString('fr-HT');
-};
-
 type FilterKey = 'all' | 'pending_account' | 'unverified_license' | 'blocked' | 'can_verify';
 
 const AdminDoctorsPage: React.FC = () => {
+  const history = useHistory();
   const { token } = useAuth();
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterKey>('all');
-  const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [auditExpanded, setAuditExpanded] = useState<Record<number, boolean>>({});
 
   const load = async () => {
     if (!token) return;
@@ -52,6 +46,10 @@ const AdminDoctorsPage: React.FC = () => {
   useEffect(() => {
     load().catch(() => undefined);
   }, [token]);
+
+  useIonViewWillEnter(() => {
+    load().catch(() => undefined);
+  });
 
   const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -84,88 +82,35 @@ const AdminDoctorsPage: React.FC = () => {
     [filtered]
   );
 
-  const approve = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminApproveUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const unapprove = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminUnapproveUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const block = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminBlockUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const unblock = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminUnblockUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const verifyLicense = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminVerifyDoctorLicense(token, userId, { verified: true });
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const unverifyLicense = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminVerifyDoctorLicense(token, userId, { verified: false });
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const setVerifierPermission = async (userId: number, enabled: boolean) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminSetDoctorVerifierPermission(token, userId, enabled);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const renderDoctorCard = (doctor: ApiUser) => (
-    <IonCard key={doctor.id} className="surface-card" style={{ margin: '8px 0' }}>
+    <IonCard
+      key={doctor.id}
+      className="surface-card"
+      style={{ margin: '8px 0', cursor: 'pointer' }}
+      onClick={() => {
+        history.push(`/admin/doctors/${doctor.id}`);
+      }}
+    >
       <IonCardContent>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+        <div style={{ display: 'block' }}>
           <div>
+            {doctor.photo_url ? (
+              <img
+                src={doctor.photo_url}
+                alt={doctor.name}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  objectFit: 'cover',
+                  borderRadius: '8px',
+                  border: '1px solid rgb(219, 231, 239)',
+                  marginRight: '10px',
+                  float: 'left'
+                }}
+              />
+            ) : (
+              <IonIcon icon={medkitOutline} color="success" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
+            )}
             <h3>{doctor.name}</h3>
             <p>{doctor.email}</p>
             <p>{doctor.specialty || 'Specialite N/D'}</p>
@@ -182,84 +127,6 @@ const AdminDoctorsPage: React.FC = () => {
           <IonBadge color={doctor.can_verify_accounts ? 'tertiary' : 'medium'}>
             {doctor.can_verify_accounts ? 'Delegue verif' : 'Sans delegation'}
           </IonBadge>
-        </div>
-
-        <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
-            <span>Approbation du compte</span>
-            <IonToggle
-              checked={doctor.verification_status === 'approved'}
-              disabled={busyId === doctor.id || doctor.account_status === 'blocked'}
-              onIonChange={(event) => {
-                const enabled = !!event.detail.checked;
-                if (enabled) {
-                  void approve(doctor.id);
-                } else {
-                  void unapprove(doctor.id);
-                }
-              }}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
-            <span>Verification de la licence</span>
-            <IonToggle
-              checked={!!doctor.license_verified}
-              disabled={busyId === doctor.id || doctor.account_status === 'blocked'}
-              onIonChange={(event) => {
-                const enabled = !!event.detail.checked;
-                if (enabled) {
-                  void verifyLicense(doctor.id);
-                } else {
-                  void unverifyLicense(doctor.id);
-                }
-              }}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
-            <span>Delegation de verification</span>
-            <IonToggle
-              checked={!!doctor.can_verify_accounts}
-              disabled={busyId === doctor.id || doctor.account_status === 'blocked'}
-              onIonChange={(event) => void setVerifierPermission(doctor.id, !!event.detail.checked)}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
-            <span>Bloquer</span>
-            <IonToggle
-              checked={doctor.account_status === 'blocked'}
-              disabled={busyId === doctor.id}
-              color="danger"
-              onIonChange={(event) => {
-                const enabled = !!event.detail.checked;
-                if (enabled) {
-                  void block(doctor.id);
-                } else {
-                  void unblock(doctor.id);
-                }
-              }}
-            />
-          </div>
-        </div>
-
-        <div style={{ marginTop: '10px' }}>
-          <IonButton
-            size="small"
-            fill="clear"
-            color="medium"
-            style={{ width: '100%', justifyContent: 'space-between' }}
-            onClick={() => setAuditExpanded((prev) => ({ ...prev, [doctor.id]: !prev[doctor.id] }))}
-          >
-            Journal d'audit
-            <IonIcon slot="end" icon={auditExpanded[doctor.id] ? chevronUpOutline : chevronDownOutline} />
-          </IonButton>
-          {auditExpanded[doctor.id] ? (
-            <div style={{ border: '1px solid #dbe7ef', borderRadius: '10px', padding: '8px' }}>
-              <div>Approuve par: {doctor.approved_by || 'N/D'} · {formatDate(doctor.approved_at)}</div>
-              <div>Verifie par: {doctor.license_verified_by_doctor_name || 'N/D'} · {formatDate(doctor.license_verified_at)}</div>
-              <div>Delegue par: {doctor.delegated_by_name || 'N/D'} · {formatDate(doctor.delegated_at)}</div>
-              <div>Bloque par: {doctor.blocked_by_name || 'N/D'} · {formatDate(doctor.blocked_at)}</div>
-            </div>
-          ) : null}
         </div>
       </IonCardContent>
     </IonCard>

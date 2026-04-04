@@ -27,7 +27,7 @@ import InstallBanner from '../components/InstallBanner';
 import {
   api,
   ApiFamilyMember,
-  ApiGuestPatient,
+  ApiDoctorPatient,
   ApiMedicine,
   ApiPatientLookup,
   ApiPrescription,
@@ -171,7 +171,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const location = useLocation();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
-  const [guestPatients, setGuestPatients] = useState<ApiGuestPatient[]>([]);
+  const [doctorPatients, setDoctorPatients] = useState<ApiDoctorPatient[]>([]);
   const [dbPatientSuggestions, setDbPatientSuggestions] = useState<ApiPatientLookup[]>([]);
   const [patientName, setPatientName] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
@@ -188,7 +188,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const [medicines, setMedicines] = useState<DraftMedicine[]>([emptyMedicine()]);
   const [medicineSuggestions, setMedicineSuggestions] = useState<Record<number, ApiMedicine[]>>({});
   const [error, setError] = useState<string | null>(null);
-  const [guestMessage, setGuestMessage] = useState<string | null>(null);
+  const [patientCreateMessage, setPatientCreateMessage] = useState<string | null>(null);
   const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [latestPrescriptionId, setLatestPrescriptionId] = useState<number | null>(null);
@@ -231,12 +231,12 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
   };
 
-  const loadGuestPatientsFromApi = async () => {
+  const loadDoctorPatientsFromApi = async () => {
     if (!token) {
       return;
     }
-    const rows = await api.getDoctorGuestPatients(token);
-    setGuestPatients(rows);
+    const rows = await api.getDoctorPatients(token);
+    setDoctorPatients(rows);
   };
 
   useEffect(() => {
@@ -250,7 +250,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
         if (Array.isArray(cachedData) && cachedData.length > 0) {
           setPrescriptions(cachedData);
-          loadGuestPatientsFromApi().catch(() => undefined);
+          loadDoctorPatientsFromApi().catch(() => undefined);
           return;
         }
       } catch {
@@ -259,7 +259,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
 
     loadPrescriptionsFromApi().catch(() => undefined);
-    loadGuestPatientsFromApi().catch(() => undefined);
+    loadDoctorPatientsFromApi().catch(() => undefined);
   }, [cacheKey, token]);
 
   const addMedicine = () => setMedicines((prev) => [...prev, emptyMedicine()]);
@@ -443,7 +443,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
   };
 
-  const createGuestPatient = async () => {
+  const createDoctorPatient = async () => {
     if (!token) {
       setError('Veuillez vous reconnecter.');
       return;
@@ -455,10 +455,10 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
 
     setLoading(true);
     setError(null);
-    setGuestMessage(null);
+    setPatientCreateMessage(null);
     setAvailabilityMessage(null);
     try {
-      const created = await api.createDoctorGuestPatient(token, {
+      const created = await api.createDoctorPatient(token, {
         name: patientName.trim(),
         phone: maskHaitiPhone(patientPhone).trim() || null,
         ninu: patientNinu.trim() || null,
@@ -468,13 +468,13 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         gender: patientGender || null,
         notes: patientNotes.trim() || null
       });
-      setGuestPatients((prev) => {
+      setDoctorPatients((prev) => {
         const next = [...prev.filter((row) => row.id !== created.id), created];
         next.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
         return next;
       });
       setSelectedPatientUserId(created.id);
-      setGuestMessage('Patient cree et selectionne.');
+      setPatientCreateMessage('Patient cree et selectionne.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Echec de creation du patient.');
     } finally {
@@ -494,9 +494,9 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
 
     setLoading(true);
     setError(null);
-    setGuestMessage(null);
+    setPatientCreateMessage(null);
     try {
-      const result = await api.checkDoctorGuestPatientAvailability(token, {
+      const result = await api.checkDoctorPatientAvailability(token, {
         name: patientName.trim() || undefined,
         phone: patientPhone.trim() || undefined,
         ninu: patientNinu.trim() || undefined,
@@ -574,13 +574,13 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
 
     const dbIds = new Set(fromDb.map((row) => row.patientUserId));
 
-    const fromGuests = guestPatients
+    const fromDoctorPatients = doctorPatients
       .filter((g) => !dbIds.has(g.id))
       .filter((g) => g.name.toLowerCase().includes(query))
       .map((g) => ({
-        key: `guest-${g.id}`,
+        key: `doctor-patient-${g.id}`,
         label: g.name,
-        subtitle: [g.phone ? `Tel: ${g.phone}` : null, 'Patient cree'].filter(Boolean).join(' · '),
+        subtitle: [g.phone ? `Tel: ${g.phone}` : null, 'Patient'].filter(Boolean).join(' · '),
         patientUserId: g.id,
         phone: g.phone ?? '',
         ninu: g.ninu ?? '',
@@ -591,8 +591,8 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         notes: g.notes ?? ''
       }));
 
-    return [...fromDb, ...fromGuests].slice(0, 8);
-  }, [dbPatientSuggestions, guestPatients, patientName]);
+    return [...fromDb, ...fromDoctorPatients].slice(0, 8);
+  }, [dbPatientSuggestions, doctorPatients, patientName]);
 
   const familyMemberSuggestions = useMemo(() => {
     const query = familyMemberName.trim().toLowerCase();
@@ -635,7 +635,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                   setSelectedPatientUserId(null);
                   setPatientNinu('');
                   setPatientDob('');
-                  setGuestMessage(null);
+                  setPatientCreateMessage(null);
                   setAvailabilityMessage(null);
                   setFamilyMembers([]);
                   setFamilyMemberName('');
@@ -761,14 +761,14 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                     expand="block"
                     fill="outline"
                     disabled={loading || !patientName.trim()}
-                    onClick={() => createGuestPatient().catch(() => undefined)}
+                    onClick={() => createDoctorPatient().catch(() => undefined)}
                   >
                     Creer ce patient
                   </IonButton>
                 ) : null}
-                {guestMessage ? (
+                {patientCreateMessage ? (
                   <IonText color="success">
-                    <p>{guestMessage}</p>
+                    <p>{patientCreateMessage}</p>
                   </IonText>
                 ) : null}
               </>

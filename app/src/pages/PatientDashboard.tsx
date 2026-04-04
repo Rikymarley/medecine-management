@@ -47,7 +47,7 @@ const PatientDashboard: React.FC = () => {
   const [ninu, setNinu] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [address, setAddress] = useState('');
-  const [age, setAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState<'' | 'male' | 'female'>('');
   const [allergies, setAllergies] = useState('');
   const [chronicDiseases, setChronicDiseases] = useState('');
@@ -70,6 +70,11 @@ const PatientDashboard: React.FC = () => {
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
 
   const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
+  const normalizeDate = (value: unknown) => {
+    const raw = normalizeText(value).trim();
+    if (!raw) return '';
+    return raw.includes('T') ? raw.split('T')[0] : raw;
+  };
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -105,7 +110,7 @@ const PatientDashboard: React.FC = () => {
         setNinu(normalizeText(me.ninu));
         setWhatsapp(maskHaitiPhone(normalizeText(me.whatsapp)));
         setAddress(normalizeText(me.address));
-        setAge(me.age === null || me.age === undefined ? '' : String(me.age));
+        setDateOfBirth(normalizeDate(me.date_of_birth));
         setGender((me.gender as '' | 'male' | 'female' | null) ?? '');
         setAllergies(normalizeText(me.allergies));
         setChronicDiseases(normalizeText(me.chronic_diseases));
@@ -133,7 +138,7 @@ const PatientDashboard: React.FC = () => {
               setNinu(normalizeText((me as any)?.ninu));
               setWhatsapp(maskHaitiPhone(normalizeText((me as any)?.whatsapp)));
               setAddress(normalizeText((me as any)?.address));
-              setAge((me as any)?.age === null || (me as any)?.age === undefined ? '' : String((me as any).age));
+              setDateOfBirth(normalizeDate((me as any)?.date_of_birth));
               setGender(((me as any)?.gender as '' | 'male' | 'female' | null) ?? '');
               setAllergies(normalizeText((me as any)?.allergies));
               setChronicDiseases(normalizeText((me as any)?.chronic_diseases));
@@ -161,7 +166,7 @@ const PatientDashboard: React.FC = () => {
         setNinu(normalizeText(user?.ninu));
         setWhatsapp(maskHaitiPhone(normalizeText(user?.whatsapp)));
         setAddress(normalizeText(user?.address));
-        setAge(user?.age === null || user?.age === undefined ? '' : String(user.age));
+        setDateOfBirth(normalizeDate(user?.date_of_birth));
         setGender((user?.gender as '' | 'male' | 'female' | null) ?? '');
         setAllergies(normalizeText(user?.allergies));
         setChronicDiseases(normalizeText(user?.chronic_diseases));
@@ -182,10 +187,10 @@ const PatientDashboard: React.FC = () => {
     profileCacheKey,
     token,
     user?.address,
-    user?.age,
     user?.allergies,
     user?.blood_type,
     user?.chronic_diseases,
+    user?.date_of_birth,
     user?.emergency_notes,
     user?.height_cm,
     user?.gender,
@@ -213,7 +218,7 @@ const PatientDashboard: React.FC = () => {
       address.trim(),
       ninu.trim(),
       whatsapp.trim(),
-      age.trim(),
+      dateOfBirth.trim(),
       gender,
       allergies.trim(),
       chronicDiseases.trim(),
@@ -226,7 +231,20 @@ const PatientDashboard: React.FC = () => {
     ];
     const done = checks.filter(Boolean).length;
     return Math.round((done / checks.length) * 100);
-  }, [address, age, allergies, bloodType, chronicDiseases, emergencyNotes, gender, heightCm, name, ninu, phone, surgicalHistory, vaccinationUpToDate, weightKg, whatsapp]);
+  }, [address, allergies, bloodType, chronicDiseases, dateOfBirth, emergencyNotes, gender, heightCm, name, ninu, phone, surgicalHistory, vaccinationUpToDate, weightKg, whatsapp]);
+
+  const computedAge = useMemo(() => {
+    if (!dateOfBirth) return null;
+    const dob = new Date(`${dateOfBirth}T00:00:00`);
+    if (Number.isNaN(dob.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const monthDiff = now.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+      age -= 1;
+    }
+    return age >= 0 ? age : null;
+  }, [dateOfBirth]);
 
   const saveProfile = async () => {
     if (!token) {
@@ -246,7 +264,8 @@ const PatientDashboard: React.FC = () => {
         ninu: ninu.trim() || null,
         whatsapp: whatsapp.trim() || null,
         address: address.trim() || null,
-        age: age.trim() ? Number(age) : null,
+        date_of_birth: dateOfBirth.trim() || null,
+        age: computedAge,
         gender: gender || null,
         allergies: allergies.trim() || null,
         chronic_diseases: chronicDiseases.trim() || null,
@@ -372,15 +391,15 @@ const PatientDashboard: React.FC = () => {
               {contactExpanded ? (
                 <>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Nom</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Nom</IonLabel>
                     <IonInput disabled={!editMode} value={name} onIonInput={(e) => setName(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Telephone</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Telephone</IonLabel>
                     <IonInput disabled={!editMode} value={phone} onIonInput={(e) => setPhone(maskHaitiPhone(e.detail.value ?? ''))} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">WhatsApp</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>WhatsApp</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={whatsapp}
@@ -388,11 +407,11 @@ const PatientDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">NINU</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>NINU</IonLabel>
                     <IonInput disabled={!editMode} value={ninu} onIonInput={(e) => setNinu(e.detail.value ?? '')} />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Adresse</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Adresse</IonLabel>
                     <IonInput disabled={!editMode} value={address} onIonInput={(e) => setAddress(e.detail.value ?? '')} />
                   </IonItem>
                 </>
@@ -413,11 +432,20 @@ const PatientDashboard: React.FC = () => {
               {personalExpanded ? (
                 <>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Age</IonLabel>
-                    <IonInput disabled={!editMode} type="number" value={age} onIonInput={(e) => setAge(e.detail.value ?? '')} />
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Date de naissance</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      type="date"
+                      value={dateOfBirth}
+                      onIonInput={(e) => setDateOfBirth(e.detail.value ?? '')}
+                    />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Genre</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Age (calcule)</IonLabel>
+                    <IonInput disabled value={computedAge === null ? '' : String(computedAge)} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Genre</IonLabel>
                     <IonSelect
                       disabled={!editMode}
                       value={gender}
@@ -429,11 +457,16 @@ const PatientDashboard: React.FC = () => {
                     </IonSelect>
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Allergies</IonLabel>
-                    <IonInput disabled={!editMode} value={allergies} onIonInput={(e) => setAllergies(e.detail.value ?? '')} />
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Allergies</IonLabel>
+                    <IonTextarea
+                      disabled={!editMode}
+                      autoGrow
+                      value={allergies}
+                      onIonInput={(e) => setAllergies(e.detail.value ?? '')}
+                    />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Poids (kg)</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Poids (kg)</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       type="number"
@@ -444,7 +477,7 @@ const PatientDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Taille (cm)</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Taille (cm)</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       type="number"
@@ -455,15 +488,16 @@ const PatientDashboard: React.FC = () => {
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Maladies chroniques</IonLabel>
-                    <IonInput
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Maladies chroniques</IonLabel>
+                    <IonTextarea
                       disabled={!editMode}
+                      autoGrow
                       value={chronicDiseases}
                       onIonInput={(e) => setChronicDiseases(e.detail.value ?? '')}
                     />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Groupe sanguin</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Groupe sanguin</IonLabel>
                     <IonSelect
                       disabled={!editMode}
                       value={bloodType}
@@ -483,7 +517,7 @@ const PatientDashboard: React.FC = () => {
                     </IonSelect>
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Antecedents chirurgicaux</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Antecedents chirurgicaux</IonLabel>
                     <IonTextarea
                       disabled={!editMode}
                       autoGrow
@@ -509,11 +543,16 @@ const PatientDashboard: React.FC = () => {
               {emergencyExpanded ? (
                 <>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Notes d'urgence</IonLabel>
-                    <IonInput disabled={!editMode} value={emergencyNotes} onIonInput={(e) => setEmergencyNotes(e.detail.value ?? '')} />
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Notes d'urgence</IonLabel>
+                    <IonTextarea
+                      disabled={!editMode}
+                      autoGrow
+                      value={emergencyNotes}
+                      onIonInput={(e) => setEmergencyNotes(e.detail.value ?? '')}
+                    />
                   </IonItem>
                   <IonItem lines="none">
-                    <IonLabel position="stacked">Carnet de vaccination a jour</IonLabel>
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Carnet de vaccination a jour</IonLabel>
                     <IonSelect
                       disabled={!editMode}
                       value={vaccinationUpToDate}
