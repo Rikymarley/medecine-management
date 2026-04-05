@@ -28,7 +28,6 @@ import {
   locationOutline,
   logoWhatsapp,
   medicalOutline,
-  navigateOutline,
   personCircleOutline,
   shieldCheckmarkOutline,
   timeOutline,
@@ -37,7 +36,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiPrescription } from '../services/api';
+import { api, ApiDoctorDirectory, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime } from '../utils/time';
@@ -47,6 +46,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
   const { token, user } = useAuth();
   const { doctorName } = useParams<{ doctorName: string }>();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [directoryDoctor, setDirectoryDoctor] = useState<ApiDoctorDirectory | null>(null);
   const [doctorInfoExpanded, setDoctorInfoExpanded] = useState(true);
   const [contactExpanded, setContactExpanded] = useState(true);
   const [professionalExpanded, setProfessionalExpanded] = useState(false);
@@ -103,6 +103,25 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
     loadPrescriptions().catch(() => undefined);
   }, [loadPrescriptions]);
 
+  useEffect(() => {
+    let active = true;
+    api.getDoctorsDirectory()
+      .then((rows) => {
+        if (!active) return;
+        const found = rows.find(
+          (row) => row.name.trim().toLowerCase() === decodedDoctorName.trim().toLowerCase()
+        ) ?? null;
+        setDirectoryDoctor(found);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDirectoryDoctor(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [decodedDoctorName]);
+
   const doctorPrescriptions = useMemo(() => {
     return prescriptions
       .filter((p) => p.doctor_name.trim().toLowerCase() === decodedDoctorName.trim().toLowerCase())
@@ -140,9 +159,11 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
       yearsExperience: doctorProfile?.years_experience ?? null,
       consultationFeeRange: doctorProfile?.consultation_fee_range ?? null,
       whatsapp: doctorProfile?.whatsapp ?? null,
-      bio: doctorProfile?.bio ?? null
+      bio: doctorProfile?.bio ?? null,
+      profilePhotoUrl: doctorProfile?.profile_photo_url ?? directoryDoctor?.profile_photo_url ?? null,
+      profileBannerUrl: doctorProfile?.profile_banner_url ?? directoryDoctor?.profile_banner_url ?? null
     };
-  }, [decodedDoctorName, doctorPrescriptions]);
+  }, [decodedDoctorName, doctorPrescriptions, directoryDoctor]);
 
   return (
     <IonPage>
@@ -158,6 +179,19 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
         <InstallBanner />
         <IonCard className="surface-card">
           <IonCardHeader>
+            <div
+              style={{
+                width: '100%',
+                height: '110px',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                marginBottom: '8px',
+                border: '1px solid #dbe7ef',
+                background: doctorInfo.profileBannerUrl
+                  ? `url(${doctorInfo.profileBannerUrl}) center/cover no-repeat`
+                  : 'linear-gradient(120deg, #ecfeff 0%, #dbeafe 100%)'
+              }}
+            />
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
                 <div
@@ -165,12 +199,22 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
                     width: '48px',
                     height: '48px',
                     borderRadius: '14px',
-                    display: 'grid',
-                    placeItems: 'center',
+                    overflow: 'hidden',
+                    border: '1px solid #dbe7ef',
                     background: '#dcfce7'
                   }}
                 >
-                  <IonIcon icon={medicalOutline} style={{ fontSize: '24px', color: '#166534' }} />
+                  {doctorInfo.profilePhotoUrl ? (
+                    <img
+                      src={doctorInfo.profilePhotoUrl}
+                      alt={`Photo Dr. ${doctorInfo.name}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                      <IonIcon icon={medicalOutline} style={{ fontSize: '24px', color: '#166534' }} />
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: '1.05rem', fontWeight: 700 }}>Dr. {doctorInfo.name}</div>
@@ -188,37 +232,6 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
               {doctorInfo.teleconsultationAvailable ? <IonBadge color="primary">Teleconsultation</IonBadge> : null}
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-              <IonButton size="small" fill="outline" disabled={!doctorInfo.phone} href={doctorInfo.phone ? `tel:${doctorInfo.phone}` : undefined}>
-                <IonIcon icon={callOutline} slot="start" />
-                Appeler
-              </IonButton>
-              <IonButton
-                size="small"
-                fill="outline"
-                disabled={!doctorInfo.whatsapp}
-                href={doctorInfo.whatsapp ? `https://wa.me/${doctorInfo.whatsapp.replace(/[^0-9]/g, '')}` : undefined}
-                target="_blank"
-              >
-                <IonIcon icon={logoWhatsapp} slot="start" />
-                WhatsApp
-              </IonButton>
-              <IonButton
-                size="small"
-                fill="outline"
-                disabled={!doctorInfo.latitude || !doctorInfo.longitude}
-                href={
-                  doctorInfo.latitude && doctorInfo.longitude
-                    ? `https://www.google.com/maps?q=${doctorInfo.latitude},${doctorInfo.longitude}`
-                    : undefined
-                }
-                target="_blank"
-              >
-                <IonIcon icon={navigateOutline} slot="start" />
-                Localiser
-              </IonButton>
-            </div>
-
             <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px', marginBottom: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>Coordonnees</strong>
@@ -228,9 +241,45 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
               </div>
               {contactExpanded ? (
                 <>
-                  <p><IonIcon icon={callOutline} /> {doctorInfo.phone || 'Telephone N/D'}</p>
-                  <p><IonIcon icon={logoWhatsapp} /> {doctorInfo.whatsapp || 'WhatsApp N/D'}</p>
-                  <p><IonIcon icon={locationOutline} /> {doctorInfo.address || 'Adresse N/D'}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <p style={{ margin: 0 }}>{doctorInfo.phone || 'Telephone N/D'}</p>
+                    <IonButton
+                      fill="clear"
+                      size="small"
+                      disabled={!doctorInfo.phone}
+                      href={doctorInfo.phone ? `tel:${doctorInfo.phone}` : undefined}
+                    >
+                      <IonIcon icon={callOutline} />
+                    </IonButton>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '4px' }}>
+                    <p style={{ margin: 0 }}>{doctorInfo.whatsapp || 'WhatsApp N/D'}</p>
+                    <IonButton
+                      fill="clear"
+                      size="small"
+                      disabled={!doctorInfo.whatsapp}
+                      href={doctorInfo.whatsapp ? `https://wa.me/${doctorInfo.whatsapp.replace(/[^0-9]/g, '')}` : undefined}
+                      target="_blank"
+                    >
+                      <IonIcon icon={logoWhatsapp} />
+                    </IonButton>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginTop: '4px' }}>
+                    <p style={{ margin: 0 }}>{doctorInfo.address || 'Adresse N/D'}</p>
+                    <IonButton
+                      fill="clear"
+                      size="small"
+                      disabled={!doctorInfo.latitude || !doctorInfo.longitude}
+                      href={
+                        doctorInfo.latitude && doctorInfo.longitude
+                          ? `https://www.google.com/maps?q=${doctorInfo.latitude},${doctorInfo.longitude}`
+                          : undefined
+                      }
+                      target="_blank"
+                    >
+                      <IonIcon icon={locationOutline} />
+                    </IonButton>
+                  </div>
                   <p>{[doctorInfo.city, doctorInfo.department].filter(Boolean).join(' / ') || 'Ville/Departement N/D'}</p>
                 </>
               ) : null}
@@ -292,6 +341,9 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
           </IonCardContent>
         </IonCard>
         <IonCard className="surface-card">
+          <IonCardHeader>
+            <IonCardTitle>Ordonnances</IonCardTitle>
+          </IonCardHeader>
           <IonCardContent>
             {doctorPrescriptions.length === 0 ? (
               <IonText color="medium">

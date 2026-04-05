@@ -7,9 +7,43 @@ use App\Models\Pharmacy;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
+    private function deleteIfLocalStorageUrl(?string $url): void
+    {
+        if (!$url) {
+            return;
+        }
+
+        $path = parse_url($url, PHP_URL_PATH);
+        if (!$path || !str_starts_with($path, '/storage/')) {
+            return;
+        }
+
+        $relative = ltrim(substr($path, strlen('/storage/')), '/');
+        if ($relative !== '') {
+            Storage::disk('public')->delete($relative);
+        }
+    }
+
+    private function uploadUserImage(Request $request, User $user, string $requestFileKey, string $dbField, string $directory): User
+    {
+        $request->validate([
+            $requestFileKey => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+        ]);
+
+        $uploaded = $request->file($requestFileKey);
+        $path = $uploaded->store($directory, 'public');
+        $publicUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
+        $this->deleteIfLocalStorageUrl($user->{$dbField});
+        $user->update([$dbField => $publicUrl]);
+
+        return $user->fresh();
+    }
+
     private function presentDoctor(User $doctor): array
     {
         $row = $doctor->toArray();
@@ -53,6 +87,8 @@ class AuthController extends Controller
                 'consultation_fee_range',
                 'whatsapp',
                 'bio',
+                'profile_photo_url',
+                'profile_banner_url',
                 'can_verify_accounts',
                 'license_verified_at',
                 'license_verified_by_doctor_id',
@@ -93,6 +129,8 @@ class AuthController extends Controller
                 'consultation_fee_range',
                 'whatsapp',
                 'bio',
+                'profile_photo_url',
+                'profile_banner_url',
                 'verification_status',
                 'verified_at',
                 'verified_by',
@@ -276,5 +314,35 @@ class AuthController extends Controller
         $patient->update($data);
 
         return response()->json($patient->fresh());
+    }
+
+    public function uploadDoctorProfilePhoto(Request $request)
+    {
+        $doctor = $request->user();
+        if ($doctor->role !== 'doctor') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        return response()->json($this->uploadUserImage($request, $doctor, 'profile_photo', 'profile_photo_url', 'doctors/photos'));
+    }
+
+    public function uploadDoctorBanner(Request $request)
+    {
+        $doctor = $request->user();
+        if ($doctor->role !== 'doctor') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        return response()->json($this->uploadUserImage($request, $doctor, 'profile_banner', 'profile_banner_url', 'doctors/banners'));
+    }
+
+    public function uploadPatientProfilePhoto(Request $request)
+    {
+        $patient = $request->user();
+        if ($patient->role !== 'patient') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        return response()->json($this->uploadUserImage($request, $patient, 'profile_photo', 'profile_photo_url', 'patients/photos'));
     }
 }

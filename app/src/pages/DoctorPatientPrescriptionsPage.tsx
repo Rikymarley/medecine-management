@@ -417,14 +417,43 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                    <div>
-                      <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{activePatientName}</h2>
-                      <p style={{ margin: '4px 0 0 0', fontSize: '1rem' }}>
-                        {patientProfile?.phone ?? 'Telephone: N/D'}
-                      </p>
-                      <p style={{ margin: '2px 0 0 0', fontSize: '1rem' }}>
-                        {patientProfile?.whatsapp ?? 'WhatsApp: N/D'}
-                      </p>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      {patientProfile?.profile_photo_url ? (
+                        <img
+                          src={patientProfile.profile_photo_url}
+                          alt={activePatientName}
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            objectFit: 'cover',
+                            borderRadius: '50%',
+                            border: '1px solid #dbe7ef'
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '50%',
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: '#dbeafe',
+                            color: '#1e40af'
+                          }}
+                        >
+                          <IonIcon icon={personOutline} />
+                        </div>
+                      )}
+                      <div>
+                        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>{activePatientName}</h2>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '1rem' }}>
+                          {patientProfile?.phone ?? 'Telephone: N/D'}
+                        </p>
+                        <p style={{ margin: '2px 0 0 0', fontSize: '1rem' }}>
+                          {patientProfile?.whatsapp ?? 'WhatsApp: N/D'}
+                        </p>
+                      </div>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '6px' }}>
                       <IonBadge color="light">

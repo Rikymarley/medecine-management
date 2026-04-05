@@ -7,9 +7,27 @@ use App\Models\FamilyMember;
 use App\Models\Prescription;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class FamilyMemberController extends Controller
 {
+    private function deleteIfLocalStorageUrl(?string $url): void
+    {
+        if (!$url) {
+            return;
+        }
+
+        $path = parse_url($url, PHP_URL_PATH);
+        if (!$path || !str_starts_with($path, '/storage/')) {
+            return;
+        }
+
+        $relative = ltrim(substr($path, strlen('/storage/')), '/');
+        if ($relative !== '') {
+            Storage::disk('public')->delete($relative);
+        }
+    }
+
     private function computeAgeFromDateOfBirth(?string $dateOfBirth): ?int
     {
         if (!$dateOfBirth) {
@@ -25,8 +43,16 @@ class FamilyMemberController extends Controller
 
     public function index(Request $request)
     {
-        $members = FamilyMember::query()
-            ->where('patient_user_id', $request->user()->id)
+        $includeArchived = filter_var((string) $request->query('include_archived', '0'), FILTER_VALIDATE_BOOLEAN);
+
+        $membersQuery = FamilyMember::query()
+            ->where('patient_user_id', $request->user()->id);
+
+        if (!$includeArchived) {
+            $membersQuery->whereNull('archived_at');
+        }
+
+        $members = $membersQuery
             ->orderBy('name')
             ->get();
 
@@ -51,6 +77,7 @@ class FamilyMemberController extends Controller
 
         $members = FamilyMember::query()
             ->where('patient_user_id', $patient->id)
+            ->whereNull('archived_at')
             ->orderBy('name')
             ->get();
 
@@ -99,6 +126,9 @@ class FamilyMemberController extends Controller
         if ($familyMember->patient_user_id !== $request->user()->id) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
+        if ($familyMember->archived_at) {
+            return response()->json(['message' => 'Ce membre est deja archive.'], 422);
+        }
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
@@ -138,9 +168,54 @@ class FamilyMemberController extends Controller
         if ($familyMember->patient_user_id !== $request->user()->id) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
+        if ($familyMember->archived_at) {
+            return response()->json(['message' => 'Membre deja archive.']);
+        }
 
-        $familyMember->delete();
+        $familyMember->update([
+            'archived_at' => now(),
+        ]);
 
-        return response()->json(['message' => 'Membre supprime.']);
+        return response()->json(['message' => 'Membre archive.']);
+    }
+
+    public function uploadPhoto(Request $request, FamilyMember $familyMember)
+    {
+        if ($familyMember->patient_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+        if ($familyMember->archived_at) {
+            return response()->json(['message' => 'Ce membre est archive.'], 422);
+        }
+
+        $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+        ]);
+
+        $uploaded = $request->file('photo');
+        $path = $uploaded->store('family-members/photos', 'public');
+        $publicUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
+        $this->deleteIfLocalStorageUrl($familyMember->photo_url);
+        $familyMember->update(['photo_url' => $publicUrl]);
+
+        return response()->json($familyMember->fresh());
+    }
+
+    public function unarchive(Request $request, FamilyMember $familyMember)
+    {
+        if ($familyMember->patient_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        if (!$familyMember->archived_at) {
+            return response()->json(['message' => 'Ce membre est deja actif.'], 422);
+        }
+
+        $familyMember->update([
+            'archived_at' => null,
+        ]);
+
+        return response()->json($familyMember->fresh());
     }
 }

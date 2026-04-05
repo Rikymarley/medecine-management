@@ -136,7 +136,23 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
                     onClick={() => ionRouter.push(`/doctor/doctors/${doctor.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
-                      <IonIcon icon={medkitOutline} color="success" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
+                      {doctor.profile_photo_url ? (
+                        <img
+                          src={doctor.profile_photo_url}
+                          alt={doctor.name}
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            objectFit: 'cover',
+                            borderRadius: '8px',
+                            border: '1px solid rgb(219, 231, 239)',
+                            marginRight: '10px',
+                            float: 'left'
+                          }}
+                        />
+                      ) : (
+                        <IonIcon icon={medkitOutline} color="success" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
+                      )}
                       <h3>{doctor.name}</h3>
                       <p>
                         {doctor.specialty || 'Specialite non renseignee'}

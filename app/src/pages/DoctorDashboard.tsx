@@ -30,11 +30,12 @@ import {
   medkitOutline,
   peopleOutline,
   personCircleOutline,
+  imageOutline,
   storefrontOutline,
   starOutline,
   shieldCheckmarkOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -60,6 +61,12 @@ const DoctorDashboard: React.FC = () => {
   const [consultationFeeRange, setConsultationFeeRange] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [bio, setBio] = useState('');
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
+  const [profileBannerUrl, setProfileBannerUrl] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const bannerInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
@@ -104,6 +111,8 @@ const DoctorDashboard: React.FC = () => {
         setConsultationFeeRange(normalizeText(me.consultation_fee_range));
         setWhatsapp(maskHaitiPhone(normalizeText(me.whatsapp)));
         setBio(normalizeText(me.bio));
+        setProfilePhotoUrl(normalizeText((me as any).profile_photo_url));
+        setProfileBannerUrl(normalizeText((me as any).profile_banner_url));
       })
       .catch(() => {
         setPhone(maskHaitiPhone(normalizeText(user?.phone)));
@@ -122,6 +131,8 @@ const DoctorDashboard: React.FC = () => {
         setConsultationFeeRange(normalizeText(user?.consultation_fee_range));
         setWhatsapp(maskHaitiPhone(normalizeText(user?.whatsapp)));
         setBio(normalizeText(user?.bio));
+        setProfilePhotoUrl(normalizeText((user as any)?.profile_photo_url));
+        setProfileBannerUrl(normalizeText((user as any)?.profile_banner_url));
       });
   }, [
     token,
@@ -140,7 +151,9 @@ const DoctorDashboard: React.FC = () => {
     user?.specialty,
     user?.teleconsultation_available,
     user?.whatsapp,
-    user?.years_experience
+    user?.years_experience,
+    (user as any)?.profile_photo_url,
+    (user as any)?.profile_banner_url
   ]);
 
   const completionMissingFields = useMemo(() => {
@@ -282,6 +295,42 @@ const DoctorDashboard: React.FC = () => {
     );
   };
 
+  const uploadDoctorPhoto = async (file: File) => {
+    if (!token) return;
+    try {
+      setUploadingPhoto(true);
+      setMessage(null);
+      const updated = await api.uploadMyDoctorProfilePhoto(token, file);
+      setProfilePhotoUrl(normalizeText((updated as any).profile_photo_url));
+      setMessage('Photo de profil mise a jour.');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Echec upload photo.');
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
+    }
+  };
+
+  const uploadDoctorBanner = async (file: File) => {
+    if (!token) return;
+    try {
+      setUploadingBanner(true);
+      setMessage(null);
+      const updated = await api.uploadMyDoctorBanner(token, file);
+      setProfileBannerUrl(normalizeText((updated as any).profile_banner_url));
+      setMessage('Banniere mise a jour.');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Echec upload banniere.');
+    } finally {
+      setUploadingBanner(false);
+      if (bannerInputRef.current) {
+        bannerInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -309,18 +358,41 @@ const DoctorDashboard: React.FC = () => {
             </div>
           </IonCardHeader>
           {profileCardExpanded ? <IonCardContent>
+            <div
+              style={{
+                width: '100%',
+                height: '120px',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                marginBottom: '10px',
+                border: '1px solid #dbe7ef',
+                background: profileBannerUrl
+                  ? `url(${profileBannerUrl}) center/cover no-repeat`
+                  : 'linear-gradient(120deg, #dcfce7 0%, #dbeafe 100%)'
+              }}
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', gap: '10px', alignItems: 'center' }}>
               <div
                 style={{
                   width: '56px',
                   height: '56px',
                   borderRadius: '16px',
-                  display: 'grid',
-                  placeItems: 'center',
+                  overflow: 'hidden',
+                  border: '1px solid #dbe7ef',
                   background: '#dcfce7'
                 }}
               >
-                <IonIcon icon={personCircleOutline} style={{ fontSize: '32px', color: '#15803d' }} />
+                {profilePhotoUrl ? (
+                  <img
+                    src={profilePhotoUrl}
+                    alt="Photo profil"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                    <IonIcon icon={personCircleOutline} style={{ fontSize: '32px', color: '#15803d' }} />
+                  </div>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{user?.name ?? 'Profil medecin'}</div>
@@ -330,6 +402,38 @@ const DoctorDashboard: React.FC = () => {
                 {editMode ? 'Lecture' : 'Modifier'}
               </IonButton>
             </div>
+            {editMode ? (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadDoctorPhoto(file);
+                  }}
+                />
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadDoctorBanner(file);
+                  }}
+                />
+                <IonButton size="small" fill="outline" disabled={uploadingPhoto} onClick={() => photoInputRef.current?.click()}>
+                  <IonIcon icon={personCircleOutline} slot="start" />
+                  {uploadingPhoto ? 'Upload...' : 'Photo profil'}
+                </IonButton>
+                <IonButton size="small" fill="outline" disabled={uploadingBanner} onClick={() => bannerInputRef.current?.click()}>
+                  <IonIcon icon={imageOutline} slot="start" />
+                  {uploadingBanner ? 'Upload...' : 'Banniere'}
+                </IonButton>
+              </div>
+            ) : null}
 
             <div
               style={{

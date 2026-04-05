@@ -94,9 +94,9 @@ const AdminDoctorsPage: React.FC = () => {
       <IonCardContent>
         <div style={{ display: 'block' }}>
           <div>
-            {doctor.photo_url ? (
+            {(doctor.profile_photo_url || doctor.photo_url) ? (
               <img
-                src={doctor.photo_url}
+                src={(doctor.profile_photo_url || doctor.photo_url) ?? ''}
                 alt={doctor.name}
                 style={{
                   width: '34px',

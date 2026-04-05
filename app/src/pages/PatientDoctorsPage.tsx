@@ -1,111 +1,75 @@
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
-  IonCardHeader,
-  IonCardTitle,
   IonContent,
   IonHeader,
   IonIcon,
-  IonInput,
   IonItem,
   IonLabel,
   IonList,
   IonPage,
   IonBadge,
+  IonSearchbar,
   IonText,
   IonTitle,
   IonToolbar,
   useIonRouter,
   useIonViewWillEnter
 } from '@ionic/react';
-import { medkitOutline } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { chevronForwardOutline, medkitOutline } from 'ionicons/icons';
+import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiPrescription } from '../services/api';
+import { api, ApiDoctorDirectory } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
 const PatientDoctorsPage: React.FC = () => {
   const ionRouter = useIonRouter();
-  const { token, user } = useAuth();
-  const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const { token } = useAuth();
+  const [directoryDoctors, setDirectoryDoctors] = useState<ApiDoctorDirectory[]>([]);
+  const [myDoctorNames, setMyDoctorNames] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
-  const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
-
-  const loadPrescriptions = useCallback(async () => {
-    if (!cacheKey) {
-      return;
-    }
-
-    const cachedRaw = localStorage.getItem(cacheKey);
-    if (cachedRaw) {
-      try {
-        const cachedData = JSON.parse(cachedRaw) as ApiPrescription[];
-        if (Array.isArray(cachedData)) {
-          setPrescriptions(cachedData);
-          setLastUpdatedAt(localStorage.getItem(`${cacheKey}-updated-at`));
-        }
-      } catch {
-        localStorage.removeItem(cacheKey);
-        localStorage.removeItem(`${cacheKey}-updated-at`);
-      }
-    }
-
-    if (!token) {
-      return;
-    }
-    try {
-      const data = await api.getPatientPrescriptions(token);
-      setPrescriptions(data);
-      const updatedAt = new Date().toISOString();
-      setLastUpdatedAt(updatedAt);
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-      localStorage.setItem(`${cacheKey}-updated-at`, updatedAt);
-    } catch {
-      // Keep local cache when network is unavailable.
-    }
-  }, [cacheKey, token]);
+  const [statusFilter, setStatusFilter] = useState<'mine' | 'all' | 'licensed' | 'unlicensed' | 'tele'>('mine');
 
   useEffect(() => {
-    loadPrescriptions().catch(() => undefined);
-  }, [loadPrescriptions]);
+    const loadDoctors = async () => {
+      if (!token) {
+        await api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
+        return;
+      }
+      await api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
+      const prescriptions = await api.getPatientPrescriptions(token).catch(() => []);
+      const names = new Set(
+        prescriptions
+          .map((p) => p.doctor_name?.trim().toLowerCase())
+          .filter((name): name is string => !!name)
+      );
+      setMyDoctorNames(names);
+    };
+    loadDoctors().catch(() => undefined);
+  }, [token]);
 
   useIonViewWillEnter(() => {
-    loadPrescriptions().catch(() => undefined);
+    api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
+    if (token) {
+      api.getPatientPrescriptions(token)
+        .then((prescriptions) => {
+          const names = new Set(
+            prescriptions
+              .map((p) => p.doctor_name?.trim().toLowerCase())
+              .filter((name): name is string => !!name)
+          );
+          setMyDoctorNames(names);
+        })
+        .catch(() => undefined);
+    }
   });
 
-  useEffect(() => {
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-    };
-  }, []);
-
   const doctors = useMemo(() => {
-    const rows = prescriptions
-      .map((p) => ({
-        name: p.doctor_name.trim(),
-        specialty: p.doctor?.specialty ?? null,
-        city: p.doctor?.city ?? null
-      }))
-      .filter((row) => row.name);
-
-    const byName = new Map<string, { name: string; specialty: string | null; city: string | null }>();
-    rows.forEach((row) => {
-      if (!byName.has(row.name)) {
-        byName.set(row.name, row);
-      }
-    });
-
     const q = query.trim().toLowerCase();
-    return Array.from(byName.values())
+    const searched = directoryDoctors
       .filter((row) => {
         if (!q) return true;
         return (
@@ -113,9 +77,19 @@ const PatientDoctorsPage: React.FC = () => {
           (row.specialty ?? '').toLowerCase().includes(q) ||
           (row.city ?? '').toLowerCase().includes(q)
         );
-      })
+      });
+
+    const rows = searched.filter((doctor) => {
+      if (statusFilter === 'mine') return myDoctorNames.has(doctor.name.trim().toLowerCase());
+      if (statusFilter === 'licensed') return !!doctor.license_verified;
+      if (statusFilter === 'unlicensed') return !doctor.license_verified;
+      if (statusFilter === 'tele') return !!doctor.teleconsultation_available;
+      return true;
+    });
+
+    return rows
       .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [prescriptions, query]);
+  }, [directoryDoctors, query, statusFilter]);
 
   return (
     <IonPage>
@@ -130,35 +104,48 @@ const PatientDoctorsPage: React.FC = () => {
       <IonContent className="ion-padding app-content">
         <InstallBanner />
         <IonCard className="surface-card">
-          <IonCardHeader>
-            <IonCardTitle>Medecins (A-Z)</IonCardTitle>
-          </IonCardHeader>
           <IonCardContent>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <IonBadge color={isOnline ? 'success' : 'warning'}>{isOnline ? 'En ligne' : 'Hors ligne'}</IonBadge>
-              {lastUpdatedAt ? (
-                <IonText color="medium">
-                  <small>Mise a jour: {new Date(lastUpdatedAt).toLocaleString('fr-FR')}</small>
-                </IonText>
-              ) : null}
+            <IonSearchbar
+              value={query}
+              placeholder="Rechercher nom, specialite, ville..."
+              onIonInput={(event) => setQuery(event.detail.value ?? '')}
+            />
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 28px 8px 0' }}>
+                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'mine' ? 'solid' : 'outline'} onClick={() => setStatusFilter('mine')}>Mes medecins</IonButton>
+                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
+                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
+                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'tele' ? 'solid' : 'outline'} onClick={() => setStatusFilter('tele')}>Teleconsultation</IonButton>
+              </div>
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 4,
+                  bottom: 8,
+                  width: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  background: 'linear-gradient(to right, rgba(255,255,255,0), var(--ion-background-color))',
+                  pointerEvents: 'none'
+                }}
+              >
+                <IonIcon icon={chevronForwardOutline} color="medium" style={{ fontSize: '22px' }} />
+              </div>
             </div>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Rechercher</IonLabel>
-              <IonInput
-                value={query}
-                placeholder="Nom, specialite, ville..."
-                onIonInput={(e) => setQuery(e.detail.value ?? '')}
-              />
-            </IonItem>
             {doctors.length === 0 ? (
               <IonText color="medium">
                 <p>Aucun medecin pour le moment.</p>
               </IonText>
             ) : (
               <IonList>
-                {doctors.map((doctor) => (
+                {doctors.map((doctor) => {
+                  const isMyDoctor = myDoctorNames.has(doctor.name.trim().toLowerCase());
+                  return (
                   <IonItem
-                    key={doctor.name}
+                    key={doctor.id}
                     lines="full"
                     button
                     detail
@@ -166,16 +153,39 @@ const PatientDoctorsPage: React.FC = () => {
                       ionRouter.push(`/patient/doctors/${encodeURIComponent(doctor.name)}`, 'forward', 'push')
                     }
                   >
-                    <IonIcon icon={medkitOutline} slot="start" color="success" />
+                    {doctor.profile_photo_url ? (
+                      <img
+                        slot="start"
+                        src={doctor.profile_photo_url}
+                        alt={`Photo Dr. ${doctor.name}`}
+                        style={{
+                          width: '34px',
+                          height: '34px',
+                          objectFit: 'cover',
+                          borderRadius: '8px',
+                          border: '1px solid rgb(219, 231, 239)'
+                        }}
+                      />
+                    ) : (
+                      <IonIcon icon={medkitOutline} slot="start" color="success" />
+                    )}
                     <IonLabel>
                       <strong>{doctor.name}</strong>
                       <p>
                         {doctor.specialty || 'Specialite non renseignee'}
                         {doctor.city ? ` · ${doctor.city}` : ''}
                       </p>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        {isMyDoctor ? <IonBadge color="success">Mon medecin</IonBadge> : null}
+                        <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
+                          {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                        </IonBadge>
+                        {doctor.teleconsultation_available ? <IonBadge color="tertiary">Teleconsultation</IonBadge> : null}
+                      </div>
                     </IonLabel>
                   </IonItem>
-                ))}
+                  );
+                })}
               </IonList>
             )}
           </IonCardContent>

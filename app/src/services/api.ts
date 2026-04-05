@@ -1,6 +1,34 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api';
+const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 type RequestOptions = RequestInit & { token?: string };
+
+const normalizeStorageUrl = (value: string): string => {
+  const match = value.match(/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/storage\/.+)$/i);
+  if (!match) {
+    return value;
+  }
+  if (typeof window === 'undefined') {
+    return value;
+  }
+  return `${window.location.origin}${match[1]}`;
+};
+
+const normalizePayloadStorageUrls = <T>(payload: T): T => {
+  if (Array.isArray(payload)) {
+    return payload.map((item) => normalizePayloadStorageUrls(item)) as T;
+  }
+  if (payload && typeof payload === 'object') {
+    const next: Record<string, unknown> = {};
+    Object.entries(payload as Record<string, unknown>).forEach(([key, value]) => {
+      next[key] = normalizePayloadStorageUrls(value);
+    });
+    return next as T;
+  }
+  if (typeof payload === 'string') {
+    return normalizeStorageUrl(payload) as T;
+  }
+  return payload;
+};
 
 const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const headers: Record<string, string> = {
@@ -31,7 +59,8 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
     throw new Error(message);
   }
 
-  return response.json() as Promise<T>;
+  const body = await response.json();
+  return normalizePayloadStorageUrls(body) as T;
 };
 
 const requestFormData = async <T>(path: string, formData: FormData, token?: string): Promise<T> => {
@@ -62,7 +91,8 @@ const requestFormData = async <T>(path: string, formData: FormData, token?: stri
     throw new Error(message);
   }
 
-  return response.json() as Promise<T>;
+  const body = await response.json();
+  return normalizePayloadStorageUrls(body) as T;
 };
 
 export type ApiUser = {
@@ -92,6 +122,8 @@ export type ApiUser = {
   consultation_fee_range: string | null;
   whatsapp: string | null;
   bio: string | null;
+  profile_photo_url: string | null;
+  profile_banner_url: string | null;
   age: number | null;
   gender: 'male' | 'female' | null;
   allergies: string | null;
@@ -250,6 +282,8 @@ export type ApiPrescription = {
     consultation_fee_range: string | null;
     whatsapp: string | null;
     bio: string | null;
+    profile_photo_url: string | null;
+    profile_banner_url: string | null;
   } | null;
   patient?: {
     id: number;
@@ -259,6 +293,7 @@ export type ApiPrescription = {
     ninu: string | null;
     date_of_birth: string | null;
     phone: string | null;
+    profile_photo_url?: string | null;
   } | null;
   familyMember?: {
     id: number;
@@ -357,6 +392,8 @@ export type ApiFamilyMember = {
   id: number;
   patient_user_id: number;
   name: string;
+  photo_url?: string | null;
+  archived_at?: string | null;
   age: number | null;
   date_of_birth: string | null;
   gender: 'male' | 'female' | null;
@@ -377,6 +414,7 @@ export type ApiFamilyMember = {
 export type ApiDoctorPatientProfile = {
   id: number;
   name: string;
+  profile_photo_url?: string | null;
   phone: string | null;
   ninu: string | null;
   date_of_birth: string | null;
@@ -394,6 +432,8 @@ export type ApiDoctorPatientProfile = {
 export type ApiDoctorDirectory = {
   id: number;
   name: string;
+  profile_photo_url?: string | null;
+  profile_banner_url?: string | null;
   phone: string | null;
   address: string | null;
   latitude: string | null;
@@ -432,6 +472,7 @@ export type ApiPatientLookup = {
   phone: string | null;
   ninu: string | null;
   date_of_birth: string | null;
+  profile_photo_url?: string | null;
 };
 
 export type ApiMedicalHistoryEntry = {
@@ -585,6 +626,21 @@ export const api = {
     const formData = new FormData();
     formData.append('storefront_image', file);
     return requestFormData<ApiPharmacy>('/pharmacy/me/storefront-image', formData, token);
+  },
+  uploadMyDoctorProfilePhoto: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('profile_photo', file);
+    return requestFormData<ApiUser>('/doctor/me/profile-photo', formData, token);
+  },
+  uploadMyDoctorBanner: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('profile_banner', file);
+    return requestFormData<ApiUser>('/doctor/me/profile-banner', formData, token);
+  },
+  uploadMyPatientProfilePhoto: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('profile_photo', file);
+    return requestFormData<ApiUser>('/patient/me/profile-photo', formData, token);
   },
   verifyDoctorLicense: (
     token: string,
@@ -1015,8 +1071,14 @@ export const api = {
       method: 'DELETE',
       token
     }),
-  getPatientFamilyMembers: (token: string) =>
-    request<ApiFamilyMember[]>('/patient/family-members', { token }),
+  getPatientFamilyMembers: (token: string, options?: { includeArchived?: boolean }) => {
+    const search = new URLSearchParams();
+    if (options?.includeArchived) {
+      search.set('include_archived', '1');
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiFamilyMember[]>(`/patient/family-members${suffix}`, { token });
+  },
   getDoctorPatientFamilyMembers: (token: string, patientUserId: number) =>
     request<ApiFamilyMember[]>(`/doctor/patients/${patientUserId}/family-members`, { token }),
   getDoctorPatientProfile: (token: string, patientUserId: number) =>
@@ -1075,6 +1137,16 @@ export const api = {
       method: 'DELETE',
       token
     }),
+  unarchivePatientFamilyMember: (token: string, id: number) =>
+    request<ApiFamilyMember>(`/patient/family-members/${id}/unarchive`, {
+      method: 'PATCH',
+      token
+    }),
+  uploadPatientFamilyMemberPhoto: (token: string, id: number, file: File) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return requestFormData<ApiFamilyMember>(`/patient/family-members/${id}/photo`, formData, token);
+  },
   getPatientMedicalHistory: (token: string, params?: { family_member_id?: number | null }) => {
     const search = new URLSearchParams();
     if (typeof params?.family_member_id === 'number') {

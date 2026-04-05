@@ -7,6 +7,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -19,6 +20,7 @@ import {
   useIonRouter,
   useIonViewWillEnter
 } from '@ionic/react';
+import { personOutline } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember, ApiPatientLookup, ApiPrescription } from '../services/api';
@@ -140,12 +142,21 @@ const DoctorPatientsPage: React.FC = () => {
   }, []);
 
   const patientEntries = useMemo(() => {
+    const patientPhotoByName = new Map<string, string>();
+    prescriptions.forEach((p) => {
+      const candidate = p.patient?.profile_photo_url ?? null;
+      if (candidate && p.patient_name?.trim()) {
+        patientPhotoByName.set(p.patient_name.trim().toLocaleLowerCase(), candidate);
+      }
+    });
+
     const patients = Array.from(new Set(prescriptions.map((p) => p.patient_name.trim()).filter(Boolean))).map((name) => ({
       key: `patient-${name}`,
       label: name,
       patientName: name,
       familyMemberId: null as number | null,
-      subtitle: 'Patient'
+      subtitle: 'Patient',
+      photoUrl: patientPhotoByName.get(name.toLocaleLowerCase()) ?? null
     }));
 
     const familyEntries = Object.entries(familyMembersByPatient).flatMap(([patientName, members]) =>
@@ -154,7 +165,8 @@ const DoctorPatientsPage: React.FC = () => {
         label: member.name,
         patientName,
         familyMemberId: member.id,
-        subtitle: `Membre de ${patientName}`
+        subtitle: `Membre de ${patientName}`,
+        photoUrl: null
       }))
     );
 
@@ -176,9 +188,6 @@ const DoctorPatientsPage: React.FC = () => {
       <IonContent className="ion-padding app-content">
         <InstallBanner />
         <IonCard className="surface-card">
-          <IonCardHeader>
-            <IonCardTitle>Patients (A-Z)</IonCardTitle>
-          </IonCardHeader>
           <IonCardContent>
             <IonSearchbar
               value={dbSearchQuery}
@@ -212,6 +221,35 @@ const DoctorPatientsPage: React.FC = () => {
                           )
                         }
                       >
+                        {row.profile_photo_url ? (
+                          <img
+                            slot="start"
+                            src={row.profile_photo_url}
+                            alt={row.name}
+                            style={{
+                              width: '34px',
+                              height: '34px',
+                              objectFit: 'cover',
+                              borderRadius: '50%',
+                              border: '1px solid #dbe7ef'
+                            }}
+                          />
+                        ) : (
+                          <div
+                            slot="start"
+                            style={{
+                              width: '34px',
+                              height: '34px',
+                              borderRadius: '50%',
+                              display: 'grid',
+                              placeItems: 'center',
+                              background: '#dbeafe',
+                              color: '#1e40af'
+                            }}
+                          >
+                            <IonIcon icon={personOutline} />
+                          </div>
+                        )}
                         <IonLabel>
                           <h3>{row.name}</h3>
                           <p>
@@ -250,6 +288,35 @@ const DoctorPatientsPage: React.FC = () => {
                       )
                     }
                   >
+                    {entry.photoUrl ? (
+                      <img
+                        slot="start"
+                        src={entry.photoUrl}
+                        alt={entry.label}
+                        style={{
+                          width: '34px',
+                          height: '34px',
+                          objectFit: 'cover',
+                          borderRadius: '50%',
+                          border: '1px solid #dbe7ef'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        slot="start"
+                        style={{
+                          width: '34px',
+                          height: '34px',
+                          borderRadius: '50%',
+                          display: 'grid',
+                          placeItems: 'center',
+                          background: '#dbeafe',
+                          color: '#1e40af'
+                        }}
+                      >
+                        <IonIcon icon={personOutline} />
+                      </div>
+                    )}
                     <IonLabel>
                       <h3>{entry.label}</h3>
                       <p>{entry.subtitle}</p>

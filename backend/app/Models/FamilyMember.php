@@ -9,6 +9,8 @@ class FamilyMember extends Model
     protected $fillable = [
         'patient_user_id',
         'name',
+        'photo_url',
+        'archived_at',
         'age',
         'date_of_birth',
         'gender',
@@ -31,6 +33,7 @@ class FamilyMember extends Model
         'height_cm' => 'float',
         'vaccination_up_to_date' => 'boolean',
         'primary_caregiver' => 'boolean',
+        'archived_at' => 'datetime',
     ];
 
     public function patient()

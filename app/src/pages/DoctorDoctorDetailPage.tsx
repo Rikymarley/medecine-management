@@ -185,8 +185,38 @@ const DoctorDoctorDetailPage: React.FC = () => {
               </IonText>
             ) : (
               <>
+                {doctor.profile_banner_url ? (
+                  <div style={{ marginBottom: '10px' }}>
+                    <img
+                      src={doctor.profile_banner_url}
+                      alt={`Banniere ${doctor.name}`}
+                      style={{
+                        width: '100%',
+                        maxHeight: '170px',
+                        objectFit: 'cover',
+                        borderRadius: '10px',
+                        border: '1px solid #dbe7ef'
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <IonItem lines="none">
-                  <IonIcon icon={medkitOutline} slot="start" color="success" />
+                  {doctor.profile_photo_url ? (
+                    <img
+                      src={doctor.profile_photo_url}
+                      alt={doctor.name}
+                      style={{
+                        width: '38px',
+                        height: '38px',
+                        objectFit: 'cover',
+                        borderRadius: '10px',
+                        border: '1px solid #dbe7ef',
+                        marginRight: '8px'
+                      }}
+                    />
+                  ) : (
+                    <IonIcon icon={medkitOutline} slot="start" color="success" />
+                  )}
                   <IonLabel>
                     <h2>{doctor.name}</h2>
                     <p>{doctor.specialty || 'Specialite non renseignee'}</p>

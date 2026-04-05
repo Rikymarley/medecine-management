@@ -81,8 +81,8 @@ class PrescriptionController extends Controller
             'medicineRequests',
             'responses',
             'familyMember:id,name',
-            'patient:id,name,account_status,created_by_doctor_id,ninu,date_of_birth,phone',
-            'doctor:id,name,phone,address,latitude,longitude,specialty,city,department,languages,teleconsultation_available,consultation_hours,license_number,license_verified,years_experience,consultation_fee_range,whatsapp,bio',
+            'patient:id,name,account_status,created_by_doctor_id,ninu,date_of_birth,phone,profile_photo_url',
+            'doctor:id,name,phone,address,latitude,longitude,specialty,city,department,languages,teleconsultation_available,consultation_hours,license_number,license_verified,years_experience,consultation_fee_range,whatsapp,bio,profile_photo_url,profile_banner_url',
         ];
     }
 
@@ -252,7 +252,7 @@ class PrescriptionController extends Controller
         $rows = User::query()
             ->where('role', 'patient')
             ->orderBy('name')
-            ->get(['id', 'name', 'phone', 'ninu', 'date_of_birth'])
+            ->get(['id', 'name', 'phone', 'ninu', 'date_of_birth', 'profile_photo_url'])
             ->filter(function (User $user) use ($query, $normalizedQuery, $compactQuery, $isFuzzyMatch) {
                 $name = mb_strtolower((string) $user->name);
                 $normalizedName = mb_strtolower(Str::ascii((string) $user->name));
@@ -566,6 +566,7 @@ class PrescriptionController extends Controller
         return response()->json([
             'id' => $patient->id,
             'name' => $patient->name,
+            'profile_photo_url' => $patient->profile_photo_url,
             'phone' => $patient->phone,
             'ninu' => $patient->ninu,
             'date_of_birth' => $patient->date_of_birth,

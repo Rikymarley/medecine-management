@@ -38,6 +38,8 @@ use Laravel\Sanctum\HasApiTokens;
     'consultation_fee_range',
     'whatsapp',
     'bio',
+    'profile_photo_url',
+    'profile_banner_url',
     'age',
     'gender',
     'allergies',

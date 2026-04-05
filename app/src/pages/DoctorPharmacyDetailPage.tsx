@@ -166,6 +166,21 @@ const DoctorPharmacyDetailPage: React.FC = () => {
               </IonText>
             ) : (
               <>
+                {pharmacy.storefront_image_url ? (
+                  <div style={{ marginBottom: '10px' }}>
+                    <img
+                      src={pharmacy.storefront_image_url}
+                      alt={`Vitrine ${pharmacy.name}`}
+                      style={{
+                        width: '100%',
+                        maxHeight: '170px',
+                        objectFit: 'cover',
+                        borderRadius: '10px',
+                        border: '1px solid #dbe7ef'
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <IonItem lines="none">
                   {pharmacy.logo_url ? (
                     <img
@@ -213,21 +228,6 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                   <IonBadge color={pharmacy.open_now ? 'success' : 'medium'}>
                     {pharmacy.open_now ? 'Ouverte' : 'Fermee'}
                   </IonBadge>
-                </div>
-                <div style={{ display: 'grid', gap: '10px', marginTop: '8px', marginBottom: '8px' }}>
-                  <div>
-                    {pharmacy.storefront_image_url ? (
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <img
-                          src={pharmacy.storefront_image_url}
-                          alt={`Vitrine ${pharmacy.name}`}
-                          style={{ width: '100%', maxWidth: '300px', height: '140px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #dbe7ef' }}
-                        />
-                      </div>
-                    ) : (
-                      <IonText color="medium">Aucune photo vitrine</IonText>
-                    )}
-                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px' }}>

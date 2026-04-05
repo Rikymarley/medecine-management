@@ -21,21 +21,22 @@ import {
   IonSelectOption,
   IonTextarea,
   IonText,
+  IonSearchbar,
   IonToast,
   IonTitle,
-  IonToolbar
+  IonToolbar,
+  useIonRouter,
+  useIonViewWillEnter
 } from '@ionic/react';
 import {
   addOutline,
   chevronDownOutline,
   chevronUpOutline,
   closeOutline,
-  createOutline,
   peopleOutline,
-  personOutline,
-  trashOutline
+  personOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember } from '../services/api';
 import {
@@ -45,20 +46,6 @@ import {
   getPendingFamilyMemberMutationCount
 } from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
-
-const genderLabel: Record<NonNullable<ApiFamilyMember['gender']>, string> = {
-  male: 'M',
-  female: 'F'
-};
-
-const relationshipLabel: Record<NonNullable<ApiFamilyMember['relationship']>, string> = {
-  parent: 'Parent',
-  spouse: 'Conjoint(e)',
-  child: 'Enfant',
-  sibling: 'Frere/Soeur',
-  grandparent: 'Grand-parent',
-  other: 'Autre'
-};
 
 const getAgeFromDob = (dob: string | null): number | null => {
   if (!dob) return null;
@@ -73,8 +60,18 @@ const getAgeFromDob = (dob: string | null): number | null => {
   return age >= 0 ? age : null;
 };
 
+const relationshipLabel: Record<NonNullable<ApiFamilyMember['relationship']>, string> = {
+  parent: 'Parent',
+  spouse: 'Conjoint(e)',
+  child: 'Enfant',
+  sibling: 'Frere/Soeur',
+  grandparent: 'Grand-parent',
+  other: 'Autre'
+};
+
 const PatientFamilyMembersPage: React.FC = () => {
   const { token, user } = useAuth();
+  const ionRouter = useIonRouter();
   const [members, setMembers] = useState<ApiFamilyMember[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -90,8 +87,10 @@ const PatientFamilyMembersPage: React.FC = () => {
   const [pendingStateById, setPendingStateById] = useState<Record<number, 'create' | 'update' | 'delete'>>(
     getPendingFamilyMemberMutationStateById()
   );
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [query, setQuery] = useState('');
   const [form, setForm] = useState<{
     name: string;
     date_of_birth: string;
@@ -143,7 +142,7 @@ const PatientFamilyMembersPage: React.FC = () => {
     };
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (cacheKey) {
       const cachedRaw = localStorage.getItem(cacheKey);
       if (cachedRaw) {
@@ -161,16 +160,20 @@ const PatientFamilyMembersPage: React.FC = () => {
     if (!token) {
       return;
     }
-    const data = await api.getPatientFamilyMembers(token);
+    const data = await api.getPatientFamilyMembers(token, { includeArchived: true });
     setMembers(data);
     if (cacheKey) {
       localStorage.setItem(cacheKey, JSON.stringify(data));
     }
-  };
+  }, [cacheKey, token]);
 
   useEffect(() => {
     load().catch(() => undefined);
-  }, [token]);
+  }, [load]);
+
+  useIonViewWillEnter(() => {
+    load().catch(() => undefined);
+  });
 
   useEffect(() => {
     if (!cacheKey) {
@@ -213,12 +216,27 @@ const PatientFamilyMembersPage: React.FC = () => {
     () => [...members].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })),
     [members]
   );
+  const filteredMembers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sortedMembers.filter((member) => {
+      if (!q) return true;
+      return `${member.name} ${member.relationship ?? ''} ${member.gender ?? ''}`.toLowerCase().includes(q);
+    });
+  }, [query, sortedMembers]);
+  const activeFilteredMembers = useMemo(
+    () => filteredMembers.filter((member) => !member.archived_at),
+    [filteredMembers]
+  );
+  const archivedFilteredMembers = useMemo(
+    () => filteredMembers.filter((member) => !!member.archived_at),
+    [filteredMembers]
+  );
   const computedFormAge = useMemo(() => getAgeFromDob(form.date_of_birth || null), [form.date_of_birth]);
-  const totalPages = Math.max(1, Math.ceil(sortedMembers.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(activeFilteredMembers.length / pageSize));
   const pagedMembers = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return sortedMembers.slice(start, start + pageSize);
-  }, [page, sortedMembers]);
+    return activeFilteredMembers.slice(start, start + pageSize);
+  }, [activeFilteredMembers, page]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -330,17 +348,27 @@ const PatientFamilyMembersPage: React.FC = () => {
     if (!token) {
       return;
     }
-    setMembers((prev) => prev.filter((member) => member.id !== id));
+    setMembers((prev) =>
+      prev.map((member) =>
+        member.id === id
+          ? {
+              ...member,
+              archived_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          : member
+      )
+    );
     if (!isOnline) {
       const count = enqueueFamilyMemberMutation({ op: 'delete', local_id: id });
       setPendingOutboxCount(count);
       setPendingStateById(getPendingFamilyMemberMutationStateById());
-      setSyncMessage('Hors ligne: suppression en attente.');
-      setToastMessage('Membre supprime (hors ligne).');
+      setSyncMessage('Hors ligne: archivage en attente.');
+      setToastMessage('Membre archive (hors ligne).');
       return;
     }
     await api.deletePatientFamilyMember(token, id);
-    setToastMessage('Membre supprime.');
+    setToastMessage('Membre archive.');
   };
 
   const startEdit = (member: ApiFamilyMember) => {
@@ -392,61 +420,72 @@ const PatientFamilyMembersPage: React.FC = () => {
           <IonCardContent>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: 0 }}>
               <h2 style={{ margin: 0 }}>Famille</h2>
-              <IonText color="medium">{sortedMembers.length} membre(s)</IonText>
+              <IonText color="medium">{activeFilteredMembers.length} membre(s)</IonText>
             </div>
-            {sortedMembers.length === 0 ? (
+            <IonSearchbar
+              value={query}
+              placeholder="Rechercher un membre..."
+              onIonInput={(e) => setQuery(e.detail.value ?? '')}
+            />
+            {activeFilteredMembers.length === 0 ? (
               <div style={{ minHeight: '220px', display: 'grid', placeItems: 'center', textAlign: 'center' }}>
                 <div>
                   <IonIcon icon={peopleOutline} style={{ fontSize: '56px', color: '#64748b' }} />
-                  <h3 style={{ marginBottom: 4 }}>Aucun membre ajoute</h3>
-                  <IonText color="medium">Utilisez le bouton + pour ajouter un membre.</IonText>
+                  <h3 style={{ marginBottom: 4 }}>Aucun membre trouve</h3>
+                  <IonText color="medium">Ajustez les filtres ou ajoutez un membre.</IonText>
                 </div>
               </div>
             ) : (
               <IonList>
                 {pagedMembers.map((member) => (
-                  <IonItem key={member.id} lines="full">
-                    <IonIcon slot="start" icon={personOutline} />
+                  <IonItem key={member.id} lines="full" button detail onClick={() => ionRouter.push(`/patient/family-members/${member.id}`, 'forward', 'push')}>
+                    {(member as any).photo_url || (member as any).profile_photo_url ? (
+                      <img
+                        slot="start"
+                        src={((member as any).photo_url || (member as any).profile_photo_url) as string}
+                        alt={member.name}
+                        style={{
+                          width: '34px',
+                          height: '34px',
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          border: '1px solid #dbe7ef'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        slot="start"
+                        style={{
+                          width: '34px',
+                          height: '34px',
+                          borderRadius: '50%',
+                          display: 'grid',
+                          placeItems: 'center',
+                          background: '#dbeafe',
+                          color: '#1e40af',
+                          fontWeight: 700
+                        }}
+                      >
+                        {(member.name || '?').charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <IonLabel>
                       <h3>{member.name}</h3>
+                      <p>
+                        Relation:{' '}
+                        {member.relationship ? relationshipLabel[member.relationship] : 'N/D'}
+                      </p>
                       {pendingStateById[member.id] ? (
                         <IonBadge color="warning" style={{ marginBottom: '6px' }}>
                           Non synchronise
                         </IonBadge>
                       ) : null}
-                      <p>
-                        {member.date_of_birth ? `Ne(e) le ${member.date_of_birth.slice(0, 10)}` : 'Date de naissance N/D'}
-                        {getAgeFromDob(member.date_of_birth) !== null ? ` · ${getAgeFromDob(member.date_of_birth)} ans` : ''}
-                      </p>
-                      <p>
-                        {member.relationship ? relationshipLabel[member.relationship] : 'Relation non precisee'}
-                        {member.gender ? ` · ${genderLabel[member.gender]}` : ''}
-                      </p>
-                      {member.blood_type ? <p>Groupe sanguin: {member.blood_type}</p> : null}
-                      {(member.weight_kg !== null || member.height_cm !== null) ? (
-                        <p>
-                          {member.weight_kg !== null ? `Poids: ${member.weight_kg} kg` : 'Poids: N/D'}
-                          {' · '}
-                          {member.height_cm !== null ? `Taille: ${member.height_cm} cm` : 'Taille: N/D'}
-                        </p>
-                      ) : null}
-                      {member.vaccination_up_to_date !== null ? (
-                        <p>Vaccination: {member.vaccination_up_to_date ? 'A jour' : 'Non a jour'}</p>
-                      ) : null}
-                      {member.surgical_history ? <p>Antecedents chirurgicaux: {member.surgical_history}</p> : null}
-                      {member.primary_caregiver ? <p>Personne de reference</p> : null}
                     </IonLabel>
-                    <IonButton slot="end" fill="clear" color="danger" onClick={() => setDeleteTargetId(member.id)}>
-                      <IonIcon icon={trashOutline} />
-                    </IonButton>
-                    <IonButton slot="end" fill="clear" onClick={() => startEdit(member)}>
-                      <IonIcon icon={createOutline} />
-                    </IonButton>
                   </IonItem>
                 ))}
               </IonList>
             )}
-            {sortedMembers.length > pageSize ? (
+            {activeFilteredMembers.length > pageSize ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
                 <IonButton fill="outline" disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
                   Precedent
@@ -459,6 +498,68 @@ const PatientFamilyMembersPage: React.FC = () => {
                 </IonButton>
               </div>
             ) : null}
+            <div style={{ marginTop: '12px', borderTop: '1px solid #dbe7ef', paddingTop: '10px' }}>
+              <IonButton fill="clear" color="medium" size="small" onClick={() => setArchivedExpanded((prev) => !prev)}>
+                Membres archives ({archivedFilteredMembers.length})
+                <IonIcon slot="end" icon={archivedExpanded ? chevronUpOutline : chevronDownOutline} />
+              </IonButton>
+              {archivedExpanded ? (
+                archivedFilteredMembers.length === 0 ? (
+                  <IonText color="medium">
+                    <p style={{ marginTop: '6px' }}>Aucun membre archive.</p>
+                  </IonText>
+                ) : (
+                  <IonList>
+                    {archivedFilteredMembers.map((member) => (
+                      <IonItem
+                        key={`archived-${member.id}`}
+                        lines="full"
+                        button
+                        detail
+                        onClick={() => ionRouter.push(`/patient/family-members/${member.id}`, 'forward', 'push')}
+                      >
+                        {(member as any).photo_url || (member as any).profile_photo_url ? (
+                          <img
+                            slot="start"
+                            src={((member as any).photo_url || (member as any).profile_photo_url) as string}
+                            alt={member.name}
+                            style={{
+                              width: '34px',
+                              height: '34px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: '1px solid #dbe7ef',
+                              opacity: 0.75
+                            }}
+                          />
+                        ) : (
+                          <div
+                            slot="start"
+                            style={{
+                              width: '34px',
+                              height: '34px',
+                              borderRadius: '50%',
+                              display: 'grid',
+                              placeItems: 'center',
+                              background: '#e2e8f0',
+                              color: '#64748b',
+                              fontWeight: 700
+                            }}
+                          >
+                            {(member.name || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <IonLabel>
+                          <h3>{member.name}</h3>
+                          <p>Relation: {member.relationship ? relationshipLabel[member.relationship] : 'N/D'}</p>
+                        </IonLabel>
+                        <IonBadge color="medium" slot="end">Archive</IonBadge>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                )
+              ) : null}
+            </div>
           </IonCardContent>
         </IonCard>
 
@@ -736,8 +837,8 @@ const PatientFamilyMembersPage: React.FC = () => {
         </IonFab>
         <IonAlert
           isOpen={deleteTargetId !== null}
-          header="Supprimer ce membre ?"
-          message="Cette action est definitive."
+          header="Archiver ce membre ?"
+          message="Le membre ne sera plus visible, mais les donnees seront conservees."
           buttons={[
             {
               text: 'Annuler',
@@ -745,7 +846,7 @@ const PatientFamilyMembersPage: React.FC = () => {
               handler: () => setDeleteTargetId(null)
             },
             {
-              text: 'Supprimer',
+              text: 'Archiver',
               role: 'destructive',
               handler: () => {
                 const id = deleteTargetId;

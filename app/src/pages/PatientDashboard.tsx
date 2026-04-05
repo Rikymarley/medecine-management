@@ -24,6 +24,7 @@ import {
   callOutline,
   chevronDownOutline,
   chevronUpOutline,
+  createOutline,
   documentTextOutline,
   medkitOutline,
   peopleOutline,
@@ -32,7 +33,7 @@ import {
   shieldCheckmarkOutline,
   storefrontOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -60,6 +61,8 @@ const PatientDashboard: React.FC = () => {
   const [surgicalHistory, setSurgicalHistory] = useState('');
   const [vaccinationUpToDate, setVaccinationUpToDate] = useState<'' | 'yes' | 'no'>('');
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -67,6 +70,7 @@ const PatientDashboard: React.FC = () => {
   const [personalExpanded, setPersonalExpanded] = useState(false);
   const [emergencyExpanded, setEmergencyExpanded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
 
   const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
@@ -126,6 +130,7 @@ const PatientDashboard: React.FC = () => {
             ? 'yes'
             : 'no'
         );
+        setProfilePhotoUrl(normalizeText((me as any).profile_photo_url));
       })
       .catch(() => {
         if (profileCacheKey) {
@@ -154,6 +159,7 @@ const PatientDashboard: React.FC = () => {
                   ? 'yes'
                   : 'no'
               );
+              setProfilePhotoUrl(normalizeText((me as any)?.profile_photo_url));
               setMessage('Hors ligne: profil local charge.');
               return;
             } catch {
@@ -182,6 +188,7 @@ const PatientDashboard: React.FC = () => {
             ? 'yes'
             : 'no'
         );
+        setProfilePhotoUrl(normalizeText((user as any)?.profile_photo_url));
       });
   }, [
     profileCacheKey,
@@ -200,7 +207,8 @@ const PatientDashboard: React.FC = () => {
     user?.surgical_history,
     user?.vaccination_up_to_date,
     user?.weight_kg,
-    user?.whatsapp
+    user?.whatsapp,
+    (user as any)?.profile_photo_url
   ]);
 
   const profileMissingFields = useMemo(() => {
@@ -284,6 +292,31 @@ const PatientDashboard: React.FC = () => {
     }
   };
 
+  const uploadPatientPhoto = async (file: File) => {
+    if (!token) return;
+    if (!isOnline) {
+      setMessage('Hors ligne: impossible de televerser une photo.');
+      return;
+    }
+    setUploadingPhoto(true);
+    setMessage(null);
+    try {
+      const updated = await api.uploadMyPatientProfilePhoto(token, file);
+      setProfilePhotoUrl(normalizeText((updated as any).profile_photo_url));
+      if (profileCacheKey) {
+        localStorage.setItem(profileCacheKey, JSON.stringify(updated));
+      }
+      setMessage('Photo de profil mise a jour.');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Echec de l'upload photo.");
+    } finally {
+      setUploadingPhoto(false);
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -318,19 +351,60 @@ const PatientDashboard: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '56px 1fr auto', gap: '10px', alignItems: 'center' }}>
               <div
                 style={{
+                  position: 'relative',
                   width: '56px',
                   height: '56px',
                   borderRadius: '16px',
-                  display: 'grid',
-                  placeItems: 'center',
-                  background: '#dbeafe'
+                  overflow: 'hidden',
+                  border: '1px solid #dbe7ef',
+                  background: '#dbeafe',
+                  cursor: !isOnline || uploadingPhoto ? 'not-allowed' : 'pointer',
+                  opacity: !isOnline || uploadingPhoto ? 0.7 : 1
+                }}
+                onClick={() => {
+                  if (!isOnline || uploadingPhoto) return;
+                  photoInputRef.current?.click();
                 }}
               >
-                <IonIcon icon={personCircleOutline} style={{ fontSize: '32px', color: '#1d4ed8' }} />
+                {profilePhotoUrl ? (
+                  <img src={profilePhotoUrl} alt="Photo patient" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%' }}>
+                    <IonIcon icon={personCircleOutline} style={{ fontSize: '32px', color: '#1d4ed8' }} />
+                  </div>
+                )}
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: '2px',
+                    bottom: '2px',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '999px',
+                    background: '#0ea5e9',
+                    color: '#fff',
+                    display: 'grid',
+                    placeItems: 'center',
+                    border: '1px solid #fff'
+                  }}
+                >
+                  <IonIcon icon={createOutline} style={{ fontSize: '12px' }} />
+                </div>
               </div>
               <div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{name || user?.name || 'Profil patient'}</div>
                 <div style={{ color: '#64748b', fontSize: '0.95rem' }}>{phone || 'Telephone non renseigne'}</div>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadPatientPhoto(file);
+                  }}
+                />
+                {uploadingPhoto ? <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#64748b' }}>Upload...</div> : null}
               </div>
               <IonButton
                 size="small"
@@ -345,9 +419,8 @@ const PatientDashboard: React.FC = () => {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
               <IonBadge color={profileIncomplete ? 'warning' : 'success'}>
-                {profileIncomplete ? `Profil incomplet (${profileMissingFields.length})` : 'Profil complet'}
+                Completion du profil : {profileCompletion}%
               </IonBadge>
-              <IonBadge color="medium">Completion: {profileCompletion}%</IonBadge>
             </div>
             {profileIncomplete ? (
               <IonText color="warning">

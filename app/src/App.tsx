@@ -28,11 +28,13 @@ import AdminPharmacyDetailPage from './pages/AdminPharmacyDetailPage';
 import AdminPatientsPage from './pages/AdminPatientsPage';
 import PatientDoctorsPage from './pages/PatientDoctorsPage';
 import PatientPharmaciesPage from './pages/PatientPharmaciesPage';
+import PatientPharmacyDetailPage from './pages/PatientPharmacyDetailPage';
 import PatientDoctorPrescriptionsPage from './pages/PatientDoctorPrescriptionsPage';
 import PatientPrescriptionsPage from './pages/PatientPrescriptionsPage';
 import PatientPrescriptionDetailPage from './pages/PatientPrescriptionDetailPage';
 import PatientEmergencyContactsPage from './pages/PatientEmergencyContactsPage';
 import PatientFamilyMembersPage from './pages/PatientFamilyMembersPage';
+import PatientFamilyMemberDetailPage from './pages/PatientFamilyMemberDetailPage';
 import PatientMedicalHistoryPage from './pages/PatientMedicalHistoryPage';
 import VerificationPending from './pages/VerificationPending';
 import { AuthProvider, useAuth } from './state/AuthState';
@@ -62,7 +64,7 @@ import '@ionic/react/css/display.css';
 
 /* import '@ionic/react/css/palettes/dark.always.css'; */
 /* import '@ionic/react/css/palettes/dark.class.css'; */
-import '@ionic/react/css/palettes/dark.system.css';
+/* import '@ionic/react/css/palettes/dark.system.css'; */
 
 /* Theme variables */
 import './theme/variables.css';
@@ -253,6 +255,11 @@ const App: React.FC = () => (
               <PatientPharmaciesPage />
             </RequireRole>
           </Route>
+          <Route exact path="/patient/pharmacies/:pharmacyId">
+            <RequireRole role="patient">
+              <PatientPharmacyDetailPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/patient/doctors/:doctorName">
             <RequireRole role="patient">
               <PatientDoctorPrescriptionsPage />
@@ -276,6 +283,11 @@ const App: React.FC = () => (
           <Route exact path="/patient/family-members">
             <RequireRole role="patient">
               <PatientFamilyMembersPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/family-members/:memberId">
+            <RequireRole role="patient">
+              <PatientFamilyMemberDetailPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient/medical-history">

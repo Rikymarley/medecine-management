@@ -42,3 +42,8 @@ command = '''
 cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/backend
 php artisan schema:dump
 '''
+
+[[actions]]
+name = "NGROK 5173"
+icon = "tool"
+command = "ngrok http 5173"

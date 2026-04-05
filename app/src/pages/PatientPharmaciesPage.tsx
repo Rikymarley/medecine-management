@@ -13,199 +13,52 @@ import {
   IonList,
   IonPage,
   IonSearchbar,
-  IonSelect,
-  IonSelectOption,
   IonText,
-  IonToggle,
   IonTitle,
-  IonToolbar
+  IonToolbar,
+  useIonRouter,
+  useIonViewWillEnter
 } from '@ionic/react';
-import { callOutline, chevronDownOutline, chevronForwardOutline, locateOutline, logoWhatsapp, storefrontOutline } from 'ionicons/icons';
+import { chevronForwardOutline, storefrontOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
-import { useAuth } from '../state/AuthState';
-
-const toNumber = (value: string | null) => {
-  if (!value) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-const DEFAULT_PAYMENT_METHODS = ['Cash', 'MonCash', 'NatCash', 'Carte', 'Virement'];
-
-const toKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
 
 const PatientPharmaciesPage: React.FC = () => {
-  const { user } = useAuth();
+  const ionRouter = useIonRouter();
   const [pharmacies, setPharmacies] = useState<ApiPharmacy[]>([]);
-  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
-  const [expandedHours, setExpandedHours] = useState<Record<number, boolean>>({});
   const [query, setQuery] = useState('');
-  const [onlyOpenNow, setOnlyOpenNow] = useState(false);
-  const [deliveryOnly, setDeliveryOnly] = useState(false);
-  const [nightOnly, setNightOnly] = useState(false);
-  const [priceRange, setPriceRange] = useState<'' | 'low' | 'medium' | 'high'>('');
-  const [serviceFilter, setServiceFilter] = useState('');
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState('');
-  const cacheKey = user ? `patient-pharmacies-${user.id}` : 'patient-pharmacies-guest';
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'licensed' | 'unlicensed' | 'emergency'>('all');
+
+  const loadPharmacies = async () => {
+    await api.getPharmacies().then(setPharmacies).catch(() => setPharmacies([]));
+  };
 
   useEffect(() => {
-    const raw = localStorage.getItem(cacheKey);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as { updated_at: string; items: ApiPharmacy[] };
-        if (Array.isArray(parsed?.items)) {
-          setPharmacies(parsed.items);
-          setLastUpdatedAt(parsed.updated_at ?? null);
-        }
-      } catch {
-        localStorage.removeItem(cacheKey);
-      }
-    }
-
-    api
-      .getPharmacies()
-      .then((items) => {
-        setPharmacies(items);
-        const updatedAt = new Date().toISOString();
-        setLastUpdatedAt(updatedAt);
-        localStorage.setItem(cacheKey, JSON.stringify({ updated_at: updatedAt, items }));
-      })
-      .catch(() => undefined);
-  }, [cacheKey]);
-
-  useEffect(() => {
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-    };
+    loadPharmacies().catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationError('Geolocalisation non disponible.');
-      return;
-    }
+  useIonViewWillEnter(() => {
+    loadPharmacies().catch(() => undefined);
+  });
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-        setLocationError(null);
-      },
-      () => setLocationError('Position non disponible. Affichage alphabetique.')
-    );
-  }, []);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const searched = q
+      ? pharmacies.filter((pharmacy) => `${pharmacy.name} ${pharmacy.address ?? ''}`.toLowerCase().includes(q))
+      : pharmacies;
 
-  const sorted = useMemo(() => {
-    const normalizedServiceFilter = serviceFilter.trim().toLowerCase();
-    const normalizedPaymentFilter = paymentMethodFilter.trim().toLowerCase();
-    const normalizedQuery = query.trim().toLowerCase();
-    const filtered = normalizedQuery
-      ? pharmacies.filter((pharmacy) => {
-          const haystack = `${pharmacy.name} ${pharmacy.address ?? ''} ${pharmacy.services ?? ''} ${pharmacy.payment_methods ?? ''} ${pharmacy.notes_for_patients ?? ''}`.toLowerCase();
-          return haystack.includes(normalizedQuery);
-        })
-      : [...pharmacies];
-
-    const filteredByAttributes = filtered.filter((pharmacy) => {
-      if (onlyOpenNow && (pharmacy.temporary_closed || !pharmacy.open_now)) {
-        return false;
-      }
-      if (deliveryOnly && !pharmacy.delivery_available) {
-        return false;
-      }
-      if (nightOnly && !pharmacy.night_service) {
-        return false;
-      }
-      if (priceRange && pharmacy.price_range !== priceRange) {
-        return false;
-      }
-      if (normalizedServiceFilter) {
-        const services = (pharmacy.services ?? '').toLowerCase();
-        if (!services.includes(normalizedServiceFilter)) {
-          return false;
-        }
-      }
-      if (normalizedPaymentFilter) {
-        const payments = (pharmacy.payment_methods ?? '').toLowerCase();
-        if (!payments.includes(normalizedPaymentFilter)) {
-          return false;
-        }
-      }
+    const rows = searched.filter((pharmacy) => {
+      if (statusFilter === 'open') return !!pharmacy.open_now && !pharmacy.temporary_closed;
+      if (statusFilter === 'closed') return !pharmacy.open_now || !!pharmacy.temporary_closed;
+      if (statusFilter === 'licensed') return !!pharmacy.license_verified;
+      if (statusFilter === 'unlicensed') return !pharmacy.license_verified;
+      if (statusFilter === 'emergency') return !!pharmacy.emergency_available;
       return true;
     });
 
-    const rows = filteredByAttributes.map((pharmacy) => {
-      if (!location) {
-        return { pharmacy, distanceKm: null as number | null };
-      }
-      const lat = toNumber(pharmacy.latitude);
-      const lon = toNumber(pharmacy.longitude);
-      if (lat === null || lon === null) {
-        return { pharmacy, distanceKm: null as number | null };
-      }
-      return {
-        pharmacy,
-        distanceKm: toKm(location.lat, location.lon, lat, lon)
-      };
-    });
-
-    return rows.sort((a, b) => {
-      if (a.distanceKm === null && b.distanceKm === null) {
-        return a.pharmacy.name.localeCompare(b.pharmacy.name, 'fr', { sensitivity: 'base' });
-      }
-      if (a.distanceKm === null) return 1;
-      if (b.distanceKm === null) return -1;
-      if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
-      return a.pharmacy.name.localeCompare(b.pharmacy.name, 'fr', { sensitivity: 'base' });
-    });
-  }, [deliveryOnly, location, nightOnly, onlyOpenNow, paymentMethodFilter, pharmacies, priceRange, query, serviceFilter]);
-
-  const availableServices = useMemo(() => {
-    const set = new Set<string>();
-    pharmacies.forEach((pharmacy) => {
-      (pharmacy.services ?? '')
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .forEach((value) => set.add(value));
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-  }, [pharmacies]);
-
-  const availablePaymentMethods = useMemo(() => {
-    const set = new Set<string>();
-    DEFAULT_PAYMENT_METHODS.forEach((value) => set.add(value));
-    pharmacies.forEach((pharmacy) => {
-      (pharmacy.payment_methods ?? '')
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .forEach((value) => set.add(value));
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-  }, [pharmacies]);
+    return [...rows].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+  }, [pharmacies, query, statusFilter]);
 
   return (
     <IonPage>
@@ -214,294 +67,98 @@ const PatientPharmaciesPage: React.FC = () => {
           <IonButtons slot="start">
             <IonBackButton defaultHref="/patient" />
           </IonButtons>
-          <IonTitle>Pharmacies proches</IonTitle>
+          <IonTitle>Annuaire pharmacies</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding app-content">
         <InstallBanner />
         <IonCard className="surface-card">
           <IonCardContent>
-            <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 170px)' }}>
-              <div style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--app-surface)' }}>
-                <IonSearchbar
-                  value={query}
-                  placeholder="Rechercher une pharmacie ou une adresse"
-                  onIonInput={(event) => setQuery(event.detail.value ?? '')}
-                />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
-                  <IonItem lines="none">
-                    <IonLabel>Ouverte</IonLabel>
-                    <IonToggle checked={onlyOpenNow} onIonChange={(e) => setOnlyOpenNow(e.detail.checked)} />
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel>Livraison</IonLabel>
-                    <IonToggle checked={deliveryOnly} onIonChange={(e) => setDeliveryOnly(e.detail.checked)} />
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel>Nuit</IonLabel>
-                    <IonToggle checked={nightOnly} onIonChange={(e) => setNightOnly(e.detail.checked)} />
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel position="stacked">Prix</IonLabel>
-                    <IonSelect
-                      value={priceRange}
-                      placeholder="Tous"
-                      onIonChange={(e) => setPriceRange((e.detail.value as '' | 'low' | 'medium' | 'high') ?? '')}
-                    >
-                      <IonSelectOption value="">Tous</IonSelectOption>
-                      <IonSelectOption value="low">Bas</IonSelectOption>
-                      <IonSelectOption value="medium">Moyen</IonSelectOption>
-                      <IonSelectOption value="high">Eleve</IonSelectOption>
-                    </IonSelect>
-                  </IonItem>
-                </div>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Service</IonLabel>
-                  <IonSelect
-                    value={serviceFilter}
-                    placeholder="Tous les services"
-                    onIonChange={(e) => setServiceFilter((e.detail.value as string) ?? '')}
-                  >
-                    <IonSelectOption value="">Tous les services</IonSelectOption>
-                    {availableServices.map((service) => (
-                      <IonSelectOption key={service} value={service}>
-                        {service}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Paiement</IonLabel>
-                  <IonSelect
-                    value={paymentMethodFilter}
-                    placeholder="Tous les paiements"
-                    onIonChange={(e) => setPaymentMethodFilter((e.detail.value as string) ?? '')}
-                  >
-                    <IonSelectOption value="">Tous les paiements</IonSelectOption>
-                    {availablePaymentMethods.map((method) => (
-                      <IonSelectOption key={method} value={method}>
-                        {method}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
-                {locationError ? (
-                  <IonText color="warning">
-                    <p>{locationError}</p>
-                  </IonText>
-                ) : null}
-                {!isOnline ? (
-                  <IonText color="warning">
-                    <p>Hors ligne: affichage des pharmacies en cache.</p>
-                  </IonText>
-                ) : null}
-                {lastUpdatedAt ? (
-                  <IonText color="medium">
-                    <p style={{ marginTop: '4px' }}>Mise a jour: {new Date(lastUpdatedAt).toLocaleString('fr-FR')}</p>
-                  </IonText>
-                ) : null}
+            <IonSearchbar
+              value={query}
+              placeholder="Rechercher nom, adresse..."
+              onIonInput={(event) => setQuery(event.detail.value ?? '')}
+            />
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 28px 8px 0' }}>
+                <IonButton size="small" style={{ whiteSpace: 'nowrap' }} fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
+                <IonButton size="small" style={{ whiteSpace: 'nowrap' }} fill={statusFilter === 'open' ? 'solid' : 'outline'} onClick={() => setStatusFilter('open')}>Ouverte</IonButton>
+                <IonButton size="small" style={{ whiteSpace: 'nowrap' }} fill={statusFilter === 'closed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('closed')}>Fermee</IonButton>
+                <IonButton size="small" style={{ whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
+                <IonButton size="small" style={{ whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                <IonButton size="small" style={{ whiteSpace: 'nowrap' }} fill={statusFilter === 'emergency' ? 'solid' : 'outline'} onClick={() => setStatusFilter('emergency')}>Urgence</IonButton>
               </div>
-              <div style={{ overflowY: 'auto', flex: 1 }}>
-                {sorted.length === 0 ? (
-                  <IonText color="medium">
-                    <p>Aucune pharmacie disponible.</p>
-                  </IonText>
-                ) : (
-                  <IonList>
-                    {sorted.map(({ pharmacy, distanceKm }) => (
-                  <IonItem key={pharmacy.id} lines="full">
-                    <IonLabel>
-                      <div
-                        style={{
-                          padding: '8px 0',
-                          display: 'grid',
-                          gridTemplateColumns: '36px 1fr',
-                          gap: '10px',
-                          alignItems: 'start'
-                        }}
-                      >
-                        {pharmacy.logo_url ? (
-                          <img
-                            src={pharmacy.logo_url}
-                            alt={`Logo ${pharmacy.name}`}
-                            style={{ width: '30px', height: '30px', borderRadius: '8px', objectFit: 'cover', marginTop: '2px' }}
-                          />
-                        ) : (
-                          <IonIcon icon={storefrontOutline} color="primary" style={{ fontSize: '30px', marginTop: '2px' }} />
-                        )}
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
-                            <h2 style={{ fontWeight: 800, margin: 0 }}>{pharmacy.name}</h2>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                              <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
-                                {pharmacy.temporary_closed ? 'Temp. fermee' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
-                              </IonBadge>
-                            </div>
-                          </div>
-                          <div style={{ marginTop: '4px', marginBottom: 0, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '1rem' }}>
-                            <span>{pharmacy.address || 'Adresse non renseignee'}</span>
-                            <IonButton
-                              fill="clear"
-                              size="small"
-                              href={
-                                toNumber(pharmacy.latitude) !== null && toNumber(pharmacy.longitude) !== null
-                                  ? `https://maps.google.com/?q=${toNumber(pharmacy.latitude)},${toNumber(pharmacy.longitude)}`
-                                  : `https://maps.google.com/?q=${encodeURIComponent(
-                                      pharmacy.address || pharmacy.name
-                                    )}`
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <IonIcon icon={locateOutline} />
-                            </IonButton>
-                          </div>
-                          <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '1rem' }}>
-                            <span>{pharmacy.phone || 'Telephone non renseigne'}</span>
-                            <IonButton
-                              fill="clear"
-                              size="small"
-                              disabled={!pharmacy.phone}
-                              href={pharmacy.phone ? `tel:${pharmacy.phone}` : undefined}
-                            >
-                              <IonIcon icon={callOutline} />
-                            </IonButton>
-                            <IonButton
-                              fill="clear"
-                              size="small"
-                              disabled={!pharmacy.phone}
-                              href={
-                                pharmacy.phone
-                                  ? `https://wa.me/${pharmacy.phone.replace(/\D/g, '')}`
-                                  : undefined
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <IonIcon icon={logoWhatsapp} />
-                            </IonButton>
-                          </div>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            {distanceKm === null ? 'Distance : inconnue' : `Distance : ${distanceKm.toFixed(2)} km`}
-                          </p>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            Services: {pharmacy.services || 'Non renseignes'}
-                          </p>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            Paiement: {pharmacy.payment_methods || 'Non renseignes'}
-                          </p>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            Prix: {pharmacy.price_range === 'low' ? 'Bas' : pharmacy.price_range === 'medium' ? 'Moyen' : pharmacy.price_range === 'high' ? 'Eleve' : 'Non renseigne'}
-                            {' · '}
-                            Attente: {pharmacy.average_wait_time ? `${pharmacy.average_wait_time} min` : 'Non renseignee'}
-                          </p>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            Livraison: {pharmacy.delivery_available ? `Oui${pharmacy.delivery_radius_km ? ` (${pharmacy.delivery_radius_km} km)` : ''}` : 'Non'}
-                            {' · '}
-                            Nuit: {pharmacy.night_service ? 'Oui' : 'Non'}
-                          </p>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            Licence: {pharmacy.license_number || 'Non renseignee'} {pharmacy.license_verified ? '(Verifiee)' : ''}
-                          </p>
-                          <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                            Stock confirme: {pharmacy.last_confirmed_stock_time ? `il y a ${Math.max(0, Math.round((Date.now() - new Date(pharmacy.last_confirmed_stock_time).getTime()) / 60000))} min` : 'Jamais'}
-                          </p>
-                          {pharmacy.notes_for_patients ? (
-                            <p style={{ marginTop: '4px', fontSize: '1rem' }}>
-                              Note: {pharmacy.notes_for_patients}
-                            </p>
-                          ) : null}
-                          {pharmacy.storefront_image_url ? (
-                            <img
-                              src={pharmacy.storefront_image_url}
-                              alt={`Vitrine ${pharmacy.name}`}
-                              style={{ width: '100%', maxHeight: '140px', objectFit: 'cover', borderRadius: '10px', marginTop: '6px' }}
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                      <div
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', cursor: 'pointer' }}
-                        onClick={() =>
-                          setExpandedHours((prev) => ({ ...prev, [pharmacy.id]: !(prev[pharmacy.id] ?? false) }))
-                        }
-                      >
-                        <strong style={{ fontSize: '0.85rem' }}>Horaires :</strong>
-                        <IonButton
-                          size="small"
-                          fill="clear"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setExpandedHours((prev) => ({ ...prev, [pharmacy.id]: !(prev[pharmacy.id] ?? false) }));
-                          }}
-                        >
-                          <IonIcon icon={(expandedHours[pharmacy.id] ?? false) ? chevronDownOutline : chevronForwardOutline} />
-                        </IonButton>
-                      </div>
-                      {(expandedHours[pharmacy.id] ?? false) ? (
-                        <div>
-                          <div
-                            style={{
-                              borderTop: '1px solid #dbe7ef',
-                              borderBottom: '1px solid #dbe7ef',
-                              padding: '8px 0',
-                              marginTop: '4px',
-                              marginBottom: '6px'
-                            }}
-                          >
-                          {pharmacy.opening_hours ? (
-                            <div style={{ border: '1px solid #dbe7ef', borderRadius: '8px', overflow: 'hidden' }}>
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '1fr 1fr',
-                                  background: '#f8fafc',
-                                  fontSize: '0.82rem',
-                                  fontWeight: 700,
-                                  padding: '6px 8px'
-                                }}
-                              >
-                                <span>Jour</span>
-                                <span>Horaire</span>
-                              </div>
-                              {pharmacy.opening_hours
-                                .split('\n')
-                                .map((line) => line.trim())
-                                .filter(Boolean)
-                                .map((line, idx) => {
-                                  const [day, ...rest] = line.split(':');
-                                  const hours = rest.join(':').trim() || '-';
-                                  return (
-                                    <div
-                                      key={`${pharmacy.id}-h-${idx}`}
-                                      style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr',
-                                        fontSize: '0.85rem',
-                                        lineHeight: 1.35,
-                                        padding: '6px 8px',
-                                        borderTop: idx === 0 ? 'none' : '1px solid #eef2f7'
-                                      }}
-                                    >
-                                      <span>{day?.trim() || '-'}</span>
-                                      <span>{hours}</span>
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: '0.85rem' }}>Non renseignes</div>
-                          )}
-                          </div>
-                        </div>
-                      ) : null}
-                    </IonLabel>
-                  </IonItem>
-                    ))}
-                  </IonList>
-                )}
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 4,
+                  bottom: 8,
+                  width: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  background: 'linear-gradient(to right, rgba(255,255,255,0), var(--ion-background-color))',
+                  pointerEvents: 'none'
+                }}
+              >
+                <IonIcon icon={chevronForwardOutline} color="medium" style={{ fontSize: '22px' }} />
               </div>
             </div>
+            {filtered.length === 0 ? (
+              <IonText color="medium">
+                <p>Aucune pharmacie trouvee.</p>
+              </IonText>
+            ) : (
+              <IonList>
+                {filtered.map((pharmacy) => (
+                  <IonItem
+                    key={pharmacy.id}
+                    lines="full"
+                    button
+                    onClick={() => ionRouter.push(`/patient/pharmacies/${pharmacy.id}`, 'forward', 'push')}
+                  >
+                    <IonLabel>
+                      {pharmacy.logo_url ? (
+                        <img
+                          src={pharmacy.logo_url}
+                          alt={`Logo ${pharmacy.name}`}
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            objectFit: 'cover',
+                            borderRadius: '8px',
+                            border: '1px solid rgb(219, 231, 239)',
+                            marginRight: '10px',
+                            float: 'left'
+                          }}
+                        />
+                      ) : (
+                        <IonIcon icon={storefrontOutline} color="primary" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
+                      )}
+                      <h3>{pharmacy.name}</h3>
+                      <p>{pharmacy.address || 'Adresse non renseignee'}</p>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
+                          {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                        </IonBadge>
+                        <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
+                          {pharmacy.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                        </IonBadge>
+                        <IonBadge color={pharmacy.delivery_available ? 'success' : 'medium'}>
+                          {pharmacy.delivery_available ? 'Livraison' : 'Sans livraison'}
+                        </IonBadge>
+                        <IonBadge color={pharmacy.night_service ? 'tertiary' : 'medium'}>
+                          {pharmacy.night_service ? 'De nuit' : 'Pas de nuit'}
+                        </IonBadge>
+                        <IonBadge color="light">Fiabilite: {pharmacy.reliability_score ?? 0}</IonBadge>
+                        {pharmacy.emergency_available ? <IonBadge color="warning">Urgence</IonBadge> : null}
+                      </div>
+                    </IonLabel>
+                  </IonItem>
+                ))}
+              </IonList>
+            )}
           </IonCardContent>
         </IonCard>
       </IonContent>

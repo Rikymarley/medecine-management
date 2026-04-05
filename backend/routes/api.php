@@ -100,6 +100,10 @@ Route::post('/patient/family-members', [FamilyMemberController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::patch('/patient/family-members/{familyMember}', [FamilyMemberController::class, 'update'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
+Route::post('/patient/family-members/{familyMember}/photo', [FamilyMemberController::class, 'uploadPhoto'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
+Route::patch('/patient/family-members/{familyMember}/unarchive', [FamilyMemberController::class, 'unarchive'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::delete('/patient/family-members/{familyMember}', [FamilyMemberController::class, 'destroy'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::get('/patient/medical-history', [MedicalHistoryController::class, 'patientIndex'])
@@ -124,8 +128,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::patch('/doctor/me', [AuthController::class, 'updateDoctorProfile'])
         ->middleware(['role:doctor', 'verified', 'throttle:30,1']);
+    Route::post('/doctor/me/profile-photo', [AuthController::class, 'uploadDoctorProfilePhoto'])
+        ->middleware(['role:doctor', 'verified', 'throttle:20,1']);
+    Route::post('/doctor/me/profile-banner', [AuthController::class, 'uploadDoctorBanner'])
+        ->middleware(['role:doctor', 'verified', 'throttle:20,1']);
     Route::patch('/patient/me', [AuthController::class, 'updatePatientProfile'])
         ->middleware(['role:patient', 'throttle:30,1']);
+    Route::post('/patient/me/profile-photo', [AuthController::class, 'uploadPatientProfilePhoto'])
+        ->middleware(['role:patient', 'throttle:20,1']);
 });
 
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/verifications')->group(function () {

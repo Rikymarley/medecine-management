@@ -27,7 +27,7 @@ import {
 import { addOutline, closeOutline, createOutline, medicalOutline, trashOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiFamilyMember, ApiMedicalHistoryEntry } from '../services/api';
+import { api, ApiFamilyMember, ApiMedicalHistoryEntry, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateHaiti, formatDateTime } from '../utils/time';
 
@@ -67,7 +67,9 @@ const PatientMedicalHistoryPage: React.FC = () => {
   const { token, user } = useAuth();
   const [entries, setEntries] = useState<ApiMedicalHistoryEntry[]>([]);
   const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
+  const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [selectedMemberFilter, setSelectedMemberFilter] = useState<'self' | number>('self');
+  const [expandedPrescriptionByHistoryId, setExpandedPrescriptionByHistoryId] = useState<Record<number, boolean>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
@@ -100,13 +102,15 @@ const PatientMedicalHistoryPage: React.FC = () => {
       return;
     }
 
-    const [history, members] = await Promise.all([
+    const [history, members, rx] = await Promise.all([
       api.getPatientMedicalHistory(token),
-      api.getPatientFamilyMembers(token).catch(() => [])
+      api.getPatientFamilyMembers(token).catch(() => []),
+      api.getPatientPrescriptions(token).catch(() => [])
     ]);
 
     setEntries(history);
     setFamilyMembers(members);
+    setPrescriptions(rx);
   };
 
   useEffect(() => {
@@ -129,6 +133,13 @@ const PatientMedicalHistoryPage: React.FC = () => {
     }
     return sortedEntries.filter((entry) => entry.family_member_id === selectedMemberFilter);
   }, [selectedMemberFilter, sortedEntries]);
+  const prescriptionById = useMemo(() => {
+    const map: Record<number, ApiPrescription> = {};
+    prescriptions.forEach((rx) => {
+      map[rx.id] = rx;
+    });
+    return map;
+  }, [prescriptions]);
 
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / pageSize));
   const pagedEntries = useMemo(() => {
@@ -216,6 +227,13 @@ const PatientMedicalHistoryPage: React.FC = () => {
     setEntries((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const togglePrescriptionDetails = (historyId: number) => {
+    setExpandedPrescriptionByHistoryId((prev) => ({
+      ...prev,
+      [historyId]: !prev[historyId]
+    }));
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -271,72 +289,85 @@ const PatientMedicalHistoryPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <IonList style={{ marginTop: '8px' }}>
+              <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
                 {pagedEntries.map((entry) => (
-                  <IonItem key={entry.id} lines="none">
-                    <div
-                      style={{
-                        width: '100%',
-                        display: 'grid',
-                        gridTemplateColumns: '20px 1fr auto',
-                        gap: '8px',
-                        alignItems: 'start',
-                        padding: '8px 0',
-                        borderBottom: '1px solid #dbe7ef'
-                      }}
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div
-                          style={{
-                            width: '10px',
-                            height: '10px',
-                            borderRadius: '999px',
-                            background: '#0f766e',
-                            marginTop: '8px'
-                          }}
-                        />
-                        <div style={{ flex: 1, width: '2px', background: '#dbe7ef', marginTop: '6px' }} />
-                      </div>
-                      <IonLabel>
-                      <p style={{ marginBottom: 2 }}>
+                  <IonCard key={entry.id} className="surface-card" style={{ margin: 0 }}>
+                    <IonCardContent>
+                      <p style={{ margin: 0 }}>
                         <strong>Reference:</strong> {entry.entry_code ?? `MH-${entry.id}`}
                       </p>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                        <h3 style={{ marginBottom: 2 }}>{entry.title}</h3>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                        <h3 style={{ margin: '6px 0 2px 0' }}>{entry.title}</h3>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           {!entry.can_edit_by_patient ? <IonBadge color="medium">Verrouille (docteur)</IonBadge> : null}
                           <IonBadge color={statusColor[entry.status]}>{statusLabel[entry.status]}</IonBadge>
                         </div>
                       </div>
-                      <p>
-                        {typeLabel[entry.type]} · {visibilityLabel[entry.visibility]}
+                      <p style={{ margin: '2px 0' }}>{typeLabel[entry.type]} · {visibilityLabel[entry.visibility]}</p>
+                      <p style={{ margin: '2px 0' }}>
+                        Cree par: {entry.doctor_name ? `Dr. ${entry.doctor_name}` : 'Patient'}
                       </p>
-                      <p>
-                        Cree par:{' '}
-                        {entry.doctor_name ? `Dr. ${entry.doctor_name}` : 'Patient'}
+                      <p style={{ margin: '2px 0' }}>
+                        {entry.family_member_name ? `Membre: ${entry.family_member_name}` : user?.name ?? 'Patient'}
                       </p>
-                      <p>{entry.family_member_name ? `Membre: ${entry.family_member_name}` : user?.name ?? 'Patient'}</p>
-                      <p>
+                      <p style={{ margin: '2px 0' }}>
                         Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'Non precise'} · Fin:{' '}
                         {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'Non precise'}
                       </p>
-                      {entry.details ? <p>{entry.details}</p> : null}
-                      <p>Mise a jour: {formatDateTime(entry.updated_at)}</p>
-                    </IonLabel>
-                    {entry.can_edit_by_patient ? (
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <IonButton fill="clear" color="danger" onClick={() => setDeleteTargetId(entry.id)}>
-                          <IonIcon icon={trashOutline} />
-                        </IonButton>
-                        <IonButton fill="clear" onClick={() => startEdit(entry)}>
-                          <IonIcon icon={createOutline} />
-                        </IonButton>
-                      </div>
-                    ) : null}
-                    </div>
-                  </IonItem>
+                      {entry.details ? <p style={{ margin: '2px 0' }}>{entry.details}</p> : null}
+                      {entry.prescription_id ? (
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', margin: '2px 0' }}>
+                            <IonBadge color="light">
+                              Ordonnance: {entry.prescription_print_code ?? `#${entry.prescription_id}`}
+                            </IonBadge>
+                            <IonButton
+                              size="small"
+                              fill="clear"
+                              onClick={() => togglePrescriptionDetails(entry.id)}
+                            >
+                              {expandedPrescriptionByHistoryId[entry.id] ? 'Masquer details' : 'Voir details'}
+                            </IonButton>
+                          </div>
+                          {expandedPrescriptionByHistoryId[entry.id] ? (
+                            <div
+                              style={{
+                                border: '1px solid #dbe7ef',
+                                borderRadius: '10px',
+                                padding: '8px',
+                                marginTop: '4px'
+                              }}
+                            >
+                              {(prescriptionById[entry.prescription_id]?.medicine_requests ?? []).length === 0 ? (
+                                <IonText color="medium">Details ordonnance indisponibles.</IonText>
+                              ) : (
+                                <div style={{ display: 'grid', gap: '4px' }}>
+                                  {prescriptionById[entry.prescription_id].medicine_requests.map((med) => (
+                                    <p key={med.id} style={{ margin: 0 }}>
+                                      <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qte: {med.quantity ?? 1}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                      <p style={{ margin: '2px 0' }}>Mise a jour: {formatDateTime(entry.updated_at)}</p>
+                      {entry.can_edit_by_patient ? (
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', marginTop: '4px' }}>
+                          <IonButton fill="clear" color="danger" onClick={() => setDeleteTargetId(entry.id)}>
+                            <IonIcon icon={trashOutline} />
+                          </IonButton>
+                          <IonButton fill="clear" onClick={() => startEdit(entry)}>
+                            <IonIcon icon={createOutline} />
+                          </IonButton>
+                        </div>
+                      ) : null}
+                    </IonCardContent>
+                  </IonCard>
                 ))}
-              </IonList>
+              </div>
             )}
 
             {filteredEntries.length > pageSize ? (
