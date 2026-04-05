@@ -23,21 +23,14 @@ import { chevronForwardOutline, medkitOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory } from '../services/api';
+import { useAuth } from '../state/AuthState';
 
 const DoctorDoctorsDirectoryPage: React.FC = () => {
   const ionRouter = useIonRouter();
+  const { token } = useAuth();
   const [doctors, setDoctors] = useState<ApiDoctorDirectory[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'tele'>('all');
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      setToken(localStorage.getItem('token'));
-    } catch {
-      setToken(null);
-    }
-  }, []);
 
   const loadDoctors = async () => {
     if (!token) {
@@ -56,6 +49,15 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
   });
 
   const filtered = useMemo(() => {
+    const accountStatusOf = (doctor: ApiDoctorDirectory): 'approved' | 'pending' | 'rejected' => {
+      const status = (doctor.account_verification_status ?? (doctor as any).verification_status ?? null) as
+        | 'approved'
+        | 'pending'
+        | 'rejected'
+        | null;
+      if (status) return status;
+      return 'approved';
+    };
     const q = query.trim().toLowerCase();
     const searched = q
       ? doctors.filter((doctor) =>
@@ -66,8 +68,9 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
       : doctors;
 
     const rows = searched.filter((doctor) => {
-      if (statusFilter === 'approved') return doctor.account_verification_status === 'approved';
-      if (statusFilter === 'pending') return doctor.account_verification_status !== 'approved';
+      const accountStatus = accountStatusOf(doctor);
+      if (statusFilter === 'approved') return accountStatus === 'approved';
+      if (statusFilter === 'pending') return accountStatus !== 'approved';
       if (statusFilter === 'licensed') return !!doctor.license_verified;
       if (statusFilter === 'unlicensed') return !doctor.license_verified;
       if (statusFilter === 'tele') return !!doctor.teleconsultation_available;
@@ -129,6 +132,13 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
             ) : (
               <IonList>
                 {filtered.map((doctor) => (
+                  (() => {
+                    const accountStatus =
+                      ((doctor.account_verification_status ?? (doctor as any).verification_status ?? 'approved') as
+                        | 'approved'
+                        | 'pending'
+                        | 'rejected');
+                    return (
                   <IonItem
                     key={doctor.id}
                     lines="full"
@@ -161,8 +171,8 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
                       </p>
                       <p>{doctor.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color={doctor.account_verification_status === 'approved' ? 'success' : 'warning'}>
-                          {doctor.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                        <IonBadge color={accountStatus === 'approved' ? 'success' : 'warning'}>
+                          {accountStatus === 'approved' ? 'Compte approuve' : 'Compte en attente'}
                         </IonBadge>
                         <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
                           {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
@@ -171,6 +181,8 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
                       </div>
                     </IonLabel>
                   </IonItem>
+                    );
+                  })()
                 ))}
               </IonList>
             )}

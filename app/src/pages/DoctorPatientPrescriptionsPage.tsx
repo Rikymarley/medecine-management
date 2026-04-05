@@ -264,6 +264,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     return map;
   }, [scopedMedicalHistory]);
   const activePatientName = profileFamilyMember?.name ?? familyMemberName ?? decodedPatientName;
+  const activeProfilePhotoUrl = profileFamilyMember?.photo_url ?? patientProfile?.profile_photo_url ?? null;
   const toggleLinkedPrescriptionDetails = (historyEntryId: number) => {
     setExpandedLinkedPrescriptions((prev) => ({
       ...prev,
@@ -418,9 +419,9 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                      {patientProfile?.profile_photo_url ? (
+                      {activeProfilePhotoUrl ? (
                         <img
-                          src={patientProfile.profile_photo_url}
+                          src={activeProfilePhotoUrl}
                           alt={activePatientName}
                           style={{
                             width: '42px',

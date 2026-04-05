@@ -166,7 +166,7 @@ const DoctorPatientsPage: React.FC = () => {
         patientName,
         familyMemberId: member.id,
         subtitle: `Membre de ${patientName}`,
-        photoUrl: null
+        photoUrl: member.photo_url ?? null
       }))
     );
 
