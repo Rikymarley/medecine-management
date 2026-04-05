@@ -124,6 +124,7 @@ export type ApiUser = {
   bio: string | null;
   profile_photo_url: string | null;
   profile_banner_url: string | null;
+  id_document_url?: string | null;
   age: number | null;
   gender: 'male' | 'female' | null;
   allergies: string | null;
@@ -391,8 +392,10 @@ export type ApiEmergencyContact = {
 export type ApiFamilyMember = {
   id: number;
   patient_user_id: number;
+  linked_user_id?: number | null;
   name: string;
   photo_url?: string | null;
+  id_document_url?: string | null;
   archived_at?: string | null;
   age: number | null;
   date_of_birth: string | null;
@@ -642,6 +645,16 @@ export const api = {
     formData.append('profile_photo', file);
     return requestFormData<ApiUser>('/patient/me/profile-photo', formData, token);
   },
+  uploadMyPatientIdDocument: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('id_document', file);
+    return requestFormData<ApiUser>('/patient/me/id-document', formData, token);
+  },
+  removeMyPatientIdDocument: (token: string) =>
+    request<ApiUser>('/patient/me/id-document', {
+      method: 'DELETE',
+      token
+    }),
   verifyDoctorLicense: (
     token: string,
     doctorId: number,
@@ -884,8 +897,14 @@ export const api = {
       token,
       body: JSON.stringify(payload)
     }),
-  getPatientPrescriptions: (token: string) =>
-    request<ApiPrescription[]>('/patient/prescriptions', { token }),
+  getPatientPrescriptions: (token: string, params?: { family_member_id?: number | null }) => {
+    const search = new URLSearchParams();
+    if (typeof params?.family_member_id === 'number') {
+      search.set('family_member_id', String(params.family_member_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiPrescription[]>(`/patient/prescriptions${suffix}`, { token });
+  },
   createPrescription: (token: string, payload: {
     patient_name: string;
     patient_phone?: string | null;
@@ -1147,6 +1166,21 @@ export const api = {
     formData.append('photo', file);
     return requestFormData<ApiFamilyMember>(`/patient/family-members/${id}/photo`, formData, token);
   },
+  removePatientFamilyMemberPhoto: (token: string, id: number) =>
+    request<ApiFamilyMember>(`/patient/family-members/${id}/photo`, {
+      method: 'DELETE',
+      token
+    }),
+  uploadPatientFamilyMemberIdDocument: (token: string, id: number, file: File) => {
+    const formData = new FormData();
+    formData.append('id_document', file);
+    return requestFormData<ApiFamilyMember>(`/patient/family-members/${id}/id-document`, formData, token);
+  },
+  removePatientFamilyMemberIdDocument: (token: string, id: number) =>
+    request<ApiFamilyMember>(`/patient/family-members/${id}/id-document`, {
+      method: 'DELETE',
+      token
+    }),
   getPatientMedicalHistory: (token: string, params?: { family_member_id?: number | null }) => {
     const search = new URLSearchParams();
     if (typeof params?.family_member_id === 'number') {

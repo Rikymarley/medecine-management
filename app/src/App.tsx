@@ -26,6 +26,7 @@ import AdminDoctorDetailPage from './pages/AdminDoctorDetailPage';
 import AdminPharmaciesPage from './pages/AdminPharmaciesPage';
 import AdminPharmacyDetailPage from './pages/AdminPharmacyDetailPage';
 import AdminPatientsPage from './pages/AdminPatientsPage';
+import AdminPatientDetailPage from './pages/AdminPatientDetailPage';
 import PatientDoctorsPage from './pages/PatientDoctorsPage';
 import PatientPharmaciesPage from './pages/PatientPharmaciesPage';
 import PatientPharmacyDetailPage from './pages/PatientPharmacyDetailPage';
@@ -238,6 +239,11 @@ const App: React.FC = () => (
           <Route exact path="/admin/patients">
             <RequireRole role="admin">
               <AdminPatientsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/patients/:patientId">
+            <RequireRole role="admin">
+              <AdminPatientDetailPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient">

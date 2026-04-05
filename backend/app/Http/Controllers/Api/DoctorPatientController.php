@@ -174,6 +174,7 @@ class DoctorPatientController extends Controller
             'created_by_doctor_id' => $request->user()->id,
             'verification_status' => 'approved',
             'verified_at' => now(),
+            'verified_by' => $request->user()->id,
         ]);
 
         return response()->json([

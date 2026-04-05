@@ -7,10 +7,82 @@ use App\Models\FamilyMember;
 use App\Models\Prescription;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class FamilyMemberController extends Controller
 {
+    private function makeDependentEmail(string $name): string
+    {
+        $base = Str::slug($name, '.');
+        if ($base === '') {
+            $base = 'family.member';
+        }
+
+        do {
+            $email = sprintf('%s+%s@family.local', $base, Str::lower(Str::random(8)));
+        } while (User::query()->where('email', $email)->exists());
+
+        return $email;
+    }
+
+    private function createLinkedPatientFromFamilyMember(Request $request, array $memberPayload): User
+    {
+        return User::query()->create([
+            'name' => $memberPayload['name'],
+            'email' => $this->makeDependentEmail($memberPayload['name']),
+            'password' => Hash::make(Str::random(40)),
+            'role' => 'patient',
+            'account_status' => 'provisional',
+            'verification_status' => 'approved',
+            'verified_at' => now(),
+            'verified_by' => $request->user()->id,
+            'date_of_birth' => $memberPayload['date_of_birth'] ?? null,
+            'age' => $memberPayload['age'] ?? null,
+            'gender' => $memberPayload['gender'] ?? null,
+            'allergies' => $memberPayload['allergies'] ?? null,
+            'chronic_diseases' => $memberPayload['chronic_diseases'] ?? null,
+            'blood_type' => $memberPayload['blood_type'] ?? null,
+            'emergency_notes' => $memberPayload['emergency_notes'] ?? null,
+            'weight_kg' => $memberPayload['weight_kg'] ?? null,
+            'height_cm' => $memberPayload['height_cm'] ?? null,
+            'surgical_history' => $memberPayload['surgical_history'] ?? null,
+            'vaccination_up_to_date' => $memberPayload['vaccination_up_to_date'] ?? null,
+        ]);
+    }
+
+    private function syncLinkedUserFromFamilyMember(FamilyMember $member, array $memberPayload): void
+    {
+        if (!$member->linked_user_id) {
+            return;
+        }
+
+        $linked = User::query()->find($member->linked_user_id);
+        if (!$linked || $linked->role !== 'patient') {
+            return;
+        }
+
+        $linked->update([
+            'name' => $memberPayload['name'] ?? $member->name,
+            'date_of_birth' => $memberPayload['date_of_birth'] ?? $member->date_of_birth,
+            'age' => array_key_exists('age', $memberPayload) ? $memberPayload['age'] : $member->age,
+            'gender' => $memberPayload['gender'] ?? $member->gender,
+            'allergies' => $memberPayload['allergies'] ?? $member->allergies,
+            'chronic_diseases' => $memberPayload['chronic_diseases'] ?? $member->chronic_diseases,
+            'blood_type' => $memberPayload['blood_type'] ?? $member->blood_type,
+            'emergency_notes' => $memberPayload['emergency_notes'] ?? $member->emergency_notes,
+            'weight_kg' => array_key_exists('weight_kg', $memberPayload) ? $memberPayload['weight_kg'] : $member->weight_kg,
+            'height_cm' => array_key_exists('height_cm', $memberPayload) ? $memberPayload['height_cm'] : $member->height_cm,
+            'surgical_history' => $memberPayload['surgical_history'] ?? $member->surgical_history,
+            'vaccination_up_to_date' => array_key_exists('vaccination_up_to_date', $memberPayload)
+                ? $memberPayload['vaccination_up_to_date']
+                : $member->vaccination_up_to_date,
+            'id_document_url' => $memberPayload['id_document_url'] ?? $member->id_document_url,
+        ]);
+    }
+
     private function deleteIfLocalStorageUrl(?string $url): void
     {
         if (!$url) {
@@ -113,10 +185,15 @@ class FamilyMemberController extends Controller
             $data['age'] = $this->computeAgeFromDateOfBirth($data['date_of_birth']);
         }
 
-        $member = FamilyMember::create([
-            ...$data,
-            'patient_user_id' => $request->user()->id,
-        ]);
+        $member = DB::transaction(function () use ($request, $data) {
+            $linkedUser = $this->createLinkedPatientFromFamilyMember($request, $data);
+
+            return FamilyMember::query()->create([
+                ...$data,
+                'patient_user_id' => $request->user()->id,
+                'linked_user_id' => $linkedUser->id,
+            ]);
+        });
 
         return response()->json($member, 201);
     }
@@ -158,7 +235,16 @@ class FamilyMemberController extends Controller
             $data['age'] = $this->computeAgeFromDateOfBirth($data['date_of_birth']);
         }
 
-        $familyMember->update($data);
+        DB::transaction(function () use ($request, $familyMember, $data) {
+            if (!$familyMember->linked_user_id) {
+                $merged = array_merge($familyMember->toArray(), $data);
+                $linkedUser = $this->createLinkedPatientFromFamilyMember($request, $merged);
+                $familyMember->update(['linked_user_id' => $linkedUser->id]);
+            }
+
+            $familyMember->update($data);
+            $this->syncLinkedUserFromFamilyMember($familyMember->fresh(), $data);
+        });
 
         return response()->json($familyMember->fresh());
     }
@@ -198,6 +284,71 @@ class FamilyMemberController extends Controller
 
         $this->deleteIfLocalStorageUrl($familyMember->photo_url);
         $familyMember->update(['photo_url' => $publicUrl]);
+        if ($familyMember->linked_user_id) {
+            User::query()->where('id', $familyMember->linked_user_id)->update([
+                'profile_photo_url' => $publicUrl,
+            ]);
+        }
+
+        return response()->json($familyMember->fresh());
+    }
+
+    public function removePhoto(Request $request, FamilyMember $familyMember)
+    {
+        if ($familyMember->patient_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+        if ($familyMember->archived_at) {
+            return response()->json(['message' => 'Ce membre est archive.'], 422);
+        }
+
+        $this->deleteIfLocalStorageUrl($familyMember->photo_url);
+        $familyMember->update(['photo_url' => null]);
+        if ($familyMember->linked_user_id) {
+            User::query()->where('id', $familyMember->linked_user_id)->update([
+                'profile_photo_url' => null,
+            ]);
+        }
+
+        return response()->json($familyMember->fresh());
+    }
+
+    public function uploadIdDocument(Request $request, FamilyMember $familyMember)
+    {
+        if ($familyMember->patient_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+        if ($familyMember->archived_at) {
+            return response()->json(['message' => 'Ce membre est archive.'], 422);
+        }
+
+        $request->validate([
+            'id_document' => ['required', 'file', 'mimes:jpeg,jpg,png,webp,pdf', 'max:4096'],
+        ]);
+
+        $file = $request->file('id_document');
+        $path = $file->store('family-members/id-documents', 'public');
+        $publicUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
+        $this->deleteIfLocalStorageUrl($familyMember->id_document_url);
+        $familyMember->update(['id_document_url' => $publicUrl]);
+        $this->syncLinkedUserFromFamilyMember($familyMember->fresh(), ['id_document_url' => $publicUrl]);
+
+        return response()->json($familyMember->fresh());
+    }
+
+    public function removeIdDocument(Request $request, FamilyMember $familyMember)
+    {
+        if ($familyMember->patient_user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+        if ($familyMember->archived_at) {
+            return response()->json(['message' => 'Ce membre est archive.'], 422);
+        }
+
+        $this->deleteIfLocalStorageUrl($familyMember->id_document_url);
+        $familyMember->update(['id_document_url' => null]);
+        $this->syncLinkedUserFromFamilyMember($familyMember->fresh(), ['id_document_url' => null]);
 
         return response()->json($familyMember->fresh());
     }

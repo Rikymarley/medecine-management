@@ -142,11 +142,25 @@ const DoctorPatientsPage: React.FC = () => {
   }, []);
 
   const patientEntries = useMemo(() => {
+    const normalize = (value: string) => value.trim().toLocaleLowerCase();
     const patientPhotoByName = new Map<string, string>();
+    const patientIdByName = new Map<string, number>();
+    const patientUserIds = new Set<number>();
+    const patientNames = new Set<string>();
+
     prescriptions.forEach((p) => {
       const candidate = p.patient?.profile_photo_url ?? null;
       if (candidate && p.patient_name?.trim()) {
-        patientPhotoByName.set(p.patient_name.trim().toLocaleLowerCase(), candidate);
+        patientPhotoByName.set(normalize(p.patient_name), candidate);
+      }
+      if (p.patient_user_id) {
+        patientUserIds.add(p.patient_user_id);
+        if (p.patient_name?.trim()) {
+          patientIdByName.set(normalize(p.patient_name), p.patient_user_id);
+        }
+      }
+      if (p.patient_name?.trim()) {
+        patientNames.add(normalize(p.patient_name));
       }
     });
 
@@ -154,20 +168,28 @@ const DoctorPatientsPage: React.FC = () => {
       key: `patient-${name}`,
       label: name,
       patientName: name,
+      patientUserId: patientIdByName.get(normalize(name)) ?? null,
       familyMemberId: null as number | null,
       subtitle: 'Patient',
-      photoUrl: patientPhotoByName.get(name.toLocaleLowerCase()) ?? null
+      photoUrl: patientPhotoByName.get(normalize(name)) ?? null
     }));
 
     const familyEntries = Object.entries(familyMembersByPatient).flatMap(([patientName, members]) =>
-      members.map((member) => ({
-        key: `family-${member.id}`,
-        label: member.name,
-        patientName,
-        familyMemberId: member.id,
-        subtitle: `Membre de ${patientName}`,
-        photoUrl: member.photo_url ?? null
-      }))
+      members
+        .filter((member) => {
+          const hasLinkedPatient = Boolean(member.linked_user_id && patientUserIds.has(member.linked_user_id));
+          const sameNameAsPatient = patientNames.has(normalize(member.name));
+          return !hasLinkedPatient && !sameNameAsPatient;
+        })
+        .map((member) => ({
+          key: `family-${member.id}`,
+          label: member.name,
+          patientName,
+          patientUserId: patientIdByName.get(normalize(patientName)) ?? null,
+          familyMemberId: member.id,
+          subtitle: `Membre de ${patientName}`,
+          photoUrl: member.photo_url ?? null
+        }))
     );
 
     return [...patients, ...familyEntries].sort((a, b) =>
@@ -215,7 +237,7 @@ const DoctorPatientsPage: React.FC = () => {
                         detail
                         onClick={() =>
                           ionRouter.push(
-                            `/doctor/patients/${encodeURIComponent(row.name)}`,
+                            `/doctor/patients/${encodeURIComponent(row.name)}?patientUserId=${row.id}`,
                             'forward',
                             'push'
                           )
@@ -280,8 +302,12 @@ const DoctorPatientsPage: React.FC = () => {
                       ionRouter.push(
                         `/doctor/patients/${encodeURIComponent(entry.patientName)}${
                           entry.familyMemberId
-                            ? `?familyMemberId=${entry.familyMemberId}&familyMemberName=${encodeURIComponent(entry.label)}`
-                            : ''
+                            ? `?familyMemberId=${entry.familyMemberId}&familyMemberName=${encodeURIComponent(entry.label)}${
+                                entry.patientUserId ? `&patientUserId=${entry.patientUserId}` : ''
+                              }`
+                            : entry.patientUserId
+                              ? `?patientUserId=${entry.patientUserId}`
+                              : ''
                         }`,
                         'forward',
                         'push'

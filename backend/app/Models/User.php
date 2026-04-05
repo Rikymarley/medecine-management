@@ -40,6 +40,7 @@ use Laravel\Sanctum\HasApiTokens;
     'bio',
     'profile_photo_url',
     'profile_banner_url',
+    'id_document_url',
     'age',
     'gender',
     'allergies',

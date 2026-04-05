@@ -26,7 +26,7 @@ import {
   IonToolbar,
   useIonRouter
 } from '@ionic/react';
-import { archiveOutline, arrowUndoOutline, chevronDownOutline, chevronUpOutline, createOutline, documentTextOutline, medicalOutline, personOutline } from 'ionicons/icons';
+import { archiveOutline, arrowUndoOutline, chevronDownOutline, chevronUpOutline, createOutline, documentAttachOutline, documentTextOutline, medicalOutline, personOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
@@ -63,19 +63,31 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
   const [isProfileCollapsed, setIsProfileCollapsed] = useState(false);
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
   const [isPrescriptionsCollapsed, setIsPrescriptionsCollapsed] = useState(false);
+  const [isProfileIdentityCollapsed, setIsProfileIdentityCollapsed] = useState(false);
+  const [isProfileHealthCollapsed, setIsProfileHealthCollapsed] = useState(false);
+  const [isProfileEmergencyCollapsed, setIsProfileEmergencyCollapsed] = useState(false);
+  const [editIdentityExpanded, setEditIdentityExpanded] = useState(true);
+  const [editHealthExpanded, setEditHealthExpanded] = useState(true);
+  const [editEmergencyExpanded, setEditEmergencyExpanded] = useState(true);
   const [expandedLinkedPrescriptions, setExpandedLinkedPrescriptions] = useState<Record<number, boolean>>({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingIdDocument, setUploadingIdDocument] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     date_of_birth: '',
     gender: null as ApiFamilyMember['gender'],
     relationship: null as ApiFamilyMember['relationship'],
     blood_type: null as ApiFamilyMember['blood_type'],
+    weight_kg: '',
+    height_cm: '',
     allergies: '',
     chronic_diseases: '',
+    surgical_history: '',
+    vaccination_up_to_date: null as boolean | null,
     emergency_notes: ''
   });
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -87,14 +99,14 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
 
     Promise.all([
       api.getPatientFamilyMembers(token, { includeArchived: true }),
-      api.getPatientPrescriptions(token),
+      api.getPatientPrescriptions(token, { family_member_id: Number(memberId) }),
       api.getPatientMedicalHistory(token, { family_member_id: Number(memberId) })
     ])
       .then(([members, rx, mh]) => {
         if (!active) return;
         const found = members.find((m) => m.id === Number(memberId)) ?? null;
         setMember(found);
-        setPrescriptions(rx.filter((p) => p.family_member_id === Number(memberId)));
+        setPrescriptions(rx);
         setHistory(mh);
       })
       .finally(() => {
@@ -115,6 +127,16 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
     () => [...history].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
     [history]
   );
+  const computedEditAge = useMemo(() => {
+    if (!editForm.date_of_birth) return null;
+    const dob = new Date(`${editForm.date_of_birth}T00:00:00`);
+    if (Number.isNaN(dob.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const m = now.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
+    return age >= 0 ? age : null;
+  }, [editForm.date_of_birth]);
 
   const openEdit = () => {
     if (!member) return;
@@ -124,10 +146,17 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
       gender: member.gender,
       relationship: member.relationship,
       blood_type: member.blood_type,
+      weight_kg: member.weight_kg === null || member.weight_kg === undefined ? '' : String(member.weight_kg),
+      height_cm: member.height_cm === null || member.height_cm === undefined ? '' : String(member.height_cm),
       allergies: member.allergies ?? '',
       chronic_diseases: member.chronic_diseases ?? '',
+      surgical_history: member.surgical_history ?? '',
+      vaccination_up_to_date: member.vaccination_up_to_date ?? null,
       emergency_notes: member.emergency_notes ?? ''
     });
+    setEditIdentityExpanded(true);
+    setEditHealthExpanded(true);
+    setEditEmergencyExpanded(true);
     setShowEdit(true);
   };
 
@@ -141,8 +170,12 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
         gender: editForm.gender,
         relationship: editForm.relationship,
         blood_type: editForm.blood_type,
+        weight_kg: editForm.weight_kg.trim() ? Number(editForm.weight_kg) : null,
+        height_cm: editForm.height_cm.trim() ? Number(editForm.height_cm) : null,
         allergies: editForm.allergies.trim() || null,
         chronic_diseases: editForm.chronic_diseases.trim() || null,
+        surgical_history: editForm.surgical_history.trim() || null,
+        vaccination_up_to_date: editForm.vaccination_up_to_date,
         emergency_notes: editForm.emergency_notes.trim() || null
       });
       setMember(updated);
@@ -181,6 +214,52 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
       if (photoInputRef.current) {
         photoInputRef.current.value = '';
       }
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!token || !member) return;
+    if (!member.photo_url) return;
+    setUploadingPhoto(true);
+    try {
+      const updated = await api.removePatientFamilyMemberPhoto(token, member.id);
+      setMember(updated);
+      setToastMessage('Photo supprimee.');
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : 'Echec de suppression photo.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const uploadIdDocument = async (file: File) => {
+    if (!token || !member) return;
+    setUploadingIdDocument(true);
+    try {
+      const updated = await api.uploadPatientFamilyMemberIdDocument(token, member.id, file);
+      setMember(updated);
+      setToastMessage("Piece d'identite mise a jour.");
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : "Echec de l'upload de la piece d'identite.");
+    } finally {
+      setUploadingIdDocument(false);
+      if (idDocumentInputRef.current) {
+        idDocumentInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removeIdDocument = async () => {
+    if (!token || !member || !member.id_document_url) return;
+    setUploadingIdDocument(true);
+    try {
+      const updated = await api.removePatientFamilyMemberIdDocument(token, member.id);
+      setMember(updated);
+      setToastMessage("Piece d'identite supprimee.");
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : "Echec de suppression de la piece d'identite.");
+    } finally {
+      setUploadingIdDocument(false);
     }
   };
 
@@ -304,13 +383,105 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
                     {uploadingPhoto ? (
                       <p style={{ margin: '2px 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>Upload...</p>
                     ) : null}
+                    {!member.archived_at && member.photo_url ? (
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color="medium"
+                        onClick={() => removePhoto().catch(() => undefined)}
+                        style={{ marginTop: '6px' }}
+                      >
+                        Retirer photo
+                      </IonButton>
+                    ) : null}
                   </div>
                 </div>
-                <p><strong>Nom:</strong> {member.name}</p>
-                <p><strong>Date de naissance:</strong> {member.date_of_birth || 'N/D'}</p>
-                <p><strong>Relation:</strong> {member.relationship ? relationshipLabel[member.relationship] : 'N/D'}</p>
-                <p><strong>Genre:</strong> {member.gender === 'male' ? 'M' : member.gender === 'female' ? 'F' : 'N/D'}</p>
-                <p><strong>Groupe sanguin:</strong> {member.blood_type || 'N/D'}</p>
+                <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', marginBottom: '8px' }}>
+                  <IonButton fill="clear" color="dark" expand="block" onClick={() => setIsProfileIdentityCollapsed((v) => !v)} style={{ margin: 0 }}>
+                    Identite
+                    <IonIcon slot="end" icon={isProfileIdentityCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                  {!isProfileIdentityCollapsed ? (
+                    <div style={{ padding: '0 12px 8px' }}>
+                      <p><strong>Nom:</strong> {member.name}</p>
+                      <p><strong>Date de naissance:</strong> {member.date_of_birth || 'N/D'}</p>
+                      <p><strong>Age:</strong> {member.age ?? 'N/D'}</p>
+                      <p><strong>Relation:</strong> {member.relationship ? relationshipLabel[member.relationship] : 'N/D'}</p>
+                      <p><strong>Genre:</strong> {member.gender === 'male' ? 'M' : member.gender === 'female' ? 'F' : 'N/D'}</p>
+                      <p>
+                        <strong>Piece d'identite:</strong>{' '}
+                        {member.id_document_url ? (
+                          <a href={member.id_document_url} target="_blank" rel="noreferrer">
+                            Voir fichier
+                          </a>
+                        ) : 'N/D'}
+                      </p>
+                      {!member.archived_at ? (
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <IonButton
+                            size="small"
+                            fill="outline"
+                            disabled={uploadingIdDocument}
+                            onClick={() => idDocumentInputRef.current?.click()}
+                          >
+                            <IonIcon icon={documentAttachOutline} slot="start" />
+                            {uploadingIdDocument ? 'Upload...' : member.id_document_url ? 'Remplacer fichier' : 'Ajouter fichier'}
+                          </IonButton>
+                          <input
+                            ref={idDocumentInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,application/pdf"
+                            style={{ display: 'none' }}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) void uploadIdDocument(file);
+                            }}
+                          />
+                          {member.id_document_url ? (
+                            <IonButton
+                              size="small"
+                              fill="outline"
+                              color="medium"
+                              disabled={uploadingIdDocument}
+                              onClick={() => removeIdDocument().catch(() => undefined)}
+                            >
+                              Retirer fichier
+                            </IonButton>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', marginBottom: '8px' }}>
+                  <IonButton fill="clear" color="dark" expand="block" onClick={() => setIsProfileHealthCollapsed((v) => !v)} style={{ margin: 0 }}>
+                    Sante
+                    <IonIcon slot="end" icon={isProfileHealthCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                  {!isProfileHealthCollapsed ? (
+                    <div style={{ padding: '0 12px 8px' }}>
+                      <p><strong>Groupe sanguin:</strong> {member.blood_type || 'N/D'}</p>
+                      <p><strong>Poids (kg):</strong> {member.weight_kg ?? 'N/D'}</p>
+                      <p><strong>Taille (cm):</strong> {member.height_cm ?? 'N/D'}</p>
+                      <p><strong>Vaccination a jour:</strong> {member.vaccination_up_to_date === null ? 'N/D' : member.vaccination_up_to_date ? 'Oui' : 'Non'}</p>
+                      <p><strong>Allergies:</strong> {member.allergies || 'N/D'}</p>
+                      <p><strong>Maladies chroniques:</strong> {member.chronic_diseases || 'N/D'}</p>
+                      <p><strong>Antecedents chirurgicaux:</strong> {member.surgical_history || 'N/D'}</p>
+                    </div>
+                  ) : null}
+                </div>
+                <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px' }}>
+                  <IonButton fill="clear" color="dark" expand="block" onClick={() => setIsProfileEmergencyCollapsed((v) => !v)} style={{ margin: 0 }}>
+                    Urgence
+                    <IonIcon slot="end" icon={isProfileEmergencyCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                  {!isProfileEmergencyCollapsed ? (
+                    <div style={{ padding: '0 12px 8px' }}>
+                      <p><strong>Notes d'urgence:</strong> {member.emergency_notes || 'N/D'}</p>
+                      <p><strong>Personne de reference:</strong> {member.primary_caregiver ? 'Oui' : 'Non'}</p>
+                    </div>
+                  ) : null}
+                </div>
               </IonCardContent>
               ) : null}
             </IonCard>
@@ -437,64 +608,178 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
         )}
         <IonModal isOpen={showEdit} onDidDismiss={() => setShowEdit(false)}>
           <IonContent className="ion-padding app-content">
-            <h2>Modifier le membre</h2>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Nom</IonLabel>
-              <IonInput value={editForm.name} onIonInput={(e) => setEditForm((prev) => ({ ...prev, name: e.detail.value ?? '' }))} />
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Date de naissance</IonLabel>
-              <IonInput type="date" value={editForm.date_of_birth} onIonInput={(e) => setEditForm((prev) => ({ ...prev, date_of_birth: e.detail.value ?? '' }))} />
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Relation</IonLabel>
-              <IonSelect value={editForm.relationship} onIonChange={(e) => setEditForm((prev) => ({ ...prev, relationship: e.detail.value ?? null }))}>
-                <IonSelectOption value="parent">Parent</IonSelectOption>
-                <IonSelectOption value="spouse">Conjoint(e)</IonSelectOption>
-                <IonSelectOption value="child">Enfant</IonSelectOption>
-                <IonSelectOption value="sibling">Frere/Soeur</IonSelectOption>
-                <IonSelectOption value="grandparent">Grand-parent</IonSelectOption>
-                <IonSelectOption value="other">Autre</IonSelectOption>
-              </IonSelect>
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Genre</IonLabel>
-              <IonSelect value={editForm.gender} onIonChange={(e) => setEditForm((prev) => ({ ...prev, gender: e.detail.value ?? null }))}>
-                <IonSelectOption value="male">M</IonSelectOption>
-                <IonSelectOption value="female">F</IonSelectOption>
-              </IonSelect>
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Groupe sanguin</IonLabel>
-              <IonSelect value={editForm.blood_type} onIonChange={(e) => setEditForm((prev) => ({ ...prev, blood_type: e.detail.value ?? null }))}>
-                <IonSelectOption value="A+">A+</IonSelectOption>
-                <IonSelectOption value="A-">A-</IonSelectOption>
-                <IonSelectOption value="B+">B+</IonSelectOption>
-                <IonSelectOption value="B-">B-</IonSelectOption>
-                <IonSelectOption value="AB+">AB+</IonSelectOption>
-                <IonSelectOption value="AB-">AB-</IonSelectOption>
-                <IonSelectOption value="O+">O+</IonSelectOption>
-                <IonSelectOption value="O-">O-</IonSelectOption>
-              </IonSelect>
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Allergies</IonLabel>
-              <IonTextarea autoGrow value={editForm.allergies} onIonInput={(e) => setEditForm((prev) => ({ ...prev, allergies: e.detail.value ?? '' }))} />
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Maladies chroniques</IonLabel>
-              <IonTextarea autoGrow value={editForm.chronic_diseases} onIonInput={(e) => setEditForm((prev) => ({ ...prev, chronic_diseases: e.detail.value ?? '' }))} />
-            </IonItem>
-            <IonItem lines="none">
-              <IonLabel position="stacked">Notes d'urgence</IonLabel>
-              <IonTextarea autoGrow value={editForm.emergency_notes} onIonInput={(e) => setEditForm((prev) => ({ ...prev, emergency_notes: e.detail.value ?? '' }))} />
-            </IonItem>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <IonButton expand="block" fill="outline" color="dark" onClick={() => setShowEdit(false)}>
-                Annuler
+            <h2 style={{ marginTop: 0 }}>Modifier le membre</h2>
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', marginBottom: '10px' }}>
+              <IonButton fill="clear" color="dark" expand="block" onClick={() => setEditIdentityExpanded((v) => !v)} style={{ margin: 0 }}>
+                Identite
+                <IonIcon slot="end" icon={editIdentityExpanded ? chevronUpOutline : chevronDownOutline} />
               </IonButton>
+              {editIdentityExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Nom</IonLabel>
+                    <IonInput value={editForm.name} onIonInput={(e) => setEditForm((prev) => ({ ...prev, name: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Date de naissance</IonLabel>
+                    <IonInput type="date" value={editForm.date_of_birth} onIonInput={(e) => setEditForm((prev) => ({ ...prev, date_of_birth: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <div style={{ padding: '0 14px 8px' }}>
+                    <IonBadge color="medium">Age: {computedEditAge ?? 'N/D'}</IonBadge>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Relation</IonLabel>
+                      <IonSelect value={editForm.relationship} onIonChange={(e) => setEditForm((prev) => ({ ...prev, relationship: e.detail.value ?? null }))}>
+                        <IonSelectOption value="parent">Parent</IonSelectOption>
+                        <IonSelectOption value="spouse">Conjoint(e)</IonSelectOption>
+                        <IonSelectOption value="child">Enfant</IonSelectOption>
+                        <IonSelectOption value="sibling">Frere/Soeur</IonSelectOption>
+                        <IonSelectOption value="grandparent">Grand-parent</IonSelectOption>
+                        <IonSelectOption value="other">Autre</IonSelectOption>
+                      </IonSelect>
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Genre</IonLabel>
+                      <IonSelect value={editForm.gender} onIonChange={(e) => setEditForm((prev) => ({ ...prev, gender: e.detail.value ?? null }))}>
+                        <IonSelectOption value="male">M</IonSelectOption>
+                        <IonSelectOption value="female">F</IonSelectOption>
+                      </IonSelect>
+                    </IonItem>
+                  </div>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Piece d'identite (optionnel)</IonLabel>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px' }}>
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        disabled={uploadingIdDocument}
+                        onClick={() => idDocumentInputRef.current?.click()}
+                      >
+                        <IonIcon icon={documentAttachOutline} slot="start" />
+                        {uploadingIdDocument ? 'Upload...' : member?.id_document_url ? 'Remplacer fichier' : 'Ajouter fichier'}
+                      </IonButton>
+                      {member?.id_document_url ? (
+                        <a href={member.id_document_url} target="_blank" rel="noreferrer">Voir fichier</a>
+                      ) : (
+                        <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Aucun fichier</span>
+                      )}
+                      <input
+                        ref={idDocumentInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadIdDocument(file);
+                        }}
+                      />
+                      {member?.id_document_url ? (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="medium"
+                          disabled={uploadingIdDocument}
+                          onClick={() => removeIdDocument().catch(() => undefined)}
+                        >
+                          Retirer fichier
+                        </IonButton>
+                      ) : null}
+                    </div>
+                  </IonItem>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', marginBottom: '10px' }}>
+              <IonButton fill="clear" color="dark" expand="block" onClick={() => setEditHealthExpanded((v) => !v)} style={{ margin: 0 }}>
+                Sante
+                <IonIcon slot="end" icon={editHealthExpanded ? chevronUpOutline : chevronDownOutline} />
+              </IonButton>
+              {editHealthExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Groupe sanguin</IonLabel>
+                    <IonSelect value={editForm.blood_type} onIonChange={(e) => setEditForm((prev) => ({ ...prev, blood_type: e.detail.value ?? null }))}>
+                      <IonSelectOption value="A+">A+</IonSelectOption>
+                      <IonSelectOption value="A-">A-</IonSelectOption>
+                      <IonSelectOption value="B+">B+</IonSelectOption>
+                      <IonSelectOption value="B-">B-</IonSelectOption>
+                      <IonSelectOption value="AB+">AB+</IonSelectOption>
+                      <IonSelectOption value="AB-">AB-</IonSelectOption>
+                      <IonSelectOption value="O+">O+</IonSelectOption>
+                      <IonSelectOption value="O-">O-</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Poids (kg)</IonLabel>
+                      <IonInput type="number" inputmode="decimal" step="0.1" value={editForm.weight_kg} onIonInput={(e) => setEditForm((prev) => ({ ...prev, weight_kg: e.detail.value ?? '' }))} />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Taille (cm)</IonLabel>
+                      <IonInput type="number" inputmode="decimal" step="0.1" value={editForm.height_cm} onIonInput={(e) => setEditForm((prev) => ({ ...prev, height_cm: e.detail.value ?? '' }))} />
+                    </IonItem>
+                  </div>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Allergies</IonLabel>
+                    <IonTextarea autoGrow value={editForm.allergies} onIonInput={(e) => setEditForm((prev) => ({ ...prev, allergies: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Maladies chroniques</IonLabel>
+                    <IonTextarea autoGrow value={editForm.chronic_diseases} onIonInput={(e) => setEditForm((prev) => ({ ...prev, chronic_diseases: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Antecedents chirurgicaux</IonLabel>
+                    <IonTextarea autoGrow value={editForm.surgical_history} onIonInput={(e) => setEditForm((prev) => ({ ...prev, surgical_history: e.detail.value ?? '' }))} />
+                  </IonItem>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', marginBottom: '82px' }}>
+              <IonButton fill="clear" color="dark" expand="block" onClick={() => setEditEmergencyExpanded((v) => !v)} style={{ margin: 0 }}>
+                Urgence
+                <IonIcon slot="end" icon={editEmergencyExpanded ? chevronUpOutline : chevronDownOutline} />
+              </IonButton>
+              {editEmergencyExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Vaccination a jour</IonLabel>
+                    <IonSelect
+                      value={
+                        editForm.vaccination_up_to_date === null
+                          ? 'unknown'
+                          : editForm.vaccination_up_to_date
+                          ? 'yes'
+                          : 'no'
+                      }
+                      onIonChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          vaccination_up_to_date: e.detail.value === 'unknown' ? null : e.detail.value === 'yes'
+                        }))
+                      }
+                    >
+                      <IonSelectOption value="unknown">N/D</IonSelectOption>
+                      <IonSelectOption value="yes">Oui</IonSelectOption>
+                      <IonSelectOption value="no">Non</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Notes d'urgence</IonLabel>
+                    <IonTextarea autoGrow value={editForm.emergency_notes} onIonInput={(e) => setEditForm((prev) => ({ ...prev, emergency_notes: e.detail.value ?? '' }))} />
+                  </IonItem>
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ position: 'fixed', left: '15px', right: '15px', bottom: 0, background: '#f0f6fa', borderTop: '1px solid #dbe7ef', paddingTop: '8px' }}>
               <IonButton expand="block" onClick={() => saveEdit().catch(() => undefined)} disabled={saving}>
                 Enregistrer
+              </IonButton>
+              <IonButton expand="block" fill="outline" color="dark" onClick={() => setShowEdit(false)}>
+                Annuler
               </IonButton>
             </div>
           </IonContent>

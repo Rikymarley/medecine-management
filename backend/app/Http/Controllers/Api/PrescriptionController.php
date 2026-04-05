@@ -8,6 +8,7 @@ use App\Models\PharmacyResponse;
 use App\Models\Prescription;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class PrescriptionController extends Controller
@@ -276,20 +277,43 @@ class PrescriptionController extends Controller
     public function mineForPatient(Request $request)
     {
         $patient = $request->user();
+        $familyMemberId = $request->query('family_member_id');
 
-        $prescriptions = Prescription::query()
-            ->where(function ($query) use ($patient) {
-                $query
+        $query = Prescription::query()
+            ->with($this->baseRelations())
+            ->orderByDesc('requested_at');
+
+        if ($familyMemberId !== null && $familyMemberId !== '') {
+            $selectedFamilyMemberId = (int) $familyMemberId;
+            $selectedMember = FamilyMember::query()
+                ->where('id', $selectedFamilyMemberId)
+                ->where('patient_user_id', $patient->id)
+                ->first();
+
+            if (!$selectedMember) {
+                return response()->json([]);
+            }
+
+            $query->where(function ($q) use ($selectedFamilyMemberId, $selectedMember) {
+                $q->where('family_member_id', $selectedFamilyMemberId);
+
+                if ($selectedMember->linked_user_id) {
+                    $q->orWhere('patient_user_id', (int) $selectedMember->linked_user_id);
+                }
+            });
+        } else {
+            $query->where(function ($where) use ($patient) {
+                $where
                     ->where('patient_user_id', $patient->id)
                     ->orWhere(function ($fallback) use ($patient) {
                         $fallback
                             ->whereNull('patient_user_id')
                             ->where('patient_name', $patient->name);
                     });
-            })
-            ->with($this->baseRelations())
-            ->orderByDesc('requested_at')
-            ->get();
+            });
+        }
+
+        $prescriptions = $query->get();
         $prescriptions->each(fn (Prescription $prescription) => $prescription->refreshStatusFromResponses($this->expireHours()));
 
         return response()->json($prescriptions);
@@ -528,12 +552,13 @@ class PrescriptionController extends Controller
                 'phone' => $phone !== '' ? $phone : null,
                 'ninu' => $ninu !== '' ? $ninu : null,
                 'date_of_birth' => $data['date_of_birth'] ?? null,
-                'password' => Str::password(32),
+                'password' => Hash::make(Str::password(32)),
                 'role' => 'patient',
                 'account_status' => 'active',
                 'created_by_doctor_id' => $doctor->id,
                 'verification_status' => 'approved',
                 'verified_at' => now(),
+                'verified_by' => $doctor->id,
             ]);
         }
 

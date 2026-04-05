@@ -33,10 +33,11 @@ import {
   chevronDownOutline,
   chevronUpOutline,
   closeOutline,
+  documentAttachOutline,
   peopleOutline,
   personOutline
 } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember } from '../services/api';
 import {
@@ -83,6 +84,7 @@ const PatientFamilyMembersPage: React.FC = () => {
   const [emergencyExpanded, setEmergencyExpanded] = useState(true);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [uploadingIdDocument, setUploadingIdDocument] = useState(false);
   const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(getPendingFamilyMemberMutationCount());
   const [pendingStateById, setPendingStateById] = useState<Record<number, 'create' | 'update' | 'delete'>>(
     getPendingFamilyMemberMutationStateById()
@@ -120,6 +122,7 @@ const PatientFamilyMembersPage: React.FC = () => {
     emergency_notes: '',
     primary_caregiver: false
   });
+  const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
 
   const cacheKey = user ? `patient-family-members-${user.id}` : null;
 
@@ -369,6 +372,50 @@ const PatientFamilyMembersPage: React.FC = () => {
     }
     await api.deletePatientFamilyMember(token, id);
     setToastMessage('Membre archive.');
+  };
+
+  const uploadMemberIdDocument = async (file: File) => {
+    if (!token) return;
+    if (editingId === null) {
+      setToastMessage("Enregistrez d'abord le membre puis ajoutez la piece d'identite.");
+      return;
+    }
+    if (!isOnline) {
+      setToastMessage("Hors ligne: upload de piece d'identite indisponible.");
+      return;
+    }
+
+    setUploadingIdDocument(true);
+    try {
+      const updated = await api.uploadPatientFamilyMemberIdDocument(token, editingId, file);
+      setMembers((prev) => prev.map((member) => (member.id === updated.id ? updated : member)));
+      setToastMessage("Piece d'identite mise a jour.");
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : "Echec de l'upload de la piece d'identite.");
+    } finally {
+      setUploadingIdDocument(false);
+      if (idDocumentInputRef.current) {
+        idDocumentInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removeMemberIdDocument = async () => {
+    if (!token || editingId === null) return;
+    if (!isOnline) {
+      setToastMessage("Hors ligne: suppression de piece d'identite indisponible.");
+      return;
+    }
+    setUploadingIdDocument(true);
+    try {
+      const updated = await api.removePatientFamilyMemberIdDocument(token, editingId);
+      setMembers((prev) => prev.map((member) => (member.id === updated.id ? updated : member)));
+      setToastMessage("Piece d'identite supprimee.");
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : "Echec de suppression de la piece d'identite.");
+    } finally {
+      setUploadingIdDocument(false);
+    }
   };
 
   const startEdit = (member: ApiFamilyMember) => {
@@ -652,6 +699,54 @@ const PatientFamilyMembersPage: React.FC = () => {
                       </IonSelect>
                     </IonItem>
                   </div>
+                  <IonItem lines="none" style={{ marginTop: '6px' }}>
+                    <IonLabel position="stacked">Piece d'identite (optionnel)</IonLabel>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px' }}>
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color={!isOnline ? 'warning' : 'primary'}
+                        disabled={!isOnline || uploadingIdDocument}
+                        onClick={() => idDocumentInputRef.current?.click()}
+                      >
+                        <IonIcon icon={documentAttachOutline} slot="start" />
+                        {uploadingIdDocument ? 'Upload...' : editingId !== null ? 'Ajouter/Remplacer fichier' : 'Ajouter apres creation'}
+                      </IonButton>
+                    {editingId !== null ? (
+                      (() => {
+                        const existing = members.find((m) => m.id === editingId)?.id_document_url;
+                        return existing ? (
+                          <a href={existing} target="_blank" rel="noreferrer">Voir fichier</a>
+                          ) : (
+                            <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Aucun fichier</span>
+                          );
+                        })()
+                      ) : (
+                        <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Disponible apres creation</span>
+                      )}
+                      <input
+                        ref={idDocumentInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadMemberIdDocument(file);
+                        }}
+                      />
+                      {editingId !== null && members.find((m) => m.id === editingId)?.id_document_url ? (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="medium"
+                          disabled={!isOnline || uploadingIdDocument}
+                          onClick={() => removeMemberIdDocument().catch(() => undefined)}
+                        >
+                          Retirer fichier
+                        </IonButton>
+                      ) : null}
+                    </div>
+                  </IonItem>
                 </>
               ) : null}
             </div>

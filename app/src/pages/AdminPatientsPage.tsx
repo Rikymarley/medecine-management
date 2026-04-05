@@ -6,32 +6,25 @@ import {
   IonCardContent,
   IonContent,
   IonHeader,
-  IonItem,
-  IonLabel,
-  IonList,
+  IonIcon,
   IonPage,
   IonSearchbar,
   IonText,
-  IonToggle,
   IonTitle,
   IonToolbar
 } from '@ionic/react';
+import { personOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
+import { useHistory } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiUser } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
-const formatDate = (value?: string | null) => {
-  if (!value) return 'N/D';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? 'N/D' : d.toLocaleString('fr-HT');
-};
-
 const AdminPatientsPage: React.FC = () => {
+  const history = useHistory();
   const { token } = useAuth();
   const [rows, setRows] = useState<ApiUser[]>([]);
   const [query, setQuery] = useState('');
-  const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
@@ -55,50 +48,6 @@ const AdminPatientsPage: React.FC = () => {
     return rows.filter((row) => `${row.name} ${row.email} ${row.phone ?? ''}`.toLowerCase().includes(q));
   }, [rows, query]);
 
-  const approve = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminApproveUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const block = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminBlockUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const unapprove = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminUnapproveUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const unblock = async (userId: number) => {
-    if (!token) return;
-    try {
-      setBusyId(userId);
-      await api.adminUnblockUser(token, userId);
-      await load();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   return (
     <IonPage>
       <IonHeader>
@@ -119,59 +68,43 @@ const AdminPatientsPage: React.FC = () => {
               onIonInput={(event) => setQuery(event.detail.value ?? '')}
             />
             {error ? <IonText color="danger"><p>{error}</p></IonText> : null}
-            <IonList>
+            <div style={{ display: 'grid', gap: '8px' }}>
               {filtered.map((patient) => (
-                <IonItem key={patient.id} lines="full">
-                  <IonLabel>
-                    <h3>{patient.name}</h3>
-                    <p>{patient.email}</p>
-                    <p>{patient.phone || 'Telephone N/D'}</p>
+                <IonCard
+                  key={patient.id}
+                  className="surface-card"
+                  button
+                  onClick={() => history.push(`/admin/patients/${patient.id}`)}
+                  style={{ margin: 0 }}
+                >
+                  <IonCardContent>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {patient.profile_photo_url ? (
+                        <img
+                          src={patient.profile_photo_url}
+                          alt={patient.name}
+                          style={{ width: '34px', height: '34px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #dbe7ef' }}
+                        />
+                      ) : (
+                        <div style={{ width: '34px', height: '34px', borderRadius: '50%', display: 'grid', placeItems: 'center', background: '#dbeafe', color: '#1e40af' }}>
+                          <IonIcon icon={personOutline} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <h3 style={{ margin: 0 }}>{patient.name}</h3>
+                        <p style={{ margin: '2px 0 0 0' }}>{patient.phone || 'Telephone N/D'}</p>
+                      </div>
+                    </div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-                      {patient.account_status === 'blocked' ? (
-                        <IonBadge color="danger">Compte bloque</IonBadge>
-                      ) : null}
+                      {patient.account_status === 'blocked' ? <IonBadge color="danger">Bloque</IonBadge> : null}
                       <IonBadge color={patient.verification_status === 'approved' ? 'success' : 'warning'}>
-                        {patient.verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                        {patient.verification_status === 'approved' ? 'Approuve' : 'En attente'}
                       </IonBadge>
                     </div>
-                    <p>Approuve par: {patient.approved_by || 'N/D'} · {formatDate(patient.approved_at)}</p>
-                    <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
-                        <span>Approbation du compte</span>
-                        <IonToggle
-                          checked={patient.verification_status === 'approved'}
-                          disabled={busyId === patient.id || patient.account_status === 'blocked'}
-                          onIonChange={(event) => {
-                            const enabled = !!event.detail.checked;
-                            if (enabled) {
-                              void approve(patient.id);
-                            } else {
-                              void unapprove(patient.id);
-                            }
-                          }}
-                        />
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '8px' }}>
-                        <span>Bloquer</span>
-                        <IonToggle
-                          checked={patient.account_status === 'blocked'}
-                          disabled={busyId === patient.id}
-                          color="danger"
-                          onIonChange={(event) => {
-                            const enabled = !!event.detail.checked;
-                            if (enabled) {
-                              void block(patient.id);
-                            } else {
-                              void unblock(patient.id);
-                            }
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </IonLabel>
-                </IonItem>
+                  </IonCardContent>
+                </IonCard>
               ))}
-            </IonList>
+            </div>
           </IonCardContent>
         </IonCard>
       </IonContent>

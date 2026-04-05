@@ -117,15 +117,58 @@ class MedicalHistoryController extends Controller
     {
         $patient = $request->user();
         $familyMemberId = $request->query('family_member_id');
+        $familyMembers = FamilyMember::query()
+            ->where('patient_user_id', $patient->id)
+            ->get(['id', 'linked_user_id']);
 
-        $query = $this->listBaseQuery($patient->id);
+        $linkedUserIds = $familyMembers
+            ->pluck('linked_user_id')
+            ->filter(fn ($id) => $id !== null)
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        $allowedPatientUserIds = array_values(array_unique([
+            (int) $patient->id,
+            ...$linkedUserIds,
+        ]));
+
+        $query = MedicalHistoryEntry::query()
+            ->whereIn('patient_user_id', $allowedPatientUserIds)
+            ->with([
+                'doctor:id,name',
+                'familyMember:id,name',
+                'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            ])
+            ->orderByDesc('started_at')
+            ->orderByDesc('created_at');
 
         if ($familyMemberId !== null && $familyMemberId !== '') {
-            $query->where('family_member_id', (int) $familyMemberId);
+            $selectedFamilyMemberId = (int) $familyMemberId;
+            $selectedMember = $familyMembers->firstWhere('id', $selectedFamilyMemberId);
+            $linkedUserId = $selectedMember?->linked_user_id ? (int) $selectedMember->linked_user_id : null;
+
+            $query->where(function ($q) use ($selectedFamilyMemberId, $linkedUserId) {
+                $q->where('family_member_id', $selectedFamilyMemberId);
+                if ($linkedUserId) {
+                    $q->orWhere('patient_user_id', $linkedUserId);
+                }
+            });
+        } else {
+            $query->where('patient_user_id', $patient->id)
+                ->whereNull('family_member_id');
         }
 
         return response()->json(
-            $query->get()->map(fn (MedicalHistoryEntry $entry) => $this->formatEntry($entry))->values()
+            $query->get()->map(function (MedicalHistoryEntry $entry) use ($patient) {
+                $formatted = $this->formatEntry($entry);
+                $isOwner = (int) $entry->patient_user_id === (int) $patient->id;
+                if (!$isOwner) {
+                    $formatted['can_edit_by_patient'] = false;
+                    $formatted['can_delete_by_patient'] = false;
+                }
+                return $formatted;
+            })->values()
         );
     }
 

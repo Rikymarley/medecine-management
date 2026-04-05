@@ -25,6 +25,7 @@ import {
   chevronDownOutline,
   chevronUpOutline,
   createOutline,
+  documentAttachOutline,
   documentTextOutline,
   medkitOutline,
   peopleOutline,
@@ -62,7 +63,9 @@ const PatientDashboard: React.FC = () => {
   const [vaccinationUpToDate, setVaccinationUpToDate] = useState<'' | 'yes' | 'no'>('');
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingIdDocument, setUploadingIdDocument] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
+  const [idDocumentUrl, setIdDocumentUrl] = useState('');
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -71,6 +74,7 @@ const PatientDashboard: React.FC = () => {
   const [emergencyExpanded, setEmergencyExpanded] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
 
   const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
@@ -131,6 +135,7 @@ const PatientDashboard: React.FC = () => {
             : 'no'
         );
         setProfilePhotoUrl(normalizeText((me as any).profile_photo_url));
+        setIdDocumentUrl(normalizeText((me as any).id_document_url));
       })
       .catch(() => {
         if (profileCacheKey) {
@@ -160,6 +165,7 @@ const PatientDashboard: React.FC = () => {
                   : 'no'
               );
               setProfilePhotoUrl(normalizeText((me as any)?.profile_photo_url));
+              setIdDocumentUrl(normalizeText((me as any)?.id_document_url));
               setMessage('Hors ligne: profil local charge.');
               return;
             } catch {
@@ -189,6 +195,7 @@ const PatientDashboard: React.FC = () => {
             : 'no'
         );
         setProfilePhotoUrl(normalizeText((user as any)?.profile_photo_url));
+        setIdDocumentUrl(normalizeText((user as any)?.id_document_url));
       });
   }, [
     profileCacheKey,
@@ -314,6 +321,53 @@ const PatientDashboard: React.FC = () => {
       if (photoInputRef.current) {
         photoInputRef.current.value = '';
       }
+    }
+  };
+
+  const uploadPatientIdDocument = async (file: File) => {
+    if (!token) return;
+    if (!isOnline) {
+      setMessage("Hors ligne: impossible de televerser la piece d'identite.");
+      return;
+    }
+    setUploadingIdDocument(true);
+    setMessage(null);
+    try {
+      const updated = await api.uploadMyPatientIdDocument(token, file);
+      setIdDocumentUrl(normalizeText((updated as any).id_document_url));
+      if (profileCacheKey) {
+        localStorage.setItem(profileCacheKey, JSON.stringify(updated));
+      }
+      setMessage("Piece d'identite mise a jour.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Echec de l'upload de la piece d'identite.");
+    } finally {
+      setUploadingIdDocument(false);
+      if (idDocumentInputRef.current) {
+        idDocumentInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removePatientIdDocument = async () => {
+    if (!token || !idDocumentUrl) return;
+    if (!isOnline) {
+      setMessage("Hors ligne: impossible de supprimer la piece d'identite.");
+      return;
+    }
+    setUploadingIdDocument(true);
+    setMessage(null);
+    try {
+      const updated = await api.removeMyPatientIdDocument(token);
+      setIdDocumentUrl(normalizeText((updated as any).id_document_url));
+      if (profileCacheKey) {
+        localStorage.setItem(profileCacheKey, JSON.stringify(updated));
+      }
+      setMessage("Piece d'identite supprimee.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Echec de suppression de la piece d'identite.");
+    } finally {
+      setUploadingIdDocument(false);
     }
   };
 
@@ -482,6 +536,49 @@ const PatientDashboard: React.FC = () => {
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>NINU</IonLabel>
                     <IonInput disabled={!editMode} value={ninu} onIonInput={(e) => setNinu(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Piece d'identite (optionnel)</IonLabel>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '6px' }}>
+                      <IonButton
+                        size="small"
+                        fill="outline"
+                        color={isOnline ? 'primary' : 'warning'}
+                        disabled={!isOnline || uploadingIdDocument}
+                        onClick={() => idDocumentInputRef.current?.click()}
+                      >
+                        <IonIcon icon={documentAttachOutline} slot="start" />
+                        {uploadingIdDocument ? 'Upload...' : idDocumentUrl ? 'Remplacer fichier' : 'Ajouter fichier'}
+                      </IonButton>
+                      {idDocumentUrl ? (
+                        <a href={idDocumentUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.9rem' }}>
+                          Voir fichier
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Aucun fichier</span>
+                      )}
+                      {idDocumentUrl ? (
+                        <IonButton
+                          size="small"
+                          fill="outline"
+                          color="medium"
+                          disabled={!isOnline || uploadingIdDocument}
+                          onClick={() => removePatientIdDocument().catch(() => undefined)}
+                        >
+                          Retirer fichier
+                        </IonButton>
+                      ) : null}
+                      <input
+                        ref={idDocumentInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadPatientIdDocument(file);
+                        }}
+                      />
+                    </div>
                   </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Adresse</IonLabel>

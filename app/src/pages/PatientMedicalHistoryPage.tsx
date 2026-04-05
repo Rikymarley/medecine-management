@@ -27,7 +27,7 @@ import {
 import { addOutline, closeOutline, createOutline, medicalOutline, trashOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiFamilyMember, ApiMedicalHistoryEntry, ApiPrescription } from '../services/api';
+import { api, ApiMedicalHistoryEntry, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateHaiti, formatDateTime } from '../utils/time';
 
@@ -64,11 +64,9 @@ const toDateInputValue = (value: string | null) => {
 };
 
 const PatientMedicalHistoryPage: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const [entries, setEntries] = useState<ApiMedicalHistoryEntry[]>([]);
-  const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
-  const [selectedMemberFilter, setSelectedMemberFilter] = useState<'self' | number>('self');
   const [expandedPrescriptionByHistoryId, setExpandedPrescriptionByHistoryId] = useState<Record<number, boolean>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -78,7 +76,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
   const pageSize = 10;
 
   const [form, setForm] = useState<{
-    family_member_id: string;
     type: ApiMedicalHistoryEntry['type'];
     title: string;
     details: string;
@@ -87,7 +84,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
     status: ApiMedicalHistoryEntry['status'];
     visibility: Extract<ApiMedicalHistoryEntry['visibility'], 'shared' | 'patient_only'>;
   }>({
-    family_member_id: '',
     type: 'condition',
     title: '',
     details: '',
@@ -102,14 +98,12 @@ const PatientMedicalHistoryPage: React.FC = () => {
       return;
     }
 
-    const [history, members, rx] = await Promise.all([
+    const [history, rx] = await Promise.all([
       api.getPatientMedicalHistory(token),
-      api.getPatientFamilyMembers(token).catch(() => []),
       api.getPatientPrescriptions(token).catch(() => [])
     ]);
 
     setEntries(history);
-    setFamilyMembers(members);
     setPrescriptions(rx);
   };
 
@@ -127,12 +121,7 @@ const PatientMedicalHistoryPage: React.FC = () => {
     [entries]
   );
 
-  const filteredEntries = useMemo(() => {
-    if (selectedMemberFilter === 'self') {
-      return sortedEntries.filter((entry) => !entry.family_member_id);
-    }
-    return sortedEntries.filter((entry) => entry.family_member_id === selectedMemberFilter);
-  }, [selectedMemberFilter, sortedEntries]);
+  const filteredEntries = sortedEntries;
   const prescriptionById = useMemo(() => {
     const map: Record<number, ApiPrescription> = {};
     prescriptions.forEach((rx) => {
@@ -153,13 +142,8 @@ const PatientMedicalHistoryPage: React.FC = () => {
     }
   }, [page, totalPages]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [selectedMemberFilter]);
-
   const resetForm = () => {
     setForm({
-      family_member_id: '',
       type: 'condition',
       title: '',
       details: '',
@@ -174,7 +158,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
   const startEdit = (entry: ApiMedicalHistoryEntry) => {
     setEditingId(entry.id);
     setForm({
-      family_member_id: entry.family_member_id ? String(entry.family_member_id) : '',
       type: entry.type,
       title: entry.title,
       details: entry.details ?? '',
@@ -194,7 +177,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
     setSaving(true);
     try {
       const payload = {
-        family_member_id: form.family_member_id ? Number(form.family_member_id) : null,
         type: form.type,
         title: form.title.trim(),
         details: form.details.trim() || null,
@@ -252,34 +234,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
             <h2 style={{ marginTop: 0 }}>Historique medical</h2>
             <IonText color="medium">{filteredEntries.length} entree(s)</IonText>
 
-            <div
-              style={{
-                display: 'flex',
-                gap: '8px',
-                overflowX: 'auto',
-                padding: '8px 0 4px',
-                marginTop: '8px'
-              }}
-            >
-              <IonButton
-                size="small"
-                fill={selectedMemberFilter === 'self' ? 'solid' : 'outline'}
-                onClick={() => setSelectedMemberFilter('self')}
-              >
-                {user?.name ?? 'Patient'}
-              </IonButton>
-              {familyMembers.map((member) => (
-                <IonButton
-                  key={member.id}
-                  size="small"
-                  fill={selectedMemberFilter === member.id ? 'solid' : 'outline'}
-                  onClick={() => setSelectedMemberFilter(member.id)}
-                >
-                  {member.name}
-                </IonButton>
-              ))}
-            </div>
-
             {filteredEntries.length === 0 ? (
               <div style={{ minHeight: '220px', display: 'grid', placeItems: 'center', textAlign: 'center' }}>
                 <div>
@@ -306,9 +260,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
                       <p style={{ margin: '2px 0' }}>{typeLabel[entry.type]} · {visibilityLabel[entry.visibility]}</p>
                       <p style={{ margin: '2px 0' }}>
                         Cree par: {entry.doctor_name ? `Dr. ${entry.doctor_name}` : 'Patient'}
-                      </p>
-                      <p style={{ margin: '2px 0' }}>
-                        {entry.family_member_name ? `Membre: ${entry.family_member_name}` : user?.name ?? 'Patient'}
                       </p>
                       <p style={{ margin: '2px 0' }}>
                         Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'Non precise'} · Fin:{' '}
@@ -417,22 +368,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
             <div style={{ height: '1px', background: '#cbd5e1', margin: '20px 0' }} />
 
             <IonItem lines="none">
-              <IonLabel position="stacked">Membre de famille</IonLabel>
-              <IonSelect
-                value={form.family_member_id}
-                placeholder={user?.name ?? 'Patient'}
-                onIonChange={(e) => setForm((prev) => ({ ...prev, family_member_id: e.detail.value ?? '' }))}
-              >
-                <IonSelectOption value="">{user?.name ?? 'Patient'}</IonSelectOption>
-                {familyMembers.map((member) => (
-                  <IonSelectOption key={member.id} value={String(member.id)}>
-                    {member.name}
-                  </IonSelectOption>
-                ))}
-              </IonSelect>
-            </IonItem>
-
-            <IonItem lines="none" style={{ marginTop: '10px' }}>
               <IonLabel position="stacked">Type</IonLabel>
               <IonSelect
                 value={form.type}

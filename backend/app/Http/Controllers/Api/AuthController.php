@@ -44,6 +44,22 @@ class AuthController extends Controller
         return $user->fresh();
     }
 
+    private function uploadUserDocument(Request $request, User $user, string $requestFileKey, string $dbField, string $directory): User
+    {
+        $request->validate([
+            $requestFileKey => ['required', 'file', 'mimes:jpeg,jpg,png,webp,pdf', 'max:4096'],
+        ]);
+
+        $uploaded = $request->file($requestFileKey);
+        $path = $uploaded->store($directory, 'public');
+        $publicUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
+        $this->deleteIfLocalStorageUrl($user->{$dbField});
+        $user->update([$dbField => $publicUrl]);
+
+        return $user->fresh();
+    }
+
     private function presentDoctor(User $doctor): array
     {
         $row = $doctor->toArray();
@@ -344,5 +360,28 @@ class AuthController extends Controller
         }
 
         return response()->json($this->uploadUserImage($request, $patient, 'profile_photo', 'profile_photo_url', 'patients/photos'));
+    }
+
+    public function uploadPatientIdDocument(Request $request)
+    {
+        $patient = $request->user();
+        if ($patient->role !== 'patient') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        return response()->json($this->uploadUserDocument($request, $patient, 'id_document', 'id_document_url', 'patients/id-documents'));
+    }
+
+    public function removePatientIdDocument(Request $request)
+    {
+        $patient = $request->user();
+        if ($patient->role !== 'patient') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        $this->deleteIfLocalStorageUrl($patient->id_document_url);
+        $patient->update(['id_document_url' => null]);
+
+        return response()->json($patient->fresh());
     }
 }

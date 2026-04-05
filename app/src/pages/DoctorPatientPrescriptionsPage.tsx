@@ -26,6 +26,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import {
+  closeOutline,
   chevronDownOutline,
   chevronUpOutline,
   createOutline,
@@ -97,6 +98,10 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [isIdentityCollapsed, setIsIdentityCollapsed] = useState(true);
   const [isHealthCollapsed, setIsHealthCollapsed] = useState(true);
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(true);
+  const [isHistoryModalContextCollapsed, setIsHistoryModalContextCollapsed] = useState(false);
+  const [isHistoryModalDetailsCollapsed, setIsHistoryModalDetailsCollapsed] = useState(false);
+  const [isHistoryModalDatesCollapsed, setIsHistoryModalDatesCollapsed] = useState(false);
+  const [isHistoryModalLinkCollapsed, setIsHistoryModalLinkCollapsed] = useState(false);
   const [expandedLinkedPrescriptions, setExpandedLinkedPrescriptions] = useState<Record<number, boolean>>({});
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [editingHistoryId, setEditingHistoryId] = useState<number | null>(null);
@@ -130,10 +135,17 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const decodedPatientName = decodeURIComponent(patientName);
   const search = new URLSearchParams(location.search);
   const familyMemberId = search.get('familyMemberId') ? Number(search.get('familyMemberId')) : null;
+  const patientUserIdFromQuery = search.get('patientUserId') ? Number(search.get('patientUserId')) : null;
   const prefillPrescriptionId = search.get('prescriptionId') ? Number(search.get('prescriptionId')) : null;
   const familyMemberName = search.get('familyMemberName')
     ? decodeURIComponent(search.get('familyMemberName') as string)
     : null;
+  const effectiveFamilyMemberId = useMemo(() => {
+    if (!familyMemberId) {
+      return null;
+    }
+    return familyMembers.some((member) => member.id === familyMemberId) ? familyMemberId : null;
+  }, [familyMemberId, familyMembers]);
 
   const loadPrescriptions = useCallback(async () => {
     if (!cacheKey) {
@@ -168,17 +180,11 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     loadPrescriptions().catch(() => undefined);
   });
 
-  const patientPrescriptions = useMemo(() => {
-    return prescriptions
-      .filter((p) => p.patient_name.trim().toLowerCase() === decodedPatientName.trim().toLowerCase())
-      .filter((p) => (familyMemberId ? p.family_member_id === familyMemberId : !p.family_member_id))
-      .sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime());
-  }, [decodedPatientName, familyMemberId, prescriptions]);
-
-  const patientUserId =
+  const derivedPatientUserId =
     prescriptions.find(
       (p) => p.patient_name.trim().toLowerCase() === decodedPatientName.trim().toLowerCase() && p.patient_user_id
     )?.patient_user_id ?? null;
+  const patientUserId = patientUserIdFromQuery ?? derivedPatientUserId;
 
   useEffect(() => {
     if (!token || !patientUserId) {
@@ -204,14 +210,10 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
 
     api
       .getDoctorPatientMedicalHistory(token, patientUserId, {
-        family_member_id: familyMemberId ?? undefined
+        family_member_id: effectiveFamilyMemberId ?? undefined
       })
       .then((rows) => {
-        const scopedRows = familyMemberId
-          ? rows
-          : rows.filter((entry) => !entry.family_member_id);
-
-        const sorted = [...scopedRows].sort((a, b) => {
+        const sorted = [...rows].sort((a, b) => {
           const aDate = a.started_at ?? a.created_at;
           const bDate = b.started_at ?? b.created_at;
           return new Date(bDate).getTime() - new Date(aDate).getTime();
@@ -219,7 +221,27 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         setMedicalHistory(sorted);
       })
       .catch(() => setMedicalHistory([]));
-  }, [familyMemberId, patientUserId, token]);
+  }, [effectiveFamilyMemberId, patientUserId, token]);
+
+  const patientPrescriptions = useMemo(() => {
+    const byUserOrName = prescriptions.filter((p) => {
+      if (patientUserId) {
+        return p.patient_user_id === patientUserId;
+      }
+      return p.patient_name.trim().toLowerCase() === decodedPatientName.trim().toLowerCase();
+    });
+
+    const hasOwnFamilyMembers = familyMembers.length > 0;
+
+    return byUserOrName
+      .filter((p) => {
+        if (effectiveFamilyMemberId) {
+          return p.family_member_id === effectiveFamilyMemberId;
+        }
+        return hasOwnFamilyMembers ? !p.family_member_id : true;
+      })
+      .sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime());
+  }, [decodedPatientName, effectiveFamilyMemberId, familyMembers.length, patientUserId, prescriptions]);
 
   const totalMedicinesRequested = useMemo(
     () =>
@@ -236,16 +258,20 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     () => familyMembers.find((member) => member.id === selectedFamilyMemberId) ?? null,
     [familyMembers, selectedFamilyMemberId]
   );
+  const validFamilyMemberIds = useMemo(() => new Set(familyMembers.map((member) => member.id)), [familyMembers]);
   const profileFamilyMember = useMemo(
-    () => familyMembers.find((member) => member.id === (familyMemberId ?? selectedFamilyMemberId)) ?? null,
-    [familyMemberId, familyMembers, selectedFamilyMemberId]
+    () => familyMembers.find((member) => member.id === (effectiveFamilyMemberId ?? selectedFamilyMemberId)) ?? null,
+    [effectiveFamilyMemberId, familyMembers, selectedFamilyMemberId]
   );
   const scopedMedicalHistory = useMemo(
-    () =>
-      familyMemberId
-        ? medicalHistory.filter((entry) => entry.family_member_id === familyMemberId)
-        : medicalHistory.filter((entry) => !entry.family_member_id),
-    [familyMemberId, medicalHistory]
+    () => {
+      if (effectiveFamilyMemberId) {
+        return medicalHistory.filter((entry) => entry.family_member_id === effectiveFamilyMemberId);
+      }
+      const hasOwnFamilyMembers = familyMembers.length > 0;
+      return hasOwnFamilyMembers ? medicalHistory.filter((entry) => !entry.family_member_id) : medicalHistory;
+    },
+    [effectiveFamilyMemberId, familyMembers.length, medicalHistory]
   );
   const historyCodesByPrescriptionId = useMemo(() => {
     const map: Record<number, string[]> = {};
@@ -263,6 +289,13 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     });
     return map;
   }, [scopedMedicalHistory]);
+  const selectedPrescriptionForHistory = useMemo(() => {
+    const id = Number(historyForm.prescription_id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return null;
+    }
+    return patientPrescriptions.find((prescription) => prescription.id === id) ?? null;
+  }, [historyForm.prescription_id, patientPrescriptions]);
   const activePatientName = profileFamilyMember?.name ?? familyMemberName ?? decodedPatientName;
   const activeProfilePhotoUrl = profileFamilyMember?.photo_url ?? patientProfile?.profile_photo_url ?? null;
   const toggleLinkedPrescriptionDetails = (historyEntryId: number) => {
@@ -274,7 +307,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
 
   const resetHistoryForm = () => {
     setHistoryForm({
-      family_member_id: familyMemberId ? String(familyMemberId) : '',
+      family_member_id: effectiveFamilyMemberId ? String(effectiveFamilyMemberId) : '',
       prescription_id: prefillPrescriptionId ? String(prefillPrescriptionId) : '',
       type: 'condition',
       title: '',
@@ -290,7 +323,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   useEffect(() => {
     resetHistoryForm();
     setHistoryPrefillApplied(false);
-  }, [familyMemberId, prefillPrescriptionId]);
+  }, [effectiveFamilyMemberId, prefillPrescriptionId]);
 
   useEffect(() => {
     if (historyPrefillApplied || !prefillPrescriptionId || patientPrescriptions.length === 0) {
@@ -317,8 +350,12 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
 
   const startHistoryEdit = (entry: ApiMedicalHistoryEntry) => {
     setEditingHistoryId(entry.id);
+    const editableFamilyMemberId =
+      entry.family_member_id && validFamilyMemberIds.has(entry.family_member_id)
+        ? String(entry.family_member_id)
+        : '';
     setHistoryForm({
-      family_member_id: entry.family_member_id ? String(entry.family_member_id) : '',
+      family_member_id: editableFamilyMemberId,
       prescription_id: entry.prescription_id ? String(entry.prescription_id) : '',
       type: entry.type,
       title: entry.title,
@@ -329,6 +366,10 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       visibility: entry.visibility === 'patient_only' ? 'shared' : entry.visibility
     });
     setShowHistoryModal(true);
+    setIsHistoryModalContextCollapsed(false);
+    setIsHistoryModalDetailsCollapsed(false);
+    setIsHistoryModalDatesCollapsed(false);
+    setIsHistoryModalLinkCollapsed(false);
   };
 
   const saveHistory = async () => {
@@ -344,8 +385,11 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     setSavingHistory(true);
     setHistoryError(null);
     try {
+      const parsedFamilyMemberId = historyForm.family_member_id ? Number(historyForm.family_member_id) : null;
+      const safeFamilyMemberId =
+        parsedFamilyMemberId && validFamilyMemberIds.has(parsedFamilyMemberId) ? parsedFamilyMemberId : null;
       const payload = {
-        family_member_id: historyForm.family_member_id ? Number(historyForm.family_member_id) : null,
+        family_member_id: safeFamilyMemberId,
         prescription_id: historyForm.prescription_id ? Number(historyForm.prescription_id) : null,
         type: historyForm.type,
         title: historyForm.title.trim(),
@@ -364,7 +408,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       }
 
       updatedRows = await api.getDoctorPatientMedicalHistory(token, patientUserId, {
-        family_member_id: familyMemberId ?? undefined
+        family_member_id: effectiveFamilyMemberId ?? undefined
       });
 
       setMedicalHistory(
@@ -474,8 +518,8 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                     onClick={() => {
                       const params = new URLSearchParams();
                       params.set('patient', decodedPatientName);
-                      if (familyMemberId) {
-                        params.set('familyMemberId', String(familyMemberId));
+                      if (effectiveFamilyMemberId) {
+                        params.set('familyMemberId', String(effectiveFamilyMemberId));
                       }
                       if (familyMemberName) {
                         params.set('familyMemberName', familyMemberName);
@@ -583,7 +627,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
           ) : null}
         </IonCard>
 
-        {!familyMemberId ? (
+        {!effectiveFamilyMemberId ? (
           <IonCard className="surface-card">
             <IonCardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
@@ -779,8 +823,8 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                   onClick={() => {
                     const params = new URLSearchParams();
                     params.set('patient', decodedPatientName);
-                    if (familyMemberId) {
-                      params.set('familyMemberId', String(familyMemberId));
+                    if (effectiveFamilyMemberId) {
+                      params.set('familyMemberId', String(effectiveFamilyMemberId));
                     }
                     if (familyMemberName) {
                       params.set('familyMemberName', familyMemberName);
@@ -812,11 +856,8 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                     detail
                     onClick={() => {
                       const params = new URLSearchParams();
-                      if (familyMemberId) {
-                        params.set('familyMemberId', String(familyMemberId));
-                        params.set('scope', 'family');
-                      } else {
-                        params.set('scope', 'principal');
+                      if (effectiveFamilyMemberId) {
+                        params.set('familyMemberId', String(effectiveFamilyMemberId));
                       }
                       if (familyMemberName) {
                         params.set('familyMemberName', familyMemberName);
@@ -866,143 +907,246 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
           }}
         >
           <IonContent className="ion-padding app-content">
-            <h1 style={{ marginTop: 0 }}>{editingHistoryId === null ? 'Ajouter un historique' : 'Modifier un historique'}</h1>
-            <IonText color="medium">Le docteur peut creer et modifier l'historique lie au patient.</IonText>
-
-            <IonItem lines="none" style={{ marginTop: '12px' }}>
-              <IonLabel position="stacked">Membre de famille</IonLabel>
-              <IonSelect
-                value={historyForm.family_member_id}
-                placeholder="Patient principal"
-                onIonChange={(e) => setHistoryForm((prev) => ({ ...prev, family_member_id: e.detail.value ?? '' }))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+              <div>
+                <h1 style={{ marginTop: 0 }}>{editingHistoryId === null ? 'Ajouter un historique' : 'Modifier un historique'}</h1>
+                <IonText color="medium">Le docteur peut creer et modifier l'historique lie au patient.</IonText>
+              </div>
+              <IonButton
+                fill="clear"
+                color="medium"
+                onClick={() => {
+                  setShowHistoryModal(false);
+                  resetHistoryForm();
+                }}
               >
-                <IonSelectOption value="">Patient principal</IonSelectOption>
-                {familyMembers.map((member) => (
-                  <IonSelectOption key={member.id} value={String(member.id)}>
-                    {member.name}
-                  </IonSelectOption>
-                ))}
-              </IonSelect>
-            </IonItem>
-
-            <IonItem lines="none" style={{ marginTop: '8px' }}>
-              <IonLabel position="stacked">Ordonnance liee (optionnel)</IonLabel>
-              <IonSelect
-                value={historyForm.prescription_id}
-                placeholder="Aucune"
-                onIonChange={(e) => setHistoryForm((prev) => ({ ...prev, prescription_id: e.detail.value ?? '' }))}
-              >
-                <IonSelectOption value="">Aucune</IonSelectOption>
-                {patientPrescriptions.map((prescription) => (
-                  <IonSelectOption key={prescription.id} value={String(prescription.id)}>
-                    {getPrescriptionCode(prescription)} · {formatDateHaiti(prescription.requested_at)}
-                  </IonSelectOption>
-                ))}
-              </IonSelect>
-            </IonItem>
-
-            <IonItem lines="none" style={{ marginTop: '8px' }}>
-              <IonLabel position="stacked">Type</IonLabel>
-              <IonSelect
-                value={historyForm.type}
-                onIonChange={(e) =>
-                  setHistoryForm((prev) => ({ ...prev, type: e.detail.value as ApiMedicalHistoryEntry['type'] }))
-                }
-              >
-                <IonSelectOption value="condition">Condition</IonSelectOption>
-                <IonSelectOption value="allergy">Allergie</IonSelectOption>
-                <IonSelectOption value="surgery">Chirurgie</IonSelectOption>
-                <IonSelectOption value="hospitalization">Hospitalisation</IonSelectOption>
-                <IonSelectOption value="medication">Traitement</IonSelectOption>
-                <IonSelectOption value="note">Note</IonSelectOption>
-              </IonSelect>
-            </IonItem>
-
-            <IonItem lines="none" style={{ marginTop: '8px' }}>
-              <IonLabel position="stacked">Titre *</IonLabel>
-              <IonInput
-                value={historyForm.title}
-                onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, title: e.detail.value ?? '' }))}
-              />
-            </IonItem>
-
-            <IonItem lines="none" style={{ marginTop: '8px' }}>
-              <IonLabel position="stacked">Details</IonLabel>
-              <IonTextarea
-                autoGrow
-                value={historyForm.details}
-                onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, details: e.detail.value ?? '' }))}
-              />
-            </IonItem>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Debut</IonLabel>
-                <IonInput
-                  type="date"
-                  value={historyForm.started_at}
-                  onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, started_at: e.detail.value ?? '' }))}
-                />
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Fin</IonLabel>
-                <IonInput
-                  type="date"
-                  value={historyForm.ended_at}
-                  onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, ended_at: e.detail.value ?? '' }))}
-                />
-              </IonItem>
+                <IonIcon icon={closeOutline} />
+              </IonButton>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '8px' }}>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Statut</IonLabel>
-                <IonSelect
-                  value={historyForm.status}
-                  onIonChange={(e) =>
-                    setHistoryForm((prev) => ({ ...prev, status: e.detail.value as ApiMedicalHistoryEntry['status'] }))
-                  }
-                >
-                  <IonSelectOption value="active">Actif</IonSelectOption>
-                  <IonSelectOption value="resolved">Resolue</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-              <IonItem lines="none">
-                <IonLabel position="stacked">Visibilite</IonLabel>
-                <IonSelect
-                  value={historyForm.visibility}
-                  onIonChange={(e) =>
-                    setHistoryForm((prev) => ({
-                      ...prev,
-                      visibility: e.detail.value as Extract<ApiMedicalHistoryEntry['visibility'], 'shared' | 'doctor_only'>
-                    }))
-                  }
-                >
-                  <IonSelectOption value="shared">Partage</IonSelectOption>
-                  <IonSelectOption value="doctor_only">Docteur seulement</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-            </div>
+            <IonCard className="surface-card" style={{ marginTop: '12px' }}>
+              <IonCardHeader>
+                <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span>Visibilite</span>
+                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalContextCollapsed((prev) => !prev)}>
+                    <IonIcon icon={isHistoryModalContextCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                </IonCardTitle>
+              </IonCardHeader>
+              {!isHistoryModalContextCollapsed ? (
+                <IonCardContent>
+                  <IonItem lines="none" style={{ marginTop: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                      <IonButton
+                        size="small"
+                        fill={historyForm.visibility === 'shared' ? 'solid' : 'outline'}
+                        onClick={() => setHistoryForm((prev) => ({ ...prev, visibility: 'shared' }))}
+                      >
+                        Partage
+                      </IonButton>
+                      <IonButton
+                        size="small"
+                        fill={historyForm.visibility === 'doctor_only' ? 'solid' : 'outline'}
+                        onClick={() => setHistoryForm((prev) => ({ ...prev, visibility: 'doctor_only' }))}
+                      >
+                        Docteur seulement
+                      </IonButton>
+                    </div>
+                  </IonItem>
+                </IonCardContent>
+              ) : null}
+            </IonCard>
 
-            <IonButton expand="block" style={{ marginTop: '16px' }} onClick={() => saveHistory().catch(() => undefined)} disabled={savingHistory}>
-              {editingHistoryId === null ? 'Ajouter' : 'Mettre a jour'}
-            </IonButton>
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span>Details cliniques</span>
+                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalDetailsCollapsed((prev) => !prev)}>
+                    <IonIcon icon={isHistoryModalDetailsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                </IonCardTitle>
+              </IonCardHeader>
+              {!isHistoryModalDetailsCollapsed ? (
+                <IonCardContent>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Type</IonLabel>
+                    <IonSelect
+                      value={historyForm.type}
+                      onIonChange={(e) =>
+                        setHistoryForm((prev) => ({ ...prev, type: e.detail.value as ApiMedicalHistoryEntry['type'] }))
+                      }
+                    >
+                      <IonSelectOption value="condition">Condition</IonSelectOption>
+                      <IonSelectOption value="allergy">Allergie</IonSelectOption>
+                      <IonSelectOption value="surgery">Chirurgie</IonSelectOption>
+                      <IonSelectOption value="hospitalization">Hospitalisation</IonSelectOption>
+                      <IonSelectOption value="medication">Traitement</IonSelectOption>
+                      <IonSelectOption value="note">Note</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem lines="none" style={{ marginTop: '8px' }}>
+                    <IonLabel position="stacked">Titre *</IonLabel>
+                    <IonInput
+                      value={historyForm.title}
+                      onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, title: e.detail.value ?? '' }))}
+                    />
+                  </IonItem>
+                  <IonItem lines="none" style={{ marginTop: '8px' }}>
+                    <IonLabel position="stacked">Details</IonLabel>
+                    <IonTextarea
+                      autoGrow
+                      value={historyForm.details}
+                      onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, details: e.detail.value ?? '' }))}
+                    />
+                  </IonItem>
+                </IonCardContent>
+              ) : null}
+            </IonCard>
+
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span>Dates et statut</span>
+                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalDatesCollapsed((prev) => !prev)}>
+                    <IonIcon icon={isHistoryModalDatesCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                </IonCardTitle>
+              </IonCardHeader>
+              {!isHistoryModalDatesCollapsed ? (
+                <IonCardContent>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Debut</IonLabel>
+                      <IonInput
+                        type="date"
+                        value={historyForm.started_at}
+                        onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, started_at: e.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Fin</IonLabel>
+                      <IonInput
+                        type="date"
+                        value={historyForm.ended_at}
+                        onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, ended_at: e.detail.value ?? '' }))}
+                      />
+                    </IonItem>
+                  </div>
+                  <IonItem lines="none" style={{ marginTop: '8px' }}>
+                    <IonLabel position="stacked">Statut</IonLabel>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                      <IonButton
+                        size="small"
+                        fill={historyForm.status === 'active' ? 'solid' : 'outline'}
+                        onClick={() => setHistoryForm((prev) => ({ ...prev, status: 'active' }))}
+                      >
+                        Actif
+                      </IonButton>
+                      <IonButton
+                        size="small"
+                        fill={historyForm.status === 'resolved' ? 'solid' : 'outline'}
+                        onClick={() => setHistoryForm((prev) => ({ ...prev, status: 'resolved' }))}
+                      >
+                        Resolue
+                      </IonButton>
+                    </div>
+                  </IonItem>
+                </IonCardContent>
+              ) : null}
+            </IonCard>
+
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span>Liaison ordonnance</span>
+                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalLinkCollapsed((prev) => !prev)}>
+                    <IonIcon icon={isHistoryModalLinkCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                </IonCardTitle>
+              </IonCardHeader>
+              {!isHistoryModalLinkCollapsed ? (
+                <IonCardContent>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Ordonnance liee (optionnel)</IonLabel>
+                    <IonSelect
+                      value={historyForm.prescription_id}
+                      placeholder="Aucune"
+                      onIonChange={(e) => setHistoryForm((prev) => ({ ...prev, prescription_id: e.detail.value ?? '' }))}
+                    >
+                      <IonSelectOption value="">Aucune</IonSelectOption>
+                      {patientPrescriptions.map((prescription) => (
+                        <IonSelectOption key={prescription.id} value={String(prescription.id)}>
+                          {getPrescriptionCode(prescription)} · {formatDateHaiti(prescription.requested_at)}
+                        </IonSelectOption>
+                      ))}
+                    </IonSelect>
+                  </IonItem>
+                  {selectedPrescriptionForHistory ? (
+                    <IonCard className="surface-card" style={{ margin: '8px 0 0 0' }}>
+                      <IonCardHeader>
+                        <IonCardTitle style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <IonIcon icon={documentTextOutline} />
+                            Contexte ordonnance
+                          </span>
+                          <IonBadge className={getPrescriptionStatusClassName(selectedPrescriptionForHistory.status)}>
+                            {getPrescriptionStatusLabel(selectedPrescriptionForHistory.status)}
+                          </IonBadge>
+                        </IonCardTitle>
+                      </IonCardHeader>
+                      <IonCardContent>
+                        <p style={{ margin: 0 }}>
+                          <strong>{getPrescriptionCode(selectedPrescriptionForHistory)}</strong> ·{' '}
+                          {formatDateTime(selectedPrescriptionForHistory.requested_at)}
+                        </p>
+                        <p style={{ margin: '4px 0 0 0' }}>
+                          {selectedPrescriptionForHistory.medicine_requests.length} medicament(s)
+                        </p>
+                        <div style={{ marginTop: '6px', display: 'grid', gap: '4px' }}>
+                          {selectedPrescriptionForHistory.medicine_requests.map((med) => (
+                            <p key={`history-modal-rx-${selectedPrescriptionForHistory.id}-${med.id}`} style={{ margin: 0 }}>
+                              <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qt: {med.quantity ?? 1}
+                              {' · '}Dose/jour: {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
+                            </p>
+                          ))}
+                        </div>
+                      </IonCardContent>
+                    </IonCard>
+                  ) : null}
+                </IonCardContent>
+              ) : null}
+            </IonCard>
+
+            <div
+              style={{
+                position: 'sticky',
+                bottom: '-16px',
+                background: '#f0f6fa',
+                borderTop: '1px solid #dbe7ef',
+                padding: '8px',
+                boxShadow: '0 -4px 12px rgba(15, 23, 42, 0.06)',
+                zIndex: 1
+              }}
+            >
+              <IonButton expand="block" style={{ marginTop: '8px' }} onClick={() => saveHistory().catch(() => undefined)} disabled={savingHistory || !historyForm.title.trim()}>
+                {editingHistoryId === null ? 'Ajouter' : 'Mettre a jour'}
+              </IonButton>
+              <IonButton
+                expand="block"
+                color="dark"
+                onClick={() => {
+                  setShowHistoryModal(false);
+                  resetHistoryForm();
+                }}
+              >
+                Annuler
+              </IonButton>
+            </div>
             {historyError ? (
               <IonText color="danger">
                 <p>{historyError}</p>
               </IonText>
             ) : null}
-            <IonButton
-              expand="block"
-              fill="outline"
-              color="medium"
-              onClick={() => {
-                setShowHistoryModal(false);
-                resetHistoryForm();
-              }}
-            >
-              Annuler
-            </IonButton>
           </IonContent>
         </IonModal>
 

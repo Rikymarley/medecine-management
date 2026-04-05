@@ -200,7 +200,6 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                   )}
                   <IonLabel>
                     <h2>{pharmacy.name}</h2>
-                    <p>{pharmacy.address || 'Adresse non renseignee'}</p>
                   </IonLabel>
                   <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.9rem', color: '#475569' }}>Approbation :</span>
@@ -251,6 +250,27 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                 ) : null}
 
                 <IonList>
+                  <IonItem lines="full">
+                    <IonLabel>
+                      <h3>Adresse</h3>
+                      <p>{pharmacy.address || 'N/D'}</p>
+                    </IonLabel>
+                    {pharmacy.latitude && pharmacy.longitude ? (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${pharmacy.latitude},${pharmacy.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        slot="end"
+                        style={{ opacity: 1 }}
+                      >
+                        <IonIcon icon={locateOutline} />
+                      </a>
+                    ) : (
+                      <div slot="end" style={{ opacity: 0.35 }}>
+                        <IonIcon icon={locateOutline} />
+                      </div>
+                    )}
+                  </IonItem>
                   <IonItem lines="full">
                     <IonLabel>
                       <h3>Telephone</h3>
@@ -310,22 +330,6 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                       <h3>Horaires</h3>
                       <p style={{ whiteSpace: 'pre-line' }}>{pharmacy.opening_hours || 'N/D'}</p>
                     </IonLabel>
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel>
-                      <h3>Localisation</h3>
-                      <p>{pharmacy.latitude && pharmacy.longitude ? `${pharmacy.latitude}, ${pharmacy.longitude}` : 'N/D'}</p>
-                    </IonLabel>
-                    {pharmacy.latitude && pharmacy.longitude ? (
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${pharmacy.latitude},${pharmacy.longitude}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        slot="end"
-                      >
-                        <IonIcon icon={locateOutline} />
-                      </a>
-                    ) : null}
                   </IonItem>
                 </IonList>
               </>

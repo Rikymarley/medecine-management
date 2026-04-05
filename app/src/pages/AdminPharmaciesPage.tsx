@@ -110,7 +110,6 @@ const AdminPharmaciesPage: React.FC = () => {
             )}
             <h3>{pharmacy.name}</h3>
             <p>{pharmacy.address || 'Adresse N/D'}</p>
-            <p>Compte: {pharmacy.pharmacy_user_email || 'N/D'}</p>
           </div>
         </div>
 
@@ -118,9 +117,6 @@ const AdminPharmaciesPage: React.FC = () => {
           {pharmacy.account_status === 'blocked' ? (
             <IonBadge color="danger">Bloque</IonBadge>
           ) : null}
-          <IonBadge color={pharmacy.account_verification_status === 'approved' ? 'success' : 'warning'}>
-            {pharmacy.account_verification_status === 'approved' ? 'Compte OK' : 'Compte attente'}
-          </IonBadge>
           <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
             {pharmacy.license_verified ? 'Licence OK' : 'Licence attente'}
           </IonBadge>
@@ -185,7 +181,7 @@ const AdminPharmaciesPage: React.FC = () => {
             </div>
             <IonSearchbar
               value={query}
-              placeholder="Rechercher nom, adresse, email..."
+              placeholder="Rechercher nom, adresse..."
               onIonInput={(event) => setQuery(event.detail.value ?? '')}
             />
             {filter !== 'all' ? (

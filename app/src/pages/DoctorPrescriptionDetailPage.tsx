@@ -9,6 +9,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -20,6 +21,18 @@ import {
   IonTitle,
   IonToolbar
 } from '@ionic/react';
+import {
+  businessOutline,
+  calendarOutline,
+  callOutline,
+  chevronDownOutline,
+  chevronUpOutline,
+  closeOutline,
+  documentTextOutline,
+  flaskOutline,
+  personOutline,
+  printOutline
+} from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
@@ -54,6 +67,8 @@ const formatPrintDate = (value: string | null): string => {
   });
 };
 
+const availableResponseStatuses = new Set(['very_low', 'low', 'available', 'high', 'equivalent']);
+
 const DoctorPrescriptionDetailPage: React.FC = () => {
   const { token, user } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -68,20 +83,58 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
   const [loadingHistoryEntries, setLoadingHistoryEntries] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<ApiMedicalHistoryEntry[]>([]);
   const [historyPickerError, setHistoryPickerError] = useState<string | null>(null);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
+  const [historyVisibilityFilter, setHistoryVisibilityFilter] = useState<'all' | 'shared' | 'doctor_only'>('all');
+  const [isPrescriptionContextCollapsed, setIsPrescriptionContextCollapsed] = useState(false);
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
-  const familyMemberIdFromQuery = useMemo(() => {
-    const raw = new URLSearchParams(location.search).get('familyMemberId');
-    if (!raw) {
-      return null;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : null;
-  }, [location.search]);
-  const historyScope = useMemo(() => new URLSearchParams(location.search).get('scope'), [location.search]);
   const familyMemberNameFromQuery = useMemo(
     () => new URLSearchParams(location.search).get('familyMemberName'),
     [location.search]
   );
+  const patientDisplayName =
+    prescription?.familyMember?.name ||
+    prescription?.family_member?.name ||
+    familyMemberNameFromQuery ||
+    prescription?.patient_name ||
+    'Patient';
+  const medicineCount = prescription?.medicine_requests.length ?? 0;
+  const totalQuantity = useMemo(
+    () => (prescription?.medicine_requests ?? []).reduce((sum, med) => sum + (med.quantity ?? 1), 0),
+    [prescription]
+  );
+  const pharmacyCoverage = useMemo(() => {
+    if (!prescription) {
+      return [];
+    }
+    const coverageByPharmacy = new Map<number, Set<number>>();
+    prescription.responses.forEach((response) => {
+      if (!availableResponseStatuses.has(response.status)) {
+        return;
+      }
+      if (!coverageByPharmacy.has(response.pharmacy_id)) {
+        coverageByPharmacy.set(response.pharmacy_id, new Set<number>());
+      }
+      coverageByPharmacy.get(response.pharmacy_id)?.add(response.medicine_request_id);
+    });
+
+    return Array.from(coverageByPharmacy.entries())
+      .map(([pharmacyId, coveredSet]) => ({
+        pharmacyId,
+        coveredCount: coveredSet.size
+      }))
+      .sort((a, b) => b.coveredCount - a.coveredCount);
+  }, [prescription]);
+  const filteredHistoryEntries = useMemo(() => {
+    const query = historyQuery.trim().toLowerCase();
+    return historyEntries.filter((entry) => {
+      if (historyStatusFilter !== 'all' && entry.status !== historyStatusFilter) return false;
+      if (historyVisibilityFilter !== 'all' && entry.visibility !== historyVisibilityFilter) return false;
+      if (!query) return true;
+      const hay = `${entry.entry_code ?? ''} ${entry.title ?? ''} ${entry.type ?? ''} ${entry.details ?? ''}`.toLowerCase();
+      return hay.includes(query);
+    });
+  }, [historyEntries, historyQuery, historyStatusFilter, historyVisibilityFilter]);
 
   useEffect(() => {
     const load = async () => {
@@ -250,22 +303,16 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
     if (!token || !prescription?.patient_user_id) {
       return;
     }
-    const targetFamilyMemberId =
-      historyScope === 'principal'
-        ? null
-        : familyMemberIdFromQuery ?? prescription.family_member_id ?? null;
     setShowHistoryPicker(true);
     setLoadingHistoryEntries(true);
     setHistoryPickerError(null);
+    setHistoryQuery('');
+    setHistoryStatusFilter('all');
+    setHistoryVisibilityFilter('all');
+    setIsPrescriptionContextCollapsed(false);
     try {
-      const rows = await api.getDoctorPatientMedicalHistory(token, prescription.patient_user_id, {
-        family_member_id: targetFamilyMemberId ?? undefined
-      });
-      setHistoryEntries(
-        targetFamilyMemberId
-          ? rows.filter((entry) => entry.family_member_id === targetFamilyMemberId)
-          : rows.filter((entry) => !entry.family_member_id)
-      );
+      const rows = await api.getDoctorPatientMedicalHistory(token, prescription.patient_user_id);
+      setHistoryEntries(rows);
     } catch (err) {
       setHistoryPickerError(err instanceof Error ? err.message : "Impossible de charger l'historique.");
       setHistoryEntries([]);
@@ -328,35 +375,62 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
           <>
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>
-                  {prescription.familyMember?.name ||
-                    prescription.family_member?.name ||
-                    familyMemberNameFromQuery ||
-                    prescription.patient_name}
-                </IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <div className="status-row">
-                  <span>Statut:</span>
+                <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <IonIcon icon={personOutline} />
+                    {patientDisplayName}
+                  </span>
                   <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
                     {getPrescriptionStatusLabel(prescription.status)}
                   </IonBadge>
+                </IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  <IonBadge color="light">Code: {getPrescriptionCode(prescription)}</IonBadge>
+                  <IonBadge color="light">{medicineCount} medicament(s)</IonBadge>
+                  <IonBadge color="light">Quantite totale: {totalQuantity}</IonBadge>
+                  {prescription.family_member_id ? <IonBadge color="medium">Membre de famille</IonBadge> : null}
                 </div>
-                <p>Code ordonnance: {getPrescriptionCode(prescription)}</p>
-                <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
-                <IonButton fill="outline" onClick={printPrescription}>
-                  Reimprimer (QR)
-                </IonButton>
-                <IonButton
-                  fill="outline"
-                  disabled={!prescription.patient_user_id}
-                  onClick={() => openHistoryPicker().catch(() => undefined)}
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr',
+                    marginBottom: '10px'
+                  }}
                 >
-                  Ajouter a l historique
-                </IonButton>
+                  <div style={{ border: '1px solid #dbe7ef', borderRadius: '10px', padding: '10px' }}>
+                    <p style={{ margin: 0, fontWeight: 700 }}>Patient</p>
+                    <p style={{ margin: '4px 0 0 0' }}>{patientDisplayName}</p>
+                    <p style={{ margin: '2px 0 0 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <IonIcon icon={callOutline} />
+                      {prescription.patient_phone || prescription.patient?.phone || 'N/D'}
+                    </p>
+                  </div>
+                </div>
+
+                <p style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <IonIcon icon={calendarOutline} />
+                  Demandee le {formatDateTime(prescription.requested_at)}
+                </p>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <IonButton fill="outline" onClick={printPrescription}>
+                    <IonIcon icon={printOutline} slot="start" />
+                    Reimprimer (QR)
+                  </IonButton>
+                  <IonButton
+                    fill="outline"
+                    disabled={!prescription.patient_user_id}
+                    onClick={() => openHistoryPicker().catch(() => undefined)}
+                  >
+                    Ajouter a l historique
+                  </IonButton>
+                </div>
                 {!prescription.patient_user_id ? (
-                  <>
-                    <p style={{ marginTop: '8px' }}>
+                  <div style={{ marginTop: '10px', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '10px' }}>
+                    <p style={{ marginTop: 0 }}>
                       Historique medical indisponible tant que cette ordonnance n'est pas liee a un patient.
                     </p>
                     <IonItem lines="none">
@@ -390,7 +464,7 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                     >
                       {isLinking ? 'Creation...' : 'Creer/Lier et activer historique'}
                     </IonButton>
-                  </>
+                  </div>
                 ) : null}
                 {linkMessage ? <p style={{ marginTop: '8px' }}>{linkMessage}</p> : null}
                 {printMessage ? <p style={{ marginTop: '8px' }}>{printMessage}</p> : null}
@@ -398,73 +472,184 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
             </IonCard>
             <IonModal isOpen={showHistoryPicker} onDidDismiss={() => setShowHistoryPicker(false)}>
               <IonContent className="ion-padding app-content">
-                <h2 style={{ marginTop: 0 }}>Selectionner un historique</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <h2 style={{ marginTop: 0 }}>Selectionner un historique</h2>
+                  <IonButton fill="clear" color="medium" onClick={() => setShowHistoryPicker(false)}>
+                    <IonIcon icon={closeOutline} />
+                  </IonButton>
+                </div>
                 <IonText color="medium">
-                  <p>Choisissez le code d'historique pour lier cette ordonnance.</p>
+                  <p>
+                    Ordonnance <strong>{getPrescriptionCode(prescription)}</strong> · Patient <strong>{patientDisplayName}</strong>
+                  </p>
                 </IonText>
+                <IonCard className="surface-card" style={{ margin: '8px 0' }}>
+                  <IonCardHeader>
+                    <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <IonIcon icon={documentTextOutline} />
+                        Contexte ordonnance
+                      </span>
+                      <IonButton
+                        fill="clear"
+                        size="small"
+                        onClick={() => setIsPrescriptionContextCollapsed((prev) => !prev)}
+                      >
+                        <IonIcon icon={isPrescriptionContextCollapsed ? chevronDownOutline : chevronUpOutline} />
+                      </IonButton>
+                    </IonCardTitle>
+                  </IonCardHeader>
+                  {!isPrescriptionContextCollapsed ? (
+                    <IonCardContent>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <IonBadge color="light">Code: {getPrescriptionCode(prescription)}</IonBadge>
+                        <IonBadge color="light">Statut: {getPrescriptionStatusLabel(prescription.status)}</IonBadge>
+                        <IonBadge color="light">{medicineCount} medicament(s)</IonBadge>
+                        <IonBadge color="light">Quantite totale: {totalQuantity}</IonBadge>
+                      </div>
+                      <p style={{ margin: '8px 0 0 0' }}>Date: {formatDateTime(prescription.requested_at)}</p>
+                      <div style={{ marginTop: '6px', display: 'grid', gap: '4px' }}>
+                        {prescription.medicine_requests.map((med) => (
+                          <p key={`ctx-med-${med.id}`} style={{ margin: 0 }}>
+                            <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qt: {med.quantity ?? 1}
+                            {' · '}Dose/jour: {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
+                          </p>
+                        ))}
+                      </div>
+                    </IonCardContent>
+                  ) : null}
+                </IonCard>
+                <IonInput
+                  value={historyQuery}
+                  placeholder="Rechercher code, titre, type..."
+                  onIonInput={(event) => setHistoryQuery(event.detail.value ?? '')}
+                />
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                  <IonButton size="small" fill={historyStatusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setHistoryStatusFilter('all')}>
+                    Tous
+                  </IonButton>
+                  <IonButton size="small" fill={historyStatusFilter === 'active' ? 'solid' : 'outline'} onClick={() => setHistoryStatusFilter('active')}>
+                    Actif
+                  </IonButton>
+                  <IonButton size="small" fill={historyStatusFilter === 'resolved' ? 'solid' : 'outline'} onClick={() => setHistoryStatusFilter('resolved')}>
+                    Resolue
+                  </IonButton>
+                  <IonButton
+                    size="small"
+                    fill={historyVisibilityFilter === 'shared' ? 'solid' : 'outline'}
+                    onClick={() => setHistoryVisibilityFilter(historyVisibilityFilter === 'shared' ? 'all' : 'shared')}
+                  >
+                    Partage
+                  </IonButton>
+                  <IonButton
+                    size="small"
+                    fill={historyVisibilityFilter === 'doctor_only' ? 'solid' : 'outline'}
+                    onClick={() => setHistoryVisibilityFilter(historyVisibilityFilter === 'doctor_only' ? 'all' : 'doctor_only')}
+                  >
+                    Docteur seulement
+                  </IonButton>
+                </div>
 
                 {loadingHistoryEntries ? (
                   <div style={{ display: 'grid', placeItems: 'center', minHeight: '160px' }}>
                     <IonSpinner name="crescent" />
                   </div>
-                ) : historyEntries.length === 0 ? (
+                ) : filteredHistoryEntries.length === 0 ? (
                   <IonText color="medium">
                     <p>Aucune entree d'historique disponible pour ce patient.</p>
                   </IonText>
                 ) : (
-                  <IonList>
-                    {historyEntries.map((entry) => (
-                      <IonItem
-                        key={entry.id}
-                        button
-                        detail={false}
-                        onClick={() => linkPrescriptionToHistory(entry).catch(() => undefined)}
-                      >
-                        <IonLabel>
-                          <h3 id={`history-code-${entry.id}`}>{entry.entry_code ?? `MH-${entry.id}`}</h3>
-                          <p id={`history-title-${entry.id}`}>{entry.title}</p>
-                          {entry.details ? <p id={`history-details-${entry.id}`}>{entry.details}</p> : null}
-                        </IonLabel>
-                      </IonItem>
+                  <div style={{ display: 'grid', gap: '8px', marginTop: '8px' }}>
+                    {filteredHistoryEntries.map((entry) => (
+                      <IonCard key={entry.id} className="surface-card" style={{ margin: 0 }}>
+                        <IonCardContent>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <h3 id={`history-code-${entry.id}`} style={{ margin: 0 }}>
+                              {entry.entry_code ?? `MH-${entry.id}`}
+                            </h3>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              <IonBadge color={entry.status === 'resolved' ? 'success' : 'warning'}>
+                                {entry.status === 'resolved' ? 'Resolue' : 'Actif'}
+                              </IonBadge>
+                              <IonBadge color={entry.visibility === 'shared' ? 'primary' : 'dark'}>
+                                {entry.visibility === 'shared' ? 'Partage' : 'Docteur seulement'}
+                              </IonBadge>
+                            </div>
+                          </div>
+                          <p id={`history-title-${entry.id}`} style={{ margin: '4px 0 0 0', fontWeight: 700 }}>
+                            {entry.title}
+                          </p>
+                          <p style={{ margin: '2px 0 0 0' }}>
+                            {entry.type} · Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'N/D'} · Fin:{' '}
+                            {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'N/D'}
+                          </p>
+                          {entry.details ? <p id={`history-details-${entry.id}`} style={{ margin: '2px 0 0 0' }}>{entry.details}</p> : null}
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
+                            <IonButton size="small" onClick={() => linkPrescriptionToHistory(entry).catch(() => undefined)}>
+                              Selectionner
+                            </IonButton>
+                          </div>
+                        </IonCardContent>
+                      </IonCard>
                     ))}
-                  </IonList>
+                  </div>
                 )}
                 {historyPickerError ? (
                   <IonText color="danger">
                     <p>{historyPickerError}</p>
                   </IonText>
                 ) : null}
-                <IonButton expand="block" fill="outline" color="medium" onClick={() => setShowHistoryPicker(false)}>
-                  Fermer
-                </IonButton>
               </IonContent>
             </IonModal>
 
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>Medicaments</IonCardTitle>
+                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={flaskOutline} />
+                  Medicaments
+                </IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                <IonList>
+                <div style={{ display: 'grid', gap: '8px' }}>
                   {prescription.medicine_requests.map((med) => (
-                    <IonItem key={med.id} lines="full">
-                      <IonLabel>
-                        <h3 style={{ fontWeight: 800 }}>{med.name}</h3>
-                        <p>
-                          {med.strength || 'Sans dosage'} · {med.form || 'Sans forme'}
-                        </p>
-                        <p>Quantite demandee: {med.quantity ?? 1}</p>
-                        <p>Duree: {med.duration_days ?? '-'} jour(s)</p>
-                        <p>Dose journaliere: {med.daily_dosage ?? '-'} fois/jour</p>
-                        <p>Notes: {med.notes ?? '-'}</p>
-                        <p>
-                          Generique: {med.generic_allowed ? 'Oui' : 'Non'} · Conversion:{' '}
-                          {med.conversion_allowed ? 'Oui' : 'Non'}
-                        </p>
-                      </IonLabel>
-                    </IonItem>
+                    <div key={med.id} style={{ border: '1px solid #dbe7ef', borderRadius: '10px', padding: '10px' }}>
+                      <h3 style={{ margin: 0, fontWeight: 800 }}>{med.name}</h3>
+                      <p style={{ margin: '4px 0 0 0' }}>
+                        {med.form || 'Sans forme'} · {med.strength || 'Sans dosage'}
+                      </p>
+                      <p style={{ margin: '2px 0 0 0' }}>
+                        Quantite: {med.quantity ?? 1} · Duree: {med.duration_days ?? '-'} j · Dose/jour: {med.daily_dosage ?? '-'}
+                      </p>
+                      <p style={{ margin: '2px 0 0 0' }}>Note: {med.notes ?? '-'}</p>
+                    </div>
                   ))}
-                </IonList>
+                </div>
+              </IonCardContent>
+            </IonCard>
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={businessOutline} />
+                  Disponibilite pharmacies
+                </IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                {pharmacyCoverage.length === 0 ? (
+                  <IonText color="medium">
+                    <p>Aucune confirmation pharmacie pour le moment.</p>
+                  </IonText>
+                ) : (
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {pharmacyCoverage.map((row) => (
+                      <div key={row.pharmacyId} style={{ border: '1px solid #dbe7ef', borderRadius: '10px', padding: '10px' }}>
+                        <p style={{ margin: 0, fontWeight: 700 }}>Pharmacie #{row.pharmacyId}</p>
+                        <p style={{ margin: '4px 0 0 0' }}>
+                          Couverture: {row.coveredCount}/{medicineCount}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </IonCardContent>
             </IonCard>
           </>

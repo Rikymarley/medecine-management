@@ -1,0 +1,34 @@
+Great, let’s bring it back online cleanly — run these commands in order:
+
+# 1) Backend (Laravel)
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/backend
+php artisan serve --host=127.0.0.1 --port=8000
+Open a new terminal:
+
+# 2) Frontend (Ionic/Vite)
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/app
+npm run dev -- --host --port 5173
+Open a new terminal:
+
+# 3) Ngrok tunnel to frontend
+ngrok http 5173
+If Vite blocks ngrok host, add in /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/app/vite.config.ts:
+
+server: {
+  allowedHosts: ['<your-ngrok-domain>.ngrok-free.dev']
+}
+Then restart Vite:
+
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/app
+npm run dev -- --host --port 5173
+Optional quick checks:
+
+curl http://127.0.0.1:8000/api/doctors
+curl http://127.0.0.1:5173
+
+
+
+
+====================================
+OR JUST SAY  :  "GO LIVE WITH NGROK"
+====================================

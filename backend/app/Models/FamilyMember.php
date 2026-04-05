@@ -8,8 +8,10 @@ class FamilyMember extends Model
 {
     protected $fillable = [
         'patient_user_id',
+        'linked_user_id',
         'name',
         'photo_url',
+        'id_document_url',
         'archived_at',
         'age',
         'date_of_birth',
@@ -39,5 +41,10 @@ class FamilyMember extends Model
     public function patient()
     {
         return $this->belongsTo(User::class, 'patient_user_id');
+    }
+
+    public function linkedUser()
+    {
+        return $this->belongsTo(User::class, 'linked_user_id');
     }
 }

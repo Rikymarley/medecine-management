@@ -102,6 +102,12 @@ Route::patch('/patient/family-members/{familyMember}', [FamilyMemberController::
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::post('/patient/family-members/{familyMember}/photo', [FamilyMemberController::class, 'uploadPhoto'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
+Route::delete('/patient/family-members/{familyMember}/photo', [FamilyMemberController::class, 'removePhoto'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
+Route::post('/patient/family-members/{familyMember}/id-document', [FamilyMemberController::class, 'uploadIdDocument'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
+Route::delete('/patient/family-members/{familyMember}/id-document', [FamilyMemberController::class, 'removeIdDocument'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
 Route::patch('/patient/family-members/{familyMember}/unarchive', [FamilyMemberController::class, 'unarchive'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::delete('/patient/family-members/{familyMember}', [FamilyMemberController::class, 'destroy'])
@@ -135,6 +141,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/patient/me', [AuthController::class, 'updatePatientProfile'])
         ->middleware(['role:patient', 'throttle:30,1']);
     Route::post('/patient/me/profile-photo', [AuthController::class, 'uploadPatientProfilePhoto'])
+        ->middleware(['role:patient', 'throttle:20,1']);
+    Route::post('/patient/me/id-document', [AuthController::class, 'uploadPatientIdDocument'])
+        ->middleware(['role:patient', 'throttle:20,1']);
+    Route::delete('/patient/me/id-document', [AuthController::class, 'removePatientIdDocument'])
         ->middleware(['role:patient', 'throttle:20,1']);
 });
 

@@ -307,10 +307,15 @@ const DoctorDoctorDetailPage: React.FC = () => {
                         target="_blank"
                         rel="noreferrer"
                         slot="end"
+                        style={{ opacity: 1 }}
                       >
                         <IonIcon icon={locateOutline} />
                       </a>
-                    ) : null}
+                    ) : (
+                      <div slot="end" style={{ opacity: 0.35 }}>
+                        <IonIcon icon={locateOutline} />
+                      </div>
+                    )}
                   </IonItem>
                   <IonItem lines="full">
                     <IonLabel>
@@ -350,6 +355,13 @@ const DoctorDoctorDetailPage: React.FC = () => {
                     <IonLabel>
                       <h3>Experience</h3>
                       <p>{doctor.years_experience ? `${doctor.years_experience} ans` : 'N/D'}</p>
+                    </IonLabel>
+                  </IonItem>
+                  <IonItem lines="full">
+                    <IonLabel>
+                      <h3>Teleconsultation</h3>
+                      <p>{doctor.teleconsultation_available ? 'Disponible' : 'Non disponible'}</p>
+                      <p>Horaires: {doctor.consultation_hours || 'N/D'}</p>
                     </IonLabel>
                   </IonItem>
                   <IonItem lines="none">

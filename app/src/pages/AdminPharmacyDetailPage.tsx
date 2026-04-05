@@ -117,7 +117,6 @@ const AdminPharmacyDetailPage: React.FC = () => {
                   )}
                   <IonLabel>
                     <h2>{pharmacy.name}</h2>
-                    <p>{pharmacy.address || 'Adresse non renseignee'}</p>
                   </IonLabel>
                   {pharmacy.pharmacy_user_id ? (
                     <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
