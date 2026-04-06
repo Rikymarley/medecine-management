@@ -12,6 +12,8 @@ import {
   IonItem,
   IonLabel,
   IonPage,
+  IonSelect,
+  IonSelectOption,
   IonText,
   IonTextarea,
   IonTitle,
@@ -40,6 +42,13 @@ import InstallBanner from '../components/InstallBanner';
 import { api } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
+import { getPasswordStrength } from '../utils/passwordStrength';
+import {
+  buildDoctorSpecialty,
+  DOCTOR_SPECIALTY_OPTIONS,
+  OTHER_SPECIALTY_VALUE,
+  parseDoctorSpecialty
+} from '../constants/doctorSpecialties';
 
 const DoctorDashboard: React.FC = () => {
   const ionRouter = useIonRouter();
@@ -49,7 +58,9 @@ const DoctorDashboard: React.FC = () => {
   const [address, setAddress] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
-  const [specialty, setSpecialty] = useState('');
+  const [specialtyChoice, setSpecialtyChoice] = useState('');
+  const [specialtyOther, setSpecialtyOther] = useState('');
+  const [specialtyOptions, setSpecialtyOptions] = useState<string[]>([...DOCTOR_SPECIALTY_OPTIONS]);
   const [city, setCity] = useState('');
   const [department, setDepartment] = useState('');
   const [languages, setLanguages] = useState('');
@@ -60,6 +71,7 @@ const DoctorDashboard: React.FC = () => {
   const [yearsExperience, setYearsExperience] = useState('');
   const [consultationFeeRange, setConsultationFeeRange] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [recoveryWhatsapp, setRecoveryWhatsapp] = useState('');
   const [bio, setBio] = useState('');
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
   const [profileBannerUrl, setProfileBannerUrl] = useState('');
@@ -69,11 +81,16 @@ const DoctorDashboard: React.FC = () => {
   const bannerInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [contactExpanded, setContactExpanded] = useState(false);
   const [professionalExpanded, setProfessionalExpanded] = useState(false);
   const [verificationExpanded, setVerificationExpanded] = useState(false);
+  const [passwordExpanded, setPasswordExpanded] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
@@ -86,6 +103,23 @@ const DoctorDashboard: React.FC = () => {
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   };
+  const specialty = useMemo(
+    () => buildDoctorSpecialty(specialtyChoice, specialtyOther),
+    [specialtyChoice, specialtyOther]
+  );
+  const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
+
+  useEffect(() => {
+    api
+      .getDoctorSpecialties()
+      .then((rows) => {
+        const names = rows.map((row) => row.name).filter(Boolean);
+        if (names.length > 0) {
+          setSpecialtyOptions(names);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -99,7 +133,9 @@ const DoctorDashboard: React.FC = () => {
         setAddress(normalizeText(me.address));
         setLatitude(normalizeText(me.latitude));
         setLongitude(normalizeText(me.longitude));
-        setSpecialty(normalizeText(me.specialty));
+        const parsedSpecialty = parseDoctorSpecialty(normalizeText(me.specialty), specialtyOptions);
+        setSpecialtyChoice(parsedSpecialty.selected);
+        setSpecialtyOther(parsedSpecialty.custom);
         setCity(normalizeText(me.city));
         setDepartment(normalizeText(me.department));
         setLanguages(normalizeText(me.languages));
@@ -110,6 +146,7 @@ const DoctorDashboard: React.FC = () => {
         setYearsExperience(normalizeText(me.years_experience));
         setConsultationFeeRange(normalizeText(me.consultation_fee_range));
         setWhatsapp(maskHaitiPhone(normalizeText(me.whatsapp)));
+        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((me as any).recovery_whatsapp)));
         setBio(normalizeText(me.bio));
         setProfilePhotoUrl(normalizeText((me as any).profile_photo_url));
         setProfileBannerUrl(normalizeText((me as any).profile_banner_url));
@@ -119,7 +156,9 @@ const DoctorDashboard: React.FC = () => {
         setAddress(normalizeText(user?.address));
         setLatitude(normalizeText(user?.latitude));
         setLongitude(normalizeText(user?.longitude));
-        setSpecialty(normalizeText(user?.specialty));
+        const parsedSpecialty = parseDoctorSpecialty(normalizeText(user?.specialty), specialtyOptions);
+        setSpecialtyChoice(parsedSpecialty.selected);
+        setSpecialtyOther(parsedSpecialty.custom);
         setCity(normalizeText(user?.city));
         setDepartment(normalizeText(user?.department));
         setLanguages(normalizeText(user?.languages));
@@ -130,6 +169,7 @@ const DoctorDashboard: React.FC = () => {
         setYearsExperience(normalizeText(user?.years_experience));
         setConsultationFeeRange(normalizeText(user?.consultation_fee_range));
         setWhatsapp(maskHaitiPhone(normalizeText(user?.whatsapp)));
+        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((user as any)?.recovery_whatsapp)));
         setBio(normalizeText(user?.bio));
         setProfilePhotoUrl(normalizeText((user as any)?.profile_photo_url));
         setProfileBannerUrl(normalizeText((user as any)?.profile_banner_url));
@@ -149,8 +189,10 @@ const DoctorDashboard: React.FC = () => {
     user?.longitude,
     user?.phone,
     user?.specialty,
+    specialtyOptions,
     user?.teleconsultation_available,
     user?.whatsapp,
+    (user as any)?.recovery_whatsapp,
     user?.years_experience,
     (user as any)?.profile_photo_url,
     (user as any)?.profile_banner_url
@@ -271,6 +313,7 @@ const DoctorDashboard: React.FC = () => {
         years_experience: yearsExperience.trim() ? Number(yearsExperience) : null,
         consultation_fee_range: consultationFeeRange.trim() || null,
         whatsapp: whatsapp.trim() || null,
+        recovery_whatsapp: recoveryWhatsapp.trim() || null,
         bio: bio.trim() || null
       });
       setMessage('Profil mis a jour.');
@@ -328,6 +371,34 @@ const DoctorDashboard: React.FC = () => {
       if (bannerInputRef.current) {
         bannerInputRef.current.value = '';
       }
+    }
+  };
+
+  const savePassword = async () => {
+    if (!token) {
+      return;
+    }
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
+      setMessage('Veuillez renseigner tous les champs mot de passe.');
+      return;
+    }
+    setPasswordSaving(true);
+    setMessage(null);
+    try {
+      const response = await api.changePassword(token, {
+        current_password: currentPassword,
+        password: newPassword,
+        password_confirmation: confirmNewPassword
+      });
+      setMessage(response.message || 'Mot de passe mis a jour.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordExpanded(false);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Echec mise a jour mot de passe.');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -501,19 +572,39 @@ const DoctorDashboard: React.FC = () => {
                 <>
                   <IonItem lines="none">
                     <IonLabel position="stacked">{requiredLabel('Specialite', specialty.trim().length > 0)}</IonLabel>
-                    <IonInput
+                    <IonSelect
                       disabled={!editMode}
-                      value={specialty}
-                      placeholder="Cardiologie, Pediatrie..."
-                      onIonInput={(e) => setSpecialty(e.detail.value ?? '')}
-                    />
+                      value={specialtyChoice}
+                      placeholder="Selectionner"
+                      onIonChange={(e) => setSpecialtyChoice(e.detail.value)}
+                    >
+                      {specialtyOptions.map((option) => (
+                        <IonSelectOption key={option} value={option}>
+                          {option}
+                        </IonSelectOption>
+                      ))}
+                      <IonSelectOption value={OTHER_SPECIALTY_VALUE}>Autre (preciser)</IonSelectOption>
+                    </IonSelect>
                   </IonItem>
+                  {specialtyChoice === OTHER_SPECIALTY_VALUE ? (
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Autre specialite</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={specialtyOther}
+                        placeholder="Ex: Rhumatologie"
+                        onIonInput={(e) => setSpecialtyOther(e.detail.value ?? '')}
+                      />
+                    </IonItem>
+                  ) : null}
                   <IonItem lines="none">
                     <IonLabel position="stacked">{requiredLabel('Telephone', phone.trim().length > 0)}</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={phone}
                       placeholder="+509-xxxx-xxxx"
+                      maxlength={14}
+                      inputmode="tel"
                       onIonInput={(e) => setPhone(maskHaitiPhone(e.detail.value ?? ''))}
                     />
                   </IonItem>
@@ -523,7 +614,20 @@ const DoctorDashboard: React.FC = () => {
                       disabled={!editMode}
                       value={whatsapp}
                       placeholder="+509-xxxx-xxxx"
+                      maxlength={14}
+                      inputmode="tel"
                       onIonInput={(e) => setWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">WhatsApp de recuperation</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      value={recoveryWhatsapp}
+                      placeholder="+509-xxxx-xxxx"
+                      maxlength={14}
+                      inputmode="tel"
+                      onIonInput={(e) => setRecoveryWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
                     />
                   </IonItem>
                   <IonItem lines="none">
@@ -651,6 +755,53 @@ const DoctorDashboard: React.FC = () => {
                       </IonButton>
                     </div>
                   ) : null}
+                </>
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: '10px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setPasswordExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                Reinitialiser mot de passe{' '}
+                {passwordExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {passwordExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Mot de passe actuel</IonLabel>
+                    <IonInput
+                      type="password"
+                      value={currentPassword}
+                      onIonInput={(e) => setCurrentPassword(e.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Nouveau mot de passe</IonLabel>
+                    <IonInput type="password" value={newPassword} onIonInput={(e) => setNewPassword(e.detail.value ?? '')} />
+                  </IonItem>
+                  {newPassword ? (
+                    <div style={{ padding: '0 12px 8px' }}>
+                      <IonText color={passwordStrength.color}>Force: {passwordStrength.label}</IonText>
+                    </div>
+                  ) : null}
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Confirmer nouveau mot de passe</IonLabel>
+                    <IonInput
+                      type="password"
+                      value={confirmNewPassword}
+                      onIonInput={(e) => setConfirmNewPassword(e.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <div style={{ padding: '0 12px 12px' }}>
+                    <IonButton expand="block" onClick={() => savePassword().catch(() => undefined)} disabled={passwordSaving}>
+                      {passwordSaving ? 'Mise a jour...' : 'Mettre a jour le mot de passe'}
+                    </IonButton>
+                  </div>
                 </>
               ) : null}
             </div>

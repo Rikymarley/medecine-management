@@ -10,6 +10,15 @@ use Illuminate\Support\Str;
 
 class DoctorPatientController extends Controller
 {
+    private function generateClaimToken(): string
+    {
+        do {
+            $token = strtoupper(Str::random(12));
+        } while (User::query()->where('claim_token', $token)->exists());
+
+        return $token;
+    }
+
     private function normalizedPhone(?string $value): ?string
     {
         if ($value === null) {
@@ -175,6 +184,8 @@ class DoctorPatientController extends Controller
             'verification_status' => 'approved',
             'verified_at' => now(),
             'verified_by' => $request->user()->id,
+            'claim_token' => $this->generateClaimToken(),
+            'claim_token_expires_at' => now()->addMonths(12),
         ]);
 
         return response()->json([

@@ -13,7 +13,7 @@ class PharmacyController extends Controller
     {
         $pharmacy->loadMissing([
             'licenseVerifiedByDoctor:id,name',
-            'accountUser:id,pharmacy_id,verification_status,verified_at,verified_by,verification_notes',
+            'accountUser:id,pharmacy_id,verification_status,verified_at,verified_by,verification_notes,whatsapp,recovery_whatsapp',
             'accountUser.verifiedBy:id,name',
         ]);
         $row = $pharmacy->toArray();
@@ -28,6 +28,8 @@ class PharmacyController extends Controller
         $row['approved_at'] = $pharmacy->accountUser?->verified_at;
         $row['verified_by'] = $pharmacy->licenseVerifiedByDoctor?->name;
         $row['verified_at'] = $pharmacy->license_verified_at;
+        $row['account_whatsapp'] = $pharmacy->accountUser?->whatsapp;
+        $row['recovery_whatsapp'] = $pharmacy->accountUser?->recovery_whatsapp;
         return $row;
     }
 
@@ -112,7 +114,12 @@ class PharmacyController extends Controller
             'logo_url' => ['nullable', 'url', 'max:2048'],
             'storefront_image_url' => ['nullable', 'url', 'max:2048'],
             'notes_for_patients' => ['nullable', 'string', 'max:500'],
+            'recovery_whatsapp' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
         ]);
+
+        $hasRecoveryWhatsapp = array_key_exists('recovery_whatsapp', $data);
+        $recoveryWhatsapp = $data['recovery_whatsapp'] ?? null;
+        unset($data['recovery_whatsapp']);
 
         if (
             array_key_exists('open_now', $data) ||
@@ -214,6 +221,9 @@ class PharmacyController extends Controller
         $data['pharmacy_mode'] = 'quick_manual';
 
         $pharmacy->update($data);
+        if ($hasRecoveryWhatsapp) {
+            $user->update(['recovery_whatsapp' => $recoveryWhatsapp]);
+        }
 
         return response()->json($this->presentPharmacy($pharmacy->fresh()));
     }

@@ -138,6 +138,17 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
     return age >= 0 ? age : null;
   }, [editForm.date_of_birth]);
 
+  const claimLink = useMemo(() => {
+    if (!member?.claim_token) return '';
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/claim-account?token=${encodeURIComponent(member.claim_token)}`;
+  }, [member?.claim_token]);
+
+  const claimQrUrl = useMemo(() => {
+    if (!claimLink) return '';
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(claimLink)}`;
+  }, [claimLink]);
+
   const openEdit = () => {
     if (!member) return;
     setEditForm({
@@ -450,6 +461,19 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
                           ) : null}
                         </div>
                       ) : null}
+                      <div style={{ marginTop: '10px', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '8px' }}>
+                        <p style={{ margin: '0 0 4px 0' }}><strong>Token de reclamation:</strong> {member.claim_token || 'N/D'}</p>
+                        {claimLink ? (
+                          <>
+                            <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#64748b', wordBreak: 'break-all' }}>{claimLink}</p>
+                            <img
+                              src={claimQrUrl}
+                              alt="QR reclamation compte"
+                              style={{ width: '160px', height: '160px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #dbe7ef' }}
+                            />
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   ) : null}
                 </div>

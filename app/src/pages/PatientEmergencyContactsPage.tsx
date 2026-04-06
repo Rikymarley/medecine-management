@@ -560,6 +560,8 @@ const PatientEmergencyContactsPage: React.FC = () => {
                 <IonInput
                   value={form.phone}
                   placeholder="+509-xxxx-xxxx"
+                  maxlength={14}
+                  inputmode="tel"
                   onIonInput={(e) => setForm((prev) => ({ ...prev, phone: maskHaitiPhone(e.detail.value ?? '') }))}
                 />
               </IonItem>

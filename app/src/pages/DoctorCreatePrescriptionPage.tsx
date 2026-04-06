@@ -681,7 +681,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                     value={patientPhone}
                     placeholder="+509-xxxx-xxxx"
                     maxlength={14}
-                    inputmode="numeric"
+                    inputmode="tel"
                     onIonInput={(event) => setPatientPhone(maskHaitiPhone(event.detail.value ?? ''))}
                   />
                 </IonItem>

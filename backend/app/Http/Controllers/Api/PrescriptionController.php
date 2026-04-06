@@ -13,6 +13,35 @@ use Illuminate\Support\Str;
 
 class PrescriptionController extends Controller
 {
+    private function generateClaimToken(): string
+    {
+        do {
+            $token = strtoupper(Str::random(12));
+        } while (User::query()->where('claim_token', $token)->exists());
+
+        return $token;
+    }
+
+    private function ensurePatientClaimToken(User $patient): User
+    {
+        if ($patient->role !== 'patient') {
+            return $patient;
+        }
+        if (!$patient->created_by_doctor_id) {
+            return $patient;
+        }
+        if ($patient->claimed_at || $patient->claim_token) {
+            return $patient;
+        }
+
+        $patient->update([
+            'claim_token' => $this->generateClaimToken(),
+            'claim_token_expires_at' => now()->addMonths(12),
+        ]);
+
+        return $patient->fresh();
+    }
+
     private function missingDoctorProfileFields(User $doctor): array
     {
         $checks = [
@@ -559,6 +588,8 @@ class PrescriptionController extends Controller
                 'verification_status' => 'approved',
                 'verified_at' => now(),
                 'verified_by' => $doctor->id,
+                'claim_token' => $this->generateClaimToken(),
+                'claim_token_expires_at' => now()->addMonths(12),
             ]);
         }
 
@@ -579,7 +610,7 @@ class PrescriptionController extends Controller
         }
 
         $doctor = $request->user();
-        $hasLink = Prescription::query()
+        $hasLink = (int) ($patient->created_by_doctor_id ?? 0) === (int) $doctor->id || Prescription::query()
             ->where('doctor_user_id', $doctor->id)
             ->where('patient_user_id', $patient->id)
             ->exists();
@@ -587,6 +618,8 @@ class PrescriptionController extends Controller
         if (!$hasLink) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
+
+        $patient = $this->ensurePatientClaimToken($patient);
 
         return response()->json([
             'id' => $patient->id,
@@ -604,6 +637,9 @@ class PrescriptionController extends Controller
             'surgical_history' => $patient->surgical_history,
             'blood_type' => $patient->blood_type,
             'emergency_notes' => $patient->emergency_notes,
+            'claim_token' => $patient->claim_token,
+            'claim_token_expires_at' => $patient->claim_token_expires_at,
+            'claimed_at' => $patient->claimed_at,
         ]);
     }
 

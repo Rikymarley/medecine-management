@@ -44,6 +44,7 @@ import {
 } from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
+import { getPasswordStrength } from '../utils/passwordStrength';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { minutesAgo, minutesUntil } from '../utils/time';
@@ -170,6 +171,7 @@ const PharmacyDashboard: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(getPendingPharmacyResponseCount());
   const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingStorefront, setUploadingStorefront] = useState(false);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
@@ -182,6 +184,11 @@ const PharmacyDashboard: React.FC = () => {
   const [servicesSectionExpanded, setServicesSectionExpanded] = useState(false);
   const [businessSectionExpanded, setBusinessSectionExpanded] = useState(false);
   const [gpsSectionExpanded, setGpsSectionExpanded] = useState(false);
+  const [passwordSectionExpanded, setPasswordSectionExpanded] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
   const [expandedPrescriptions, setExpandedPrescriptions] = useState<Record<number, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<string>('sent_to_pharmacies');
   const [reactivatingPrescriptionId, setReactivatingPrescriptionId] = useState<number | null>(null);
@@ -189,6 +196,7 @@ const PharmacyDashboard: React.FC = () => {
   const [profileForm, setProfileForm] = useState({
     pharmacy_mode: 'quick_manual' as 'quick_manual' | 'pos_integrated',
     phone: '',
+    recovery_whatsapp: '',
     open_now: false,
     closes_at: '',
     opening_hours: '',
@@ -221,6 +229,7 @@ const PharmacyDashboard: React.FC = () => {
     setProfileForm({
       pharmacy_mode: 'quick_manual',
       phone: maskHaitiPhone(meData.phone ?? ''),
+      recovery_whatsapp: maskHaitiPhone((meData as any).recovery_whatsapp ?? ''),
       open_now: !!meData.open_now,
       closes_at: meData.closes_at ?? '',
       opening_hours: meData.opening_hours ?? '',
@@ -547,6 +556,7 @@ const PharmacyDashboard: React.FC = () => {
       const updated = await api.updateMyPharmacy(token, {
         pharmacy_mode: 'quick_manual',
         phone: profileForm.phone.trim() || null,
+        recovery_whatsapp: profileForm.recovery_whatsapp.trim() || null,
         open_now: profileForm.open_now,
         closes_at: profileForm.closes_at.trim() || null,
         opening_hours: serializeOpeningHours(weeklySchedule),
@@ -572,6 +582,37 @@ const PharmacyDashboard: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Echec de mise a jour du profil pharmacie');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const savePassword = async () => {
+    if (!token) return;
+    if (!isOnline) {
+      setError('Hors ligne: impossible de modifier le mot de passe.');
+      return;
+    }
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
+      setError('Veuillez renseigner tous les champs mot de passe.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    setError(null);
+    try {
+      const response = await api.changePassword(token, {
+        current_password: currentPassword,
+        password: newPassword,
+        password_confirmation: confirmNewPassword
+      });
+      setSyncMessage(response.message || 'Mot de passe mis a jour.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordSectionExpanded(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Echec de mise a jour du mot de passe.');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -818,7 +859,22 @@ const PharmacyDashboard: React.FC = () => {
                         disabled={!editMode}
                         value={profileForm.phone}
                         placeholder="+509-xxxx-xxxx"
+                        maxlength={14}
+                        inputmode="tel"
                         onIonInput={(event) => setProfileForm((prev) => ({ ...prev, phone: maskHaitiPhone(event.detail.value ?? '') }))}
+                      />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">WhatsApp de recuperation</IonLabel>
+                      <IonInput
+                        disabled={!editMode}
+                        value={profileForm.recovery_whatsapp}
+                        placeholder="+509-xxxx-xxxx"
+                        maxlength={14}
+                        inputmode="tel"
+                        onIonInput={(event) =>
+                          setProfileForm((prev) => ({ ...prev, recovery_whatsapp: maskHaitiPhone(event.detail.value ?? '') }))
+                        }
                       />
                     </IonItem>
                     <IonItem lines="none">
@@ -1171,6 +1227,45 @@ const PharmacyDashboard: React.FC = () => {
                   {profileSaving ? 'Enregistrement...' : 'Enregistrer'}
                 </IonButton>
               ) : null}
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton
+                  expand="block"
+                  fill="clear"
+                  color="dark"
+                  onClick={() => setPasswordSectionExpanded((prev) => !prev)}
+                  style={{ margin: 0 }}
+                >
+                  Reinitialiser mot de passe{' '}
+                  {passwordSectionExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {passwordSectionExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Mot de passe actuel</IonLabel>
+                      <IonInput type="password" value={currentPassword} onIonInput={(e) => setCurrentPassword(e.detail.value ?? '')} />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Nouveau mot de passe</IonLabel>
+                      <IonInput type="password" value={newPassword} onIonInput={(e) => setNewPassword(e.detail.value ?? '')} />
+                    </IonItem>
+                    {newPassword ? (
+                      <div style={{ padding: '0 12px 8px' }}>
+                        <IonText color={passwordStrength.color}>Force: {passwordStrength.label}</IonText>
+                      </div>
+                    ) : null}
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Confirmer nouveau mot de passe</IonLabel>
+                      <IonInput type="password" value={confirmNewPassword} onIonInput={(e) => setConfirmNewPassword(e.detail.value ?? '')} />
+                    </IonItem>
+                    <div style={{ padding: '0 12px 12px' }}>
+                      <IonButton expand="block" onClick={savePassword} disabled={passwordSaving}>
+                        {passwordSaving ? 'Mise a jour...' : 'Mettre a jour le mot de passe'}
+                      </IonButton>
+                    </div>
+                  </>
+                ) : null}
+              </div>
               </>
             </IonCardContent> : null}
           </IonCard>

@@ -12,6 +12,9 @@ class FamilyMember extends Model
         'name',
         'photo_url',
         'id_document_url',
+        'claim_token',
+        'claim_token_expires_at',
+        'claimed_at',
         'archived_at',
         'age',
         'date_of_birth',
@@ -35,6 +38,8 @@ class FamilyMember extends Model
         'height_cm' => 'float',
         'vaccination_up_to_date' => 'boolean',
         'primary_caregiver' => 'boolean',
+        'claim_token_expires_at' => 'datetime',
+        'claimed_at' => 'datetime',
         'archived_at' => 'datetime',
     ];
 

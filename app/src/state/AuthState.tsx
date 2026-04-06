@@ -14,6 +14,7 @@ type AuthContextValue = AuthState & {
     email: string;
     phone?: string;
     ninu?: string;
+    specialty?: string;
     address?: string;
     latitude?: number | null;
     longitude?: number | null;
@@ -70,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string;
     phone?: string;
     ninu?: string;
+    specialty?: string;
     address?: string;
     latitude?: number | null;
     longitude?: number | null;

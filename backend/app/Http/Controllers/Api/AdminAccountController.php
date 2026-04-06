@@ -3,12 +3,59 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PasswordResetEvent;
 use App\Models\Pharmacy;
 use App\Models\User;
 use Illuminate\Http\Request;
 
 class AdminAccountController extends Controller
 {
+    public function passwordResetEvents(Request $request)
+    {
+        $data = $request->validate([
+            'action' => ['nullable', 'in:request,complete'],
+            'success' => ['nullable', 'in:0,1'],
+            'q' => ['nullable', 'string', 'max:120'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
+        ]);
+
+        $limit = $data['limit'] ?? 150;
+        $query = PasswordResetEvent::query()
+            ->with('user:id,name,role,email,phone,whatsapp')
+            ->orderByDesc('id');
+
+        if (!empty($data['action'])) {
+            $query->where('action', $data['action']);
+        }
+        if (array_key_exists('success', $data) && $data['success'] !== null && $data['success'] !== '') {
+            $query->where('success', $data['success'] === '1');
+        }
+        if (!empty($data['q'])) {
+            $q = trim((string) $data['q']);
+            $query->where(function ($inner) use ($q) {
+                $inner->where('reason', 'like', '%' . $q . '%')
+                    ->orWhere('identifier_masked', 'like', '%' . $q . '%')
+                    ->orWhereHas('user', function ($u) use ($q) {
+                        $u->where('name', 'like', '%' . $q . '%')
+                            ->orWhere('email', 'like', '%' . $q . '%')
+                            ->orWhere('phone', 'like', '%' . $q . '%')
+                            ->orWhere('whatsapp', 'like', '%' . $q . '%');
+                    });
+            });
+        }
+
+        $rows = $query->limit($limit)->get()->map(function (PasswordResetEvent $event) {
+            return [
+                ...$event->toArray(),
+                'user_name' => $event->user?->name,
+                'user_role' => $event->user?->role,
+                'user_email' => $event->user?->email,
+            ];
+        })->values();
+
+        return response()->json($rows);
+    }
+
     public function users(Request $request)
     {
         $data = $request->validate([

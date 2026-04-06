@@ -86,6 +86,22 @@ const Login: React.FC = () => {
               >
                 Creer un compte
               </IonButton>
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="medium"
+                onClick={() => history.push('/claim-account')}
+              >
+                Reclamer un compte
+              </IonButton>
+              <IonButton
+                expand="block"
+                fill="outline"
+                color="dark"
+                onClick={() => history.push('/password-recovery')}
+              >
+                Recuperer mot de passe
+              </IonButton>
             </div>
           </IonCardContent>
         </IonCard>

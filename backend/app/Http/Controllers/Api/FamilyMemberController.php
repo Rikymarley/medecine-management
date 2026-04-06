@@ -14,6 +14,25 @@ use Illuminate\Support\Str;
 
 class FamilyMemberController extends Controller
 {
+    private function generateUserClaimToken(): string
+    {
+        do {
+            $token = strtoupper(Str::random(12));
+        } while (User::query()->where('claim_token', $token)->exists());
+
+        return $token;
+    }
+
+    private function presentMember(FamilyMember $member): array
+    {
+        $member->loadMissing('linkedUser:id,claim_token,claim_token_expires_at,claimed_at');
+        $row = $member->toArray();
+        $row['claim_token'] = $member->linkedUser?->claim_token;
+        $row['claim_token_expires_at'] = $member->linkedUser?->claim_token_expires_at;
+        $row['claimed_at'] = $member->linkedUser?->claimed_at;
+        return $row;
+    }
+
     private function makeDependentEmail(string $name): string
     {
         $base = Str::slug($name, '.');
@@ -39,6 +58,8 @@ class FamilyMemberController extends Controller
             'verification_status' => 'approved',
             'verified_at' => now(),
             'verified_by' => $request->user()->id,
+            'claim_token' => $this->generateUserClaimToken(),
+            'claim_token_expires_at' => now()->addMonths(12),
             'date_of_birth' => $memberPayload['date_of_birth'] ?? null,
             'age' => $memberPayload['age'] ?? null,
             'gender' => $memberPayload['gender'] ?? null,
@@ -125,10 +146,11 @@ class FamilyMemberController extends Controller
         }
 
         $members = $membersQuery
+            ->with('linkedUser:id,claim_token,claim_token_expires_at,claimed_at')
             ->orderBy('name')
             ->get();
 
-        return response()->json($members);
+        return response()->json($members->map(fn (FamilyMember $member) => $this->presentMember($member))->values());
     }
 
     public function indexForDoctor(Request $request, User $patient)
@@ -138,7 +160,7 @@ class FamilyMemberController extends Controller
         }
 
         $doctor = $request->user();
-        $hasLink = Prescription::query()
+        $hasLink = (int) ($patient->created_by_doctor_id ?? 0) === (int) $doctor->id || Prescription::query()
             ->where('doctor_user_id', $doctor->id)
             ->where('patient_user_id', $patient->id)
             ->exists();
@@ -151,7 +173,30 @@ class FamilyMemberController extends Controller
             ->where('patient_user_id', $patient->id)
             ->whereNull('archived_at')
             ->orderBy('name')
-            ->get();
+            ->get([
+                'id',
+                'patient_user_id',
+                'linked_user_id',
+                'name',
+                'photo_url',
+                'id_document_url',
+                'archived_at',
+                'age',
+                'date_of_birth',
+                'gender',
+                'relationship',
+                'allergies',
+                'chronic_diseases',
+                'blood_type',
+                'emergency_notes',
+                'weight_kg',
+                'height_cm',
+                'surgical_history',
+                'vaccination_up_to_date',
+                'primary_caregiver',
+                'created_at',
+                'updated_at',
+            ]);
 
         return response()->json($members);
     }
@@ -195,7 +240,7 @@ class FamilyMemberController extends Controller
             ]);
         });
 
-        return response()->json($member, 201);
+        return response()->json($this->presentMember($member), 201);
     }
 
     public function update(Request $request, FamilyMember $familyMember)
@@ -243,10 +288,17 @@ class FamilyMemberController extends Controller
             }
 
             $familyMember->update($data);
+            $linkedUser = User::query()->find($familyMember->linked_user_id);
+            if ($linkedUser && !$linkedUser->claim_token && !$linkedUser->claimed_at) {
+                $linkedUser->update([
+                    'claim_token' => $this->generateUserClaimToken(),
+                    'claim_token_expires_at' => now()->addMonths(12),
+                ]);
+            }
             $this->syncLinkedUserFromFamilyMember($familyMember->fresh(), $data);
         });
 
-        return response()->json($familyMember->fresh());
+        return response()->json($this->presentMember($familyMember->fresh()));
     }
 
     public function destroy(Request $request, FamilyMember $familyMember)
@@ -290,7 +342,7 @@ class FamilyMemberController extends Controller
             ]);
         }
 
-        return response()->json($familyMember->fresh());
+        return response()->json($this->presentMember($familyMember->fresh()));
     }
 
     public function removePhoto(Request $request, FamilyMember $familyMember)
@@ -310,7 +362,7 @@ class FamilyMemberController extends Controller
             ]);
         }
 
-        return response()->json($familyMember->fresh());
+        return response()->json($this->presentMember($familyMember->fresh()));
     }
 
     public function uploadIdDocument(Request $request, FamilyMember $familyMember)
@@ -367,6 +419,6 @@ class FamilyMemberController extends Controller
             'archived_at' => null,
         ]);
 
-        return response()->json($familyMember->fresh());
+        return response()->json($this->presentMember($familyMember->fresh()));
     }
 }

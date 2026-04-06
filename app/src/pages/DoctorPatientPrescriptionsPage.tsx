@@ -298,6 +298,31 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   }, [historyForm.prescription_id, patientPrescriptions]);
   const activePatientName = profileFamilyMember?.name ?? familyMemberName ?? decodedPatientName;
   const activeProfilePhotoUrl = profileFamilyMember?.photo_url ?? patientProfile?.profile_photo_url ?? null;
+  const activeDateOfBirth = profileFamilyMember?.date_of_birth ?? patientProfile?.date_of_birth ?? null;
+  const computedActiveAge = useMemo(() => {
+    const dob = (activeDateOfBirth || '').trim();
+    if (!dob) return null;
+    const date = new Date(`${dob.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - date.getFullYear();
+    const monthDiff = now.getMonth() - date.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < date.getDate())) {
+      age -= 1;
+    }
+    return age >= 0 ? age : null;
+  }, [activeDateOfBirth]);
+  const activeAge = profileFamilyMember?.age ?? patientProfile?.age ?? computedActiveAge;
+  const patientClaimLink = useMemo(() => {
+    if (profileFamilyMember) return '';
+    if (!patientProfile?.claim_token) return '';
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/claim-account?token=${encodeURIComponent(patientProfile.claim_token)}`;
+  }, [patientProfile?.claim_token, profileFamilyMember]);
+  const patientClaimQrUrl = useMemo(() => {
+    if (!patientClaimLink) return '';
+    return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(patientClaimLink)}`;
+  }, [patientClaimLink]);
   const toggleLinkedPrescriptionDetails = (historyEntryId: number) => {
     setExpandedLinkedPrescriptions((prev) => ({
       ...prev,
@@ -502,7 +527,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '6px' }}>
                       <IonBadge color="light">
-                        {profileFamilyMember?.age ?? patientProfile?.age ?? 'Age ?'} {(profileFamilyMember?.age ?? patientProfile?.age) ? 'ans' : ''}
+                        {activeAge ?? 'Age ?'} {activeAge !== null ? 'ans' : ''}
                       </IonBadge>
                       {!profileFamilyMember ? (
                         <IonBadge color="light">{patientProfile?.ninu ? 'NINU renseigne' : 'NINU manquant'}</IonBadge>
@@ -576,6 +601,33 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
                         </p>
                         <p><strong>Adresse:</strong> {profileFamilyMember ? 'N/D' : patientProfile?.address ?? 'N/D'}</p>
                         {!profileFamilyMember ? <p><strong>NINU:</strong> {patientProfile?.ninu ?? 'N/D'}</p> : null}
+                        {!profileFamilyMember ? (
+                          <div style={{ marginTop: '10px', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '8px' }}>
+                            <p style={{ margin: '0 0 4px 0' }}>
+                              <strong>Token reclamation:</strong> {patientProfile?.claim_token ?? 'N/D'}
+                            </p>
+                            {patientProfile?.claimed_at ? (
+                              <p style={{ margin: 0, color: '#16a34a', fontSize: '0.9rem' }}>
+                                Compte deja reclame le {formatDateTime(patientProfile.claimed_at)}
+                              </p>
+                            ) : patientClaimLink ? (
+                              <>
+                                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#64748b', wordBreak: 'break-all' }}>
+                                  {patientClaimLink}
+                                </p>
+                                <img
+                                  src={patientClaimQrUrl}
+                                  alt="QR reclamation compte patient"
+                                  style={{ width: '160px', height: '160px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #dbe7ef' }}
+                                />
+                              </>
+                            ) : (
+                              <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
+                                Aucun token actif.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
                         {profileFamilyMember ? (
                           <p><strong>Relation:</strong> {profileFamilyMember.relationship ?? 'Non precisee'}</p>
                         ) : null}

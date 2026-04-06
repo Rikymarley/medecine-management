@@ -37,10 +37,14 @@ use Laravel\Sanctum\HasApiTokens;
     'years_experience',
     'consultation_fee_range',
     'whatsapp',
+    'recovery_whatsapp',
     'bio',
     'profile_photo_url',
     'profile_banner_url',
     'id_document_url',
+    'claim_token',
+    'claim_token_expires_at',
+    'claimed_at',
     'age',
     'gender',
     'allergies',
@@ -92,6 +96,8 @@ class User extends Authenticatable
             'height_cm' => 'float',
             'vaccination_up_to_date' => 'boolean',
             'blocked_at' => 'datetime',
+            'claim_token_expires_at' => 'datetime',
+            'claimed_at' => 'datetime',
         ];
     }
 

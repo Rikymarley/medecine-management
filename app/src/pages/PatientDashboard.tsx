@@ -39,6 +39,7 @@ import InstallBanner from '../components/InstallBanner';
 import { api } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
+import { getPasswordStrength } from '../utils/passwordStrength';
 
 const PatientDashboard: React.FC = () => {
   const ionRouter = useIonRouter();
@@ -48,6 +49,7 @@ const PatientDashboard: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [ninu, setNinu] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [recoveryWhatsapp, setRecoveryWhatsapp] = useState('');
   const [address, setAddress] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState<'' | 'male' | 'female'>('');
@@ -62,6 +64,7 @@ const PatientDashboard: React.FC = () => {
   const [surgicalHistory, setSurgicalHistory] = useState('');
   const [vaccinationUpToDate, setVaccinationUpToDate] = useState<'' | 'yes' | 'no'>('');
   const [saving, setSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingIdDocument, setUploadingIdDocument] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('');
@@ -72,6 +75,10 @@ const PatientDashboard: React.FC = () => {
   const [contactExpanded, setContactExpanded] = useState(false);
   const [personalExpanded, setPersonalExpanded] = useState(false);
   const [emergencyExpanded, setEmergencyExpanded] = useState(false);
+  const [passwordExpanded, setPasswordExpanded] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
@@ -117,6 +124,7 @@ const PatientDashboard: React.FC = () => {
         setPhone(maskHaitiPhone(normalizeText(me.phone)));
         setNinu(normalizeText(me.ninu));
         setWhatsapp(maskHaitiPhone(normalizeText(me.whatsapp)));
+        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((me as any).recovery_whatsapp)));
         setAddress(normalizeText(me.address));
         setDateOfBirth(normalizeDate(me.date_of_birth));
         setGender((me.gender as '' | 'male' | 'female' | null) ?? '');
@@ -147,6 +155,7 @@ const PatientDashboard: React.FC = () => {
               setPhone(maskHaitiPhone(normalizeText(me?.phone)));
               setNinu(normalizeText((me as any)?.ninu));
               setWhatsapp(maskHaitiPhone(normalizeText((me as any)?.whatsapp)));
+              setRecoveryWhatsapp(maskHaitiPhone(normalizeText((me as any)?.recovery_whatsapp)));
               setAddress(normalizeText((me as any)?.address));
               setDateOfBirth(normalizeDate((me as any)?.date_of_birth));
               setGender(((me as any)?.gender as '' | 'male' | 'female' | null) ?? '');
@@ -177,6 +186,7 @@ const PatientDashboard: React.FC = () => {
         setPhone(maskHaitiPhone(normalizeText(user?.phone)));
         setNinu(normalizeText(user?.ninu));
         setWhatsapp(maskHaitiPhone(normalizeText(user?.whatsapp)));
+        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((user as any)?.recovery_whatsapp)));
         setAddress(normalizeText(user?.address));
         setDateOfBirth(normalizeDate(user?.date_of_birth));
         setGender((user?.gender as '' | 'male' | 'female' | null) ?? '');
@@ -215,6 +225,7 @@ const PatientDashboard: React.FC = () => {
     user?.vaccination_up_to_date,
     user?.weight_kg,
     user?.whatsapp,
+    (user as any)?.recovery_whatsapp,
     (user as any)?.profile_photo_url
   ]);
 
@@ -260,6 +271,7 @@ const PatientDashboard: React.FC = () => {
     }
     return age >= 0 ? age : null;
   }, [dateOfBirth]);
+  const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
 
   const saveProfile = async () => {
     if (!token) {
@@ -278,6 +290,7 @@ const PatientDashboard: React.FC = () => {
         phone: phone.trim() || null,
         ninu: ninu.trim() || null,
         whatsapp: whatsapp.trim() || null,
+        recovery_whatsapp: recoveryWhatsapp.trim() || null,
         address: address.trim() || null,
         date_of_birth: dateOfBirth.trim() || null,
         age: computedAge,
@@ -368,6 +381,37 @@ const PatientDashboard: React.FC = () => {
       setMessage(err instanceof Error ? err.message : "Echec de suppression de la piece d'identite.");
     } finally {
       setUploadingIdDocument(false);
+    }
+  };
+
+  const savePassword = async () => {
+    if (!token) return;
+    if (!isOnline) {
+      setMessage('Hors ligne: impossible de modifier le mot de passe.');
+      return;
+    }
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
+      setMessage('Veuillez renseigner tous les champs mot de passe.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    setMessage(null);
+    try {
+      const response = await api.changePassword(token, {
+        current_password: currentPassword,
+        password: newPassword,
+        password_confirmation: confirmNewPassword
+      });
+      setMessage(response.message || 'Mot de passe mis a jour.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordExpanded(false);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Echec de mise a jour du mot de passe.');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -523,14 +567,32 @@ const PatientDashboard: React.FC = () => {
                   </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Telephone</IonLabel>
-                    <IonInput disabled={!editMode} value={phone} onIonInput={(e) => setPhone(maskHaitiPhone(e.detail.value ?? ''))} />
+                    <IonInput
+                      disabled={!editMode}
+                      value={phone}
+                      maxlength={14}
+                      inputmode="tel"
+                      onIonInput={(e) => setPhone(maskHaitiPhone(e.detail.value ?? ''))}
+                    />
                   </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>WhatsApp</IonLabel>
                     <IonInput
                       disabled={!editMode}
                       value={whatsapp}
+                      maxlength={14}
+                      inputmode="tel"
                       onIonInput={(e) => setWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>WhatsApp de recuperation</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      value={recoveryWhatsapp}
+                      maxlength={14}
+                      inputmode="tel"
+                      onIonInput={(e) => setRecoveryWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
                     />
                   </IonItem>
                   <IonItem lines="none">
@@ -751,6 +813,45 @@ const PatientDashboard: React.FC = () => {
                 {saving ? 'Enregistrement...' : 'Enregistrer'}
               </IonButton>
             ) : null}
+
+            <div style={{ marginTop: '10px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setPasswordExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                Reinitialiser mot de passe{' '}
+                {passwordExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {passwordExpanded ? (
+                <>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Mot de passe actuel</IonLabel>
+                    <IonInput type="password" value={currentPassword} onIonInput={(e) => setCurrentPassword(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Nouveau mot de passe</IonLabel>
+                    <IonInput type="password" value={newPassword} onIonInput={(e) => setNewPassword(e.detail.value ?? '')} />
+                  </IonItem>
+                  {newPassword ? (
+                    <div style={{ padding: '0 12px 8px' }}>
+                      <IonText color={passwordStrength.color}>Force: {passwordStrength.label}</IonText>
+                    </div>
+                  ) : null}
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Confirmer nouveau mot de passe</IonLabel>
+                    <IonInput type="password" value={confirmNewPassword} onIonInput={(e) => setConfirmNewPassword(e.detail.value ?? '')} />
+                  </IonItem>
+                  <div style={{ padding: '0 12px 12px' }}>
+                    <IonButton expand="block" onClick={() => savePassword().catch(() => undefined)} disabled={passwordSaving}>
+                      {passwordSaving ? 'Mise a jour...' : 'Mettre a jour le mot de passe'}
+                    </IonButton>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </IonCardContent> : null}
         </IonCard>
 

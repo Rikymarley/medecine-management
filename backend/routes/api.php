@@ -12,11 +12,21 @@ use App\Http\Controllers\Api\MedicalHistoryController;
 use App\Http\Controllers\Api\PatientMedicinePurchaseController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\LicenseVerificationController;
+use App\Http\Controllers\Api\DoctorSpecialtyController;
+use App\Http\Controllers\Api\DoctorRehabController;
 use App\Http\Controllers\Api\UserVerificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:8,1');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/auth/password-reset/request-whatsapp', [AuthController::class, 'requestPasswordResetWhatsappLink'])->middleware('throttle:5,1');
+Route::post('/auth/password-reset/recovery/resolve', [AuthController::class, 'resolveRecoveryApprovalToken'])->middleware('throttle:20,1');
+Route::post('/auth/password-reset/recovery/decision', [AuthController::class, 'decideRecoveryApproval'])->middleware('throttle:20,1');
+Route::post('/auth/password-reset/resolve', [AuthController::class, 'resolvePasswordResetToken'])->middleware('throttle:20,1');
+Route::post('/auth/password-reset/complete', [AuthController::class, 'completePasswordReset'])->middleware('throttle:10,1');
+Route::post('/auth/claim/resolve', [AuthController::class, 'resolveClaimToken'])->middleware('throttle:30,1');
+Route::post('/auth/claim/complete', [AuthController::class, 'claimFamilyMemberAccount'])->middleware('throttle:20,1');
+Route::get('/doctor-specialties', [DoctorSpecialtyController::class, 'index']);
 Route::get('/doctors', [AuthController::class, 'doctorsDirectory']);
 Route::get('/doctor/doctors-directory', [AuthController::class, 'doctorsDirectoryForDoctor'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
@@ -128,10 +138,20 @@ Route::patch('/doctor/patients/{patient}/medical-history/{entry}', [MedicalHisto
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/medical-history/{entry}/link-prescription', [MedicalHistoryController::class, 'doctorLinkPrescription'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
+Route::get('/doctor/patients/{patient}/rehab-entries', [DoctorRehabController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::post('/doctor/patients/{patient}/rehab-entries', [DoctorRehabController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
+Route::patch('/doctor/patients/{patient}/rehab-entries/{entry}', [DoctorRehabController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::patch('/auth/change-password', [AuthController::class, 'changePassword'])
+        ->middleware('throttle:30,1');
+    Route::patch('/auth/recovery-whatsapp', [AuthController::class, 'updateRecoveryWhatsapp'])
+        ->middleware('throttle:30,1');
     Route::patch('/doctor/me', [AuthController::class, 'updateDoctorProfile'])
         ->middleware(['role:doctor', 'verified', 'throttle:30,1']);
     Route::post('/doctor/me/profile-photo', [AuthController::class, 'uploadDoctorProfilePhoto'])
@@ -157,6 +177,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/verifications'
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/accounts')->group(function () {
     Route::get('/users', [AdminAccountController::class, 'users']);
     Route::get('/pharmacies', [AdminAccountController::class, 'pharmacies']);
+    Route::get('/password-reset-events', [AdminAccountController::class, 'passwordResetEvents']);
     Route::post('/users/{user}/approve', [AdminAccountController::class, 'approveUser']);
     Route::post('/users/{user}/unapprove', [AdminAccountController::class, 'unapproveUser']);
     Route::post('/users/{user}/block', [AdminAccountController::class, 'blockUser']);

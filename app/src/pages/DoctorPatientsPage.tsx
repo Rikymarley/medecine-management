@@ -1,4 +1,5 @@
 import {
+  IonButton,
   IonBackButton,
   IonButtons,
   IonCard,
@@ -6,35 +7,58 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonFab,
+  IonFabButton,
   IonHeader,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
+  IonModal,
   IonPage,
+  IonSelect,
+  IonSelectOption,
   IonSearchbar,
   IonSpinner,
   IonText,
+  IonTextarea,
+  IonToast,
   IonTitle,
   IonToolbar,
   useIonRouter,
   useIonViewWillEnter
 } from '@ionic/react';
-import { personOutline } from 'ionicons/icons';
+import { addOutline, closeOutline, personOutline } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiFamilyMember, ApiPatientLookup, ApiPrescription } from '../services/api';
+import { api, ApiDoctorPatient, ApiFamilyMember, ApiPatientLookup, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { maskHaitiPhone } from '../utils/phoneMask';
 import { formatDateHaiti } from '../utils/time';
 
 const DoctorPatientsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [doctorPatients, setDoctorPatients] = useState<ApiDoctorPatient[]>([]);
   const [familyMembersByPatient, setFamilyMembersByPatient] = useState<Record<string, ApiFamilyMember[]>>({});
   const [dbSearchQuery, setDbSearchQuery] = useState('');
   const [dbSearchResults, setDbSearchResults] = useState<ApiPatientLookup[]>([]);
   const [searchingDb, setSearchingDb] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [savingPatient, setSavingPatient] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [newPatient, setNewPatient] = useState({
+    name: '',
+    phone: '',
+    ninu: '',
+    date_of_birth: '',
+    address: '',
+    age: '',
+    gender: '' as '' | 'male' | 'female',
+    notes: ''
+  });
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
 
@@ -66,12 +90,23 @@ const DoctorPatientsPage: React.FC = () => {
     localStorage.setItem(cacheKey, JSON.stringify(data));
   }, [cacheKey, token]);
 
+  const loadDoctorPatients = useCallback(async () => {
+    if (!token) return;
+    const rows = await api.getDoctorPatients(token);
+    setDoctorPatients(rows);
+  }, [token]);
+
   useEffect(() => {
     loadPrescriptions().catch(() => undefined);
   }, [loadPrescriptions]);
 
+  useEffect(() => {
+    loadDoctorPatients().catch(() => undefined);
+  }, [loadDoctorPatients]);
+
   useIonViewWillEnter(() => {
     loadPrescriptions().catch(() => undefined);
+    loadDoctorPatients().catch(() => undefined);
   });
 
   useEffect(() => {
@@ -164,7 +199,7 @@ const DoctorPatientsPage: React.FC = () => {
       }
     });
 
-    const patients = Array.from(new Set(prescriptions.map((p) => p.patient_name.trim()).filter(Boolean))).map((name) => ({
+    const prescriptionPatients = Array.from(new Set(prescriptions.map((p) => p.patient_name.trim()).filter(Boolean))).map((name) => ({
       key: `patient-${name}`,
       label: name,
       patientName: name,
@@ -172,6 +207,16 @@ const DoctorPatientsPage: React.FC = () => {
       familyMemberId: null as number | null,
       subtitle: 'Patient',
       photoUrl: patientPhotoByName.get(normalize(name)) ?? null
+    }));
+
+    const directPatients = doctorPatients.map((row) => ({
+      key: `doctor-patient-${row.id}`,
+      label: row.name,
+      patientName: row.name,
+      patientUserId: row.id,
+      familyMemberId: null as number | null,
+      subtitle: 'Patient',
+      photoUrl: patientPhotoByName.get(normalize(row.name)) ?? null
     }));
 
     const familyEntries = Object.entries(familyMembersByPatient).flatMap(([patientName, members]) =>
@@ -192,10 +237,58 @@ const DoctorPatientsPage: React.FC = () => {
         }))
     );
 
-    return [...patients, ...familyEntries].sort((a, b) =>
+    const merged = [...prescriptionPatients, ...directPatients, ...familyEntries];
+    const uniq = new Map<string, (typeof merged)[number]>();
+    merged.forEach((entry) => {
+      const dedupeKey = entry.familyMemberId
+        ? `f-${entry.familyMemberId}`
+        : entry.patientUserId
+          ? `p-${entry.patientUserId}`
+          : `n-${normalize(entry.label)}`;
+      if (!uniq.has(dedupeKey)) {
+        uniq.set(dedupeKey, entry);
+      }
+    });
+
+    return Array.from(uniq.values()).sort((a, b) =>
       a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' })
     );
-  }, [familyMembersByPatient, prescriptions]);
+  }, [doctorPatients, familyMembersByPatient, prescriptions]);
+
+  const createPatient = async () => {
+    if (!token || !newPatient.name.trim()) return;
+    setSavingPatient(true);
+    try {
+      const created = await api.createDoctorPatient(token, {
+        name: newPatient.name.trim(),
+        phone: newPatient.phone.trim() || null,
+        ninu: newPatient.ninu.trim() || null,
+        date_of_birth: newPatient.date_of_birth.trim() || null,
+        address: newPatient.address.trim() || null,
+        age: newPatient.age.trim() ? Number(newPatient.age) : null,
+        gender: newPatient.gender || null,
+        notes: newPatient.notes.trim() || null,
+      });
+      setShowAddModal(false);
+      setNewPatient({
+        name: '',
+        phone: '',
+        ninu: '',
+        date_of_birth: '',
+        address: '',
+        age: '',
+        gender: '',
+        notes: ''
+      });
+      setToastMessage('Patient ajoute.');
+      await loadDoctorPatients();
+      ionRouter.push(`/doctor/patients/${encodeURIComponent(created.name)}?patientUserId=${created.id}`, 'forward', 'push');
+    } catch (err) {
+      setToastMessage(err instanceof Error ? err.message : "Echec de creation du patient.");
+    } finally {
+      setSavingPatient(false);
+    }
+  };
 
   return (
     <IonPage>
@@ -353,6 +446,102 @@ const DoctorPatientsPage: React.FC = () => {
             )}
           </IonCardContent>
         </IonCard>
+
+        <IonFab vertical="bottom" horizontal="end" slot="fixed">
+          <IonFabButton color="primary" onClick={() => setShowAddModal(true)}>
+            <IonIcon icon={addOutline} />
+          </IonFabButton>
+        </IonFab>
+
+        <IonModal isOpen={showAddModal} onDidDismiss={() => setShowAddModal(false)}>
+          <IonContent className="ion-padding app-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ margin: 0 }}>Ajouter un patient</h2>
+              <IonButton fill="clear" color="medium" onClick={() => setShowAddModal(false)}>
+                <IonIcon icon={closeOutline} />
+              </IonButton>
+            </div>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Nom *</IonLabel>
+              <IonInput
+                value={newPatient.name}
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, name: e.detail.value ?? '' }))}
+                placeholder="Nom du patient"
+              />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Telephone</IonLabel>
+              <IonInput
+                value={newPatient.phone}
+                maxlength={14}
+                inputmode="tel"
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, phone: maskHaitiPhone(e.detail.value ?? '') }))}
+                placeholder="+509-xxxx-xxxx"
+              />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">NINU</IonLabel>
+              <IonInput
+                value={newPatient.ninu}
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, ninu: e.detail.value ?? '' }))}
+                placeholder="NINU"
+              />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Date de naissance</IonLabel>
+              <IonInput
+                type="date"
+                value={newPatient.date_of_birth}
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, date_of_birth: e.detail.value ?? '' }))}
+              />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Adresse (optionnel)</IonLabel>
+              <IonInput
+                value={newPatient.address}
+                placeholder="Adresse"
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, address: e.detail.value ?? '' }))}
+              />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Age (optionnel)</IonLabel>
+              <IonInput
+                type="number"
+                min="0"
+                value={newPatient.age}
+                placeholder="Age"
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, age: e.detail.value ?? '' }))}
+              />
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Genre (optionnel)</IonLabel>
+              <IonSelect
+                interface="popover"
+                placeholder="Selectionner"
+                value={newPatient.gender}
+                onIonChange={(e) =>
+                  setNewPatient((prev) => ({ ...prev, gender: (e.detail.value as '' | 'male' | 'female') ?? '' }))
+                }
+              >
+                <IonSelectOption value="male">M</IonSelectOption>
+                <IonSelectOption value="female">F</IonSelectOption>
+              </IonSelect>
+            </IonItem>
+            <IonItem lines="none">
+              <IonLabel position="stacked">Notes patient (optionnel)</IonLabel>
+              <IonTextarea
+                autoGrow
+                value={newPatient.notes}
+                placeholder="Infos utiles pour ce patient"
+                onIonInput={(e) => setNewPatient((prev) => ({ ...prev, notes: e.detail.value ?? '' }))}
+              />
+            </IonItem>
+            <IonButton expand="block" disabled={savingPatient || !newPatient.name.trim()} onClick={() => createPatient().catch(() => undefined)}>
+              {savingPatient ? 'Creation...' : 'Ajouter'}
+            </IonButton>
+          </IonContent>
+        </IonModal>
+        <IonToast isOpen={!!toastMessage} message={toastMessage || ''} duration={1800} onDidDismiss={() => setToastMessage(null)} />
       </IonContent>
     </IonPage>
   );

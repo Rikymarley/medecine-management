@@ -3,6 +3,10 @@ import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ClaimAccountPage from './pages/ClaimAccountPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import RecoveryApprovalPage from './pages/RecoveryApprovalPage';
+import PasswordRecoveryRequestPage from './pages/PasswordRecoveryRequestPage';
 import DoctorDashboard from './pages/DoctorDashboard';
 import DoctorCreatePrescriptionPage from './pages/DoctorCreatePrescriptionPage';
 import DoctorPrescriptionDetailPage from './pages/DoctorPrescriptionDetailPage';
@@ -27,6 +31,7 @@ import AdminPharmaciesPage from './pages/AdminPharmaciesPage';
 import AdminPharmacyDetailPage from './pages/AdminPharmacyDetailPage';
 import AdminPatientsPage from './pages/AdminPatientsPage';
 import AdminPatientDetailPage from './pages/AdminPatientDetailPage';
+import AdminPasswordResetLogsPage from './pages/AdminPasswordResetLogsPage';
 import PatientDoctorsPage from './pages/PatientDoctorsPage';
 import PatientPharmaciesPage from './pages/PatientPharmaciesPage';
 import PatientPharmacyDetailPage from './pages/PatientPharmacyDetailPage';
@@ -125,6 +130,18 @@ const App: React.FC = () => (
           </Route>
           <Route exact path="/register">
             <Register />
+          </Route>
+          <Route exact path="/claim-account">
+            <ClaimAccountPage />
+          </Route>
+          <Route exact path="/password-recovery">
+            <PasswordRecoveryRequestPage />
+          </Route>
+          <Route exact path="/reset-password">
+            <ResetPasswordPage />
+          </Route>
+          <Route exact path="/recovery-approval">
+            <RecoveryApprovalPage />
           </Route>
           <Route exact path="/verification">
             <RequireAuth>
@@ -244,6 +261,11 @@ const App: React.FC = () => (
           <Route exact path="/admin/patients/:patientId">
             <RequireRole role="admin">
               <AdminPatientDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/password-reset-logs">
+            <RequireRole role="admin">
+              <AdminPasswordResetLogsPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient">

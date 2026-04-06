@@ -121,10 +121,14 @@ export type ApiUser = {
   years_experience: number | null;
   consultation_fee_range: string | null;
   whatsapp: string | null;
+  recovery_whatsapp?: string | null;
   bio: string | null;
   profile_photo_url: string | null;
   profile_banner_url: string | null;
   id_document_url?: string | null;
+  claim_token?: string | null;
+  claim_token_expires_at?: string | null;
+  claimed_at?: string | null;
   age: number | null;
   gender: 'male' | 'female' | null;
   allergies: string | null;
@@ -157,6 +161,40 @@ export type ApiUser = {
 export type ApiAuthResponse = {
   token: string;
   user: ApiUser;
+};
+
+export type ApiClaimResolveResponse = {
+  type: 'patient' | 'family_member';
+  family_member_id?: number;
+  patient_user_id?: number;
+  name: string;
+  date_of_birth: string | null;
+};
+
+export type ApiPasswordResetWhatsappResponse = {
+  message: string;
+  whatsapp_url: string | null;
+  expires_in_minutes?: number;
+  stage?: 'approval_requested' | 'approval_pending' | 'approved_send_reset' | 'missing_recovery_whatsapp' | string;
+};
+
+export type ApiRecoveryApprovalResolveResponse = {
+  status: 'pending' | 'approved' | 'denied' | string;
+  user_name?: string | null;
+  target_whatsapp_masked?: string | null;
+  expires_at?: string | null;
+  message?: string;
+};
+
+export type ApiPasswordResetResolveResponse = {
+  status: 'valid' | string;
+  expires_at?: string | null;
+  message?: string;
+};
+
+export type ApiDoctorSpecialty = {
+  id: number;
+  name: string;
 };
 
 export type ApiPharmacy = {
@@ -192,6 +230,7 @@ export type ApiPharmacy = {
   pharmacy_user_id?: number | null;
   pharmacy_user_name?: string | null;
   pharmacy_user_email?: string | null;
+  recovery_whatsapp?: string | null;
   account_verified_at?: string | null;
   account_verified_by?: number | null;
   account_verified_by_name?: string | null;
@@ -396,6 +435,9 @@ export type ApiFamilyMember = {
   name: string;
   photo_url?: string | null;
   id_document_url?: string | null;
+  claim_token?: string | null;
+  claim_token_expires_at?: string | null;
+  claimed_at?: string | null;
   archived_at?: string | null;
   age: number | null;
   date_of_birth: string | null;
@@ -430,6 +472,9 @@ export type ApiDoctorPatientProfile = {
   surgical_history: string | null;
   blood_type: 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null;
   emergency_notes: string | null;
+  claim_token?: string | null;
+  claim_token_expires_at?: string | null;
+  claimed_at?: string | null;
 };
 
 export type ApiDoctorDirectory = {
@@ -502,12 +547,52 @@ export type ApiMedicalHistoryEntry = {
   updated_at: string;
 };
 
+export type ApiRehabEntry = {
+  id: number;
+  patient_user_id: number;
+  doctor_user_id: number;
+  prescription_id: number | null;
+  sessions_per_week: number | null;
+  duration_weeks: number | null;
+  goals: string | null;
+  exercise_type: string | null;
+  exercise_reps: string | null;
+  exercise_frequency: string | null;
+  exercise_notes: string | null;
+  pain_score: number | null;
+  mobility_score: string | null;
+  progress_notes: string | null;
+  follow_up_date: string | null;
+  prescription_print_code?: string | null;
+  prescription_requested_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiPasswordResetEvent = {
+  id: number;
+  user_id: number | null;
+  action: 'request' | 'complete' | string;
+  channel: string;
+  identifier_masked: string | null;
+  success: boolean;
+  reason: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  user_name?: string | null;
+  user_role?: string | null;
+  user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export const api = {
   register: (payload: {
     name: string;
     email: string;
     phone?: string;
     ninu?: string;
+    specialty?: string;
     address?: string;
     latitude?: number | null;
     longitude?: number | null;
@@ -525,7 +610,58 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
+  resolveClaimToken: (token: string) =>
+    request<ApiClaimResolveResponse>('/auth/claim/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ token })
+    }),
+  claimFamilyMemberAccount: (payload: {
+    token: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    phone?: string | null;
+    whatsapp?: string | null;
+  }) =>
+    request<ApiAuthResponse & { message?: string }>('/auth/claim/complete', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  requestPasswordResetWhatsappLink: (payload: {
+    whatsapp: string;
+    ninu: string;
+    date_of_birth: string;
+  }) =>
+    request<ApiPasswordResetWhatsappResponse>('/auth/password-reset/request-whatsapp', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  resolvePasswordResetToken: (payload: { token: string }) =>
+    request<ApiPasswordResetResolveResponse>('/auth/password-reset/resolve', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  resolveRecoveryApprovalToken: (payload: { token: string }) =>
+    request<ApiRecoveryApprovalResolveResponse>('/auth/password-reset/recovery/resolve', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  decideRecoveryApproval: (payload: { token: string; decision: 'approve' | 'deny'; target_whatsapp?: string }) =>
+    request<{ message: string; status: 'approved' | 'denied' | string; whatsapp_url?: string | null; expires_in_minutes?: number }>('/auth/password-reset/recovery/decision', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  completePasswordReset: (payload: {
+    token: string;
+    password: string;
+    password_confirmation: string;
+  }) =>
+    request<{ message: string }>('/auth/password-reset/complete', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   me: (token: string) => request<ApiUser>('/auth/me', { token }),
+  getDoctorSpecialties: () => request<ApiDoctorSpecialty[]>('/doctor-specialties'),
   getDoctorsDirectory: () => request<ApiDoctorDirectory[]>('/doctors'),
   getDoctorsDirectoryForDoctor: (token: string) => request<ApiDoctorDirectory[]>('/doctor/doctors-directory', { token }),
   getDoctorsDirectoryForPharmacy: (token: string) => request<ApiDoctorDirectory[]>('/pharmacy/doctors-directory', { token }),
@@ -547,6 +683,7 @@ export const api = {
       years_experience: number | null;
       consultation_fee_range: string | null;
       whatsapp: string | null;
+      recovery_whatsapp: string | null;
       bio: string | null;
     }>
   ) =>
@@ -565,6 +702,7 @@ export const api = {
       latitude: number | null;
       longitude: number | null;
       whatsapp: string | null;
+      recovery_whatsapp: string | null;
       date_of_birth: string | null;
       age: number | null;
       gender: 'male' | 'female' | null;
@@ -584,6 +722,25 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   logout: (token: string) => request<{ message: string }>('/auth/logout', { method: 'POST', token }),
+  changePassword: (
+    token: string,
+    payload: {
+      current_password: string;
+      password: string;
+      password_confirmation: string;
+    }
+  ) =>
+    request<{ message: string }>('/auth/change-password', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updateRecoveryWhatsapp: (token: string, recovery_whatsapp: string | null) =>
+    request<ApiUser>('/auth/recovery-whatsapp', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ recovery_whatsapp })
+    }),
   getPharmacies: () => request<ApiPharmacy[]>('/pharmacies'),
   getPharmaciesForDoctor: (token: string) => request<ApiPharmacy[]>('/doctor/pharmacies-directory', { token }),
   getPharmaciesForPharmacy: (token: string) => request<ApiPharmacy[]>('/pharmacy/pharmacies-directory', { token }),
@@ -613,6 +770,7 @@ export const api = {
       logo_url: string | null;
       storefront_image_url: string | null;
       notes_for_patients: string | null;
+      recovery_whatsapp: string | null;
     }>
   ) =>
     request<ApiPharmacy>('/pharmacy/me', {
@@ -1297,6 +1455,31 @@ export const api = {
       token,
       body: JSON.stringify({ prescription_id })
     }),
+  getDoctorPatientRehabEntries: (token: string, patientUserId: number) =>
+    request<ApiRehabEntry[]>(`/doctor/patients/${patientUserId}/rehab-entries`, { token }),
+  createDoctorPatientRehabEntry: (
+    token: string,
+    patientUserId: number,
+    payload: {
+      prescription_id?: number | null;
+      sessions_per_week?: number | null;
+      duration_weeks?: number | null;
+      goals?: string | null;
+      exercise_type?: string | null;
+      exercise_reps?: string | null;
+      exercise_frequency?: string | null;
+      exercise_notes?: string | null;
+      pain_score?: number | null;
+      mobility_score?: string | null;
+      progress_notes?: string | null;
+      follow_up_date?: string | null;
+    }
+  ) =>
+    request<ApiRehabEntry>(`/doctor/patients/${patientUserId}/rehab-entries`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
   getAdminUsers: (
     token: string,
     role?: 'doctor' | 'pharmacy' | 'patient'
@@ -1310,6 +1493,18 @@ export const api = {
   },
   getAdminPharmacies: (token: string) =>
     request<ApiPharmacy[]>('/admin/accounts/pharmacies', { token }),
+  getAdminPasswordResetEvents: (
+    token: string,
+    params?: { action?: 'request' | 'complete'; success?: '0' | '1'; q?: string; limit?: number }
+  ) => {
+    const search = new URLSearchParams();
+    if (params?.action) search.set('action', params.action);
+    if (params?.success) search.set('success', params.success);
+    if (params?.q) search.set('q', params.q);
+    if (params?.limit) search.set('limit', String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiPasswordResetEvent[]>(`/admin/accounts/password-reset-events${suffix}`, { token });
+  },
   adminApproveUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
     request<{
       id: number;

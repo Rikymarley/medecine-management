@@ -52,6 +52,15 @@ class MedicalHistoryController extends Controller
 
     private function doctorHasPatientLink(int $doctorUserId, int $patientUserId): bool
     {
+        $ownsPatient = User::query()
+            ->where('id', $patientUserId)
+            ->where('role', 'patient')
+            ->where('created_by_doctor_id', $doctorUserId)
+            ->exists();
+        if ($ownsPatient) {
+            return true;
+        }
+
         return Prescription::query()
             ->where('doctor_user_id', $doctorUserId)
             ->where('patient_user_id', $patientUserId)
