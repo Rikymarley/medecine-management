@@ -47,3 +47,8 @@ php artisan schema:dump
 name = "NGROK 5173"
 icon = "tool"
 command = "ngrok http 5173"
+
+[[actions]]
+name = "PKILL ALL"
+icon = "tool"
+command = "pkill -f ngrok; pkill -f \"php artisan serve\"; pkill -f \"npm run dev\""

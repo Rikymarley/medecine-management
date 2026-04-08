@@ -376,6 +376,23 @@ export type ApiDoctorPatientAvailability = {
   }>;
 };
 
+export type ApiDoctorPatientAccessStatus = {
+  has_link: boolean;
+  has_pending_request: boolean;
+};
+
+export type ApiDoctorPatientAccessRequest = {
+  id: number;
+  doctor_id: number;
+  doctor_name: string | null;
+  status: 'pending' | 'approved' | 'denied';
+  message: string | null;
+  response_message: string | null;
+  responded_at: string | null;
+  created_at: string;
+  whatsapp_url?: string | null;
+};
+
 export type ApiPrescriptionPrintData = {
   prescription_id: number;
   print_code: string;
@@ -537,6 +554,7 @@ export type ApiMedicalHistoryEntry = {
   ended_at: string | null;
   status: 'active' | 'resolved';
   visibility: 'doctor_only' | 'patient_only' | 'shared';
+  visit_id?: number | null;
   doctor_name?: string | null;
   family_member_name?: string | null;
   prescription_requested_at?: string | null;
@@ -1488,6 +1506,14 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : '';
     return request<ApiMedicalHistoryEntry[]>(`/doctor/patients/${patientUserId}/medical-history${suffix}`, { token });
   },
+  getDoctorPatientAccessStatus: (token: string, patientUserId: number) =>
+    request<ApiDoctorPatientAccessStatus>(`/doctor/patients/${patientUserId}/access-status`, { token }),
+  createDoctorPatientAccessRequest: (token: string, patientUserId: number, payload?: { message?: string | null }) =>
+    request<ApiDoctorPatientAccessRequest>(`/doctor/patients/${patientUserId}/access-requests`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
   createDoctorPatientMedicalHistory: (
     token: string,
     patientUserId: number,

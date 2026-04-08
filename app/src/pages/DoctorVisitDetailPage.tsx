@@ -1,6 +1,7 @@
 import {
   IonBackButton,
   IonBadge,
+  IonButtons,
   IonCard,
   IonCardContent,
   IonCardHeader,
@@ -19,7 +20,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { documentTextOutline, listOutline, medicalOutline, newspaperOutline, personCircleOutline, pulseOutline } from 'ionicons/icons';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { api, ApiVisitDetail } from '../services/api';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
@@ -74,6 +75,12 @@ const DoctorVisitDetailPage: React.FC = () => {
     loadVisit();
   });
 
+  useEffect(() => {
+    if (token && visitId) {
+      loadVisit();
+    }
+  }, [token, visitId, loadVisit]);
+
   const navigateToPrescription = (prescriptionId: number | null) => {
     if (!prescriptionId) {
       return;
@@ -92,7 +99,9 @@ const DoctorVisitDetailPage: React.FC = () => {
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonBackButton defaultHref={`/doctor/patients${contextParams}`} />
+          <IonButtons slot="start">
+            <IonBackButton defaultHref={`/doctor/patients${contextParams}`} />
+          </IonButtons>
           <IonTitle>Visite {visit ? `#${visit.id}` : ''}</IonTitle>
         </IonToolbar>
       </IonHeader>

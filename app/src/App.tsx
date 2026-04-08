@@ -176,7 +176,7 @@ const App: React.FC = () => (
               <DoctorVisitFormPage />
             </RequireRole>
           </Route>
-          <Route exact path="/doctor/visits/:visitId">
+          <Route exact path="/doctor/visits/:visitId(\\d+)">
             <RequireRole role="doctor">
               <DoctorVisitDetailPage />
             </RequireRole>

@@ -41,6 +41,7 @@ import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import {
   api,
+  ApiDoctorPatientAccessStatus,
   ApiDoctorPatientProfile,
   ApiFamilyMember,
   ApiMedicalHistoryEntry,
@@ -122,6 +123,10 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyPrefillApplied, setHistoryPrefillApplied] = useState(false);
   const [isVisitsCollapsed, setIsVisitsCollapsed] = useState(true);
+  const [accessStatus, setAccessStatus] = useState<ApiDoctorPatientAccessStatus | null>(null);
+  const [accessRequestLoading, setAccessRequestLoading] = useState(false);
+  const [accessRequestWhatsApp, setAccessRequestWhatsApp] = useState<string | null>(null);
+  const [accessRequestError, setAccessRequestError] = useState<string | null>(null);
 
   const [historyForm, setHistoryForm] = useState<{
     family_member_id: string;
@@ -289,6 +294,16 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       return;
     }
     api.getDoctorPatientProfile(token, patientUserId).then(setPatientProfile).catch(() => setPatientProfile(null));
+  }, [patientUserId, token]);
+
+  useEffect(() => {
+    if (!token || !patientUserId) {
+      setAccessStatus(null);
+      return;
+    }
+    api.getDoctorPatientAccessStatus(token, patientUserId)
+      .then(setAccessStatus)
+      .catch(() => setAccessStatus(null));
   }, [patientUserId, token]);
 
   const principalPatientUserId = useMemo(() => {
@@ -613,6 +628,33 @@ useEffect(() => {
     }));
   };
 
+  const isRequestPending = Boolean(accessStatus?.has_pending_request);
+  const showClinicalCards = accessStatus?.has_link === true;
+
+  const handleRequestAccess = useCallback(async () => {
+    if (!token || !patientUserId) {
+      setAccessRequestError('Patient introuvable.');
+      return;
+    }
+    setAccessRequestLoading(true);
+    setAccessRequestError(null);
+    setAccessRequestWhatsApp(null);
+    try {
+      const result = await api.createDoctorPatientAccessRequest(token, patientUserId);
+      if (result.whatsapp_url) {
+        setAccessRequestWhatsApp(result.whatsapp_url);
+        window.open(result.whatsapp_url, '_blank');
+      } else {
+        setAccessRequestError('Le patient n’a pas de numero WhatsApp valide.');
+      }
+      setAccessStatus((prev) => (prev ? { ...prev, has_pending_request: true } : prev));
+    } catch (err) {
+      setAccessRequestError(err instanceof Error ? err.message : "Impossible d'envoyer la demande.");
+    } finally {
+      setAccessRequestLoading(false);
+    }
+  }, [patientUserId, token]);
+
   const resetHistoryForm = () => {
     setHistoryForm({
       family_member_id: effectiveFamilyMemberId ? String(effectiveFamilyMemberId) : '',
@@ -873,13 +915,44 @@ useEffect(() => {
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <IonIcon icon={personOutline} /> Profil patient
               </IonCardTitle>
-              <IonButton fill="clear" size="small" onClick={() => setIsProfileCollapsed((prev) => !prev)}>
-                <IonIcon icon={isProfileCollapsed ? chevronDownOutline : chevronUpOutline} />
-              </IonButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {!showClinicalCards ? (
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    disabled={accessRequestLoading || isRequestPending}
+                    onClick={() => handleRequestAccess().catch(() => undefined)}
+                  >
+                    {accessRequestLoading
+                      ? 'Envoi...'
+                      : isRequestPending
+                      ? 'Demande en attente'
+                      : "Demande d'acces"}
+                  </IonButton>
+                ) : null}
+                <IonButton fill="clear" size="small" onClick={() => setIsProfileCollapsed((prev) => !prev)}>
+                  <IonIcon icon={isProfileCollapsed ? chevronDownOutline : chevronUpOutline} />
+                </IonButton>
+              </div>
             </div>
           </IonCardHeader>
           {!isProfileCollapsed ? (
             <IonCardContent>
+              {!showClinicalCards && accessRequestError ? (
+                <IonText color="danger">
+                  <p>{accessRequestError}</p>
+                </IonText>
+              ) : null}
+              {!showClinicalCards && accessRequestWhatsApp ? (
+                <IonText color="success">
+                  <p>
+                    Lien WhatsApp genere.{' '}
+                    <a href={accessRequestWhatsApp} target="_blank" rel="noreferrer">
+                      Ouvrir WhatsApp
+                    </a>
+                  </p>
+                </IonText>
+              ) : null}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div
                   style={{
@@ -1174,15 +1247,40 @@ useEffect(() => {
           </IonCard>
         ) : null}
 
+        {showClinicalCards ? (
         <IonCard className="surface-card">
           <IonCardHeader>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <IonIcon icon={documentTextOutline} /> Visites
               </IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IonButton
+                  size="small"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (patientUserId) {
+                      params.set('patientUserId', String(patientUserId));
+                    }
+                    if (effectiveFamilyMemberId) {
+                      params.set('familyMemberId', String(effectiveFamilyMemberId));
+                    }
+                    if (familyMemberName) {
+                      params.set('familyMemberName', familyMemberName);
+                    }
+                    if (decodedPatientName) {
+                      params.set('patient', decodedPatientName);
+                    }
+                    const suffix = params.toString() ? `?${params.toString()}` : '';
+                    ionRouter.push(`/doctor/visits/new${suffix}`, 'forward', 'push');
+                  }}
+                >
+                  Ajouter
+                </IonButton>
                 <IonButton fill="clear" size="small" onClick={() => setIsVisitsCollapsed((prev) => !prev)}>
                   <IonIcon icon={isVisitsCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
+              </div>
             </div>
           </IonCardHeader>
           {!isVisitsCollapsed ? (
@@ -1237,7 +1335,7 @@ useEffect(() => {
                                       size="small"
                                       onClick={(event) => {
                                         event.stopPropagation();
-                                        ionRouter.push(`/doctor/medical-history/${entry.id}${historyQuerySuffix}`, 'forward', 'push');
+                                        ionRouter.push(`/doctor/medical-history/${entry.id}${contextQuerySuffix}`, 'forward', 'push');
                                       }}
                                     >
                                       Voir
@@ -1259,7 +1357,9 @@ useEffect(() => {
             </IonCardContent>
           ) : null}
         </IonCard>
+        ) : null}
 
+        {showClinicalCards ? (
         <IonCard className="surface-card">
           <IonCardHeader>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
@@ -1493,8 +1593,10 @@ useEffect(() => {
                 )}
               </IonCardContent>
             ) : null}
-          </IonCard>
+        </IonCard>
+        ) : null}
 
+        {showClinicalCards ? (
           <IonCard className="surface-card">
             <IonCardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
@@ -1566,7 +1668,9 @@ useEffect(() => {
             </IonCardContent>
           ) : null}
         </IonCard>
+        ) : null}
 
+        {showClinicalCards ? (
         <IonCard className="surface-card">
           <IonCardHeader>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
@@ -1654,6 +1758,7 @@ useEffect(() => {
             </IonCardContent>
           ) : null}
         </IonCard>
+        ) : null}
 
         <IonModal
           isOpen={showHistoryModal}

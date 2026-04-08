@@ -27,20 +27,12 @@ class DoctorVisitController extends Controller
 
     private function doctorHasPatientLink(int $doctorUserId, int $patientUserId): bool
     {
-        $ownsPatient = User::query()
+        $patient = User::query()
             ->where('id', $patientUserId)
             ->where('role', 'patient')
-            ->where('created_by_doctor_id', $doctorUserId)
             ->exists();
 
-        if ($ownsPatient) {
-            return true;
-        }
-
-        return Prescription::query()
-            ->where('doctor_user_id', $doctorUserId)
-            ->where('patient_user_id', $patientUserId)
-            ->exists();
+        return $patient;
     }
 
     private function formatVisit(Visit $visit): array
@@ -144,8 +136,13 @@ class DoctorVisitController extends Controller
 
         $familyMemberId = $request->input('family_member_id');
 
-        if (!$this->doctorHasPatientLink($request->user()->id, $data['patient_user_id'])) {
-            return response()->json(['message' => 'Acces interdit.'], 403);
+        $patient = User::query()
+            ->where('id', $data['patient_user_id'])
+            ->where('role', 'patient')
+            ->first();
+
+        if ($patient === null) {
+            return response()->json(['message' => 'Patient introuvable.'], 404);
         }
 
         if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId ?? null, $data['patient_user_id'])) {

@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\PatientMedicinePurchaseController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\LicenseVerificationController;
 use App\Http\Controllers\Api\DoctorSpecialtyController;
+use App\Http\Controllers\Api\DoctorPatientAccessRequestController;
 use App\Http\Controllers\Api\DoctorRehabController;
 use App\Http\Controllers\Api\DoctorVisitController;
 use App\Http\Controllers\Api\UserVerificationController;
@@ -75,6 +76,15 @@ Route::get('/doctor/patients/{patient}', [PrescriptionController::class, 'doctor
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/patients/{patient}/family-members', [FamilyMemberController::class, 'indexForDoctor'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/patients/{patient}/access-status', [DoctorPatientAccessRequestController::class, 'status'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::post('/doctor/patients/{patient}/access-requests', [DoctorPatientAccessRequestController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+
+Route::get('/patient/access-requests', [DoctorPatientAccessRequestController::class, 'patientIndex'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::patch('/patient/access-requests/{accessRequest}', [DoctorPatientAccessRequestController::class, 'respond'])
+    ->middleware(['auth:sanctum', 'role:patient']);
 Route::get('/patient/prescriptions', [PrescriptionController::class, 'mineForPatient'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/prescriptions', [PrescriptionController::class, 'store'])

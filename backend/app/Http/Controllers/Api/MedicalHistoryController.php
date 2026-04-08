@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\FamilyMember;
 use App\Models\MedicalHistoryEntry;
 use App\Models\Prescription;
+use App\Models\RehabEntry;
 use App\Models\User;
+use App\Models\Visit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -26,6 +28,7 @@ class MedicalHistoryController extends Controller
         $data = $request->validate([
             'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
             'prescription_id' => ['nullable', 'integer', 'exists:prescriptions,id'],
+            'visit_id' => ['nullable', 'integer', 'exists:visits,id'],
             'type' => ['required', 'in:condition,allergy,surgery,hospitalization,medication,note'],
             'title' => ['required', 'string', 'max:255'],
             'details' => ['nullable', 'string', 'max:5000'],
@@ -36,6 +39,23 @@ class MedicalHistoryController extends Controller
         ]);
 
         return $data;
+    }
+
+    private function ensureVisitBelongsToPatient(?int $visitId, int $patientUserId, ?int $doctorUserId = null): bool
+    {
+        if (!$visitId) {
+            return true;
+        }
+
+        $query = Visit::query()
+            ->where('id', $visitId)
+            ->where('patient_user_id', $patientUserId);
+
+        if ($doctorUserId) {
+            $query->where('doctor_user_id', $doctorUserId);
+        }
+
+        return $query->exists();
     }
 
     private function ensureFamilyMemberBelongsToPatient(?int $familyMemberId, int $patientUserId): bool
@@ -133,6 +153,7 @@ class MedicalHistoryController extends Controller
 
         return [
             ...$entry->toArray(),
+            'visit_id' => $entry->visit_id,
             'doctor_name' => $entry->doctor?->name,
             'family_member_name' => $entry->familyMember?->name,
             'prescription_id' => $primaryPrescription?->id ?? $entry->prescription_id,
@@ -251,6 +272,9 @@ class MedicalHistoryController extends Controller
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
+        if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id)) {
+            return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
+        }
 
         $entry = MedicalHistoryEntry::create([
             ...$data,
@@ -277,6 +301,9 @@ class MedicalHistoryController extends Controller
         $data = $this->validatePayload($request);
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
+        }
+        if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id)) {
+            return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
         if (!$this->ensurePrescriptionBelongsToPatient($data['prescription_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
@@ -346,6 +373,9 @@ class MedicalHistoryController extends Controller
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
+        if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id, $doctor->id)) {
+            return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
+        }
         if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
@@ -384,6 +414,9 @@ class MedicalHistoryController extends Controller
         $data = $this->validatePayload($request);
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
+        }
+        if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id, $doctor->id)) {
+            return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
         if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
