@@ -19,6 +19,7 @@ class MedicalHistoryEntry extends Model
         'ended_at',
         'status',
         'visibility',
+        'visit_id',
     ];
 
     protected $casts = [
@@ -44,5 +45,25 @@ class MedicalHistoryEntry extends Model
     public function prescription()
     {
         return $this->belongsTo(Prescription::class);
+    }
+
+    public function prescriptions()
+    {
+        return $this->belongsToMany(
+            Prescription::class,
+            'medical_history_prescriptions',
+            'medical_history_entry_id',
+            'prescription_id'
+        )->withTimestamps();
+    }
+
+    public function rehabEntries()
+    {
+        return $this->hasMany(RehabEntry::class, 'medical_history_entry_id');
+    }
+
+    public function visit()
+    {
+        return $this->belongsTo(Visit::class);
     }
 }

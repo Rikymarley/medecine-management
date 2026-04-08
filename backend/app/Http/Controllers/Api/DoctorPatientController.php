@@ -187,6 +187,7 @@ class DoctorPatientController extends Controller
             'claim_token' => $this->generateClaimToken(),
             'claim_token_expires_at' => now()->addMonths(12),
         ]);
+        $row->update(['principal_patient_id' => $row->id]);
 
         return response()->json([
             'id' => $row->id,

@@ -75,6 +75,8 @@ class MedicalHistoryController extends Controller
                 'doctor:id,name',
                 'familyMember:id,name',
                 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+                'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+                'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at',
             ])
             ->orderByDesc('started_at')
             ->orderByDesc('created_at');
@@ -110,16 +112,74 @@ class MedicalHistoryController extends Controller
 
     private function formatEntry(MedicalHistoryEntry $entry): array
     {
+        $linked = $entry->relationLoaded('prescriptions')
+            ? $entry->prescriptions
+            : collect();
+
+        if ($entry->prescription && !$linked->contains(fn ($rx) => (int) $rx->id === (int) $entry->prescription_id)) {
+            $linked = $linked->push($entry->prescription);
+        }
+
+        $linkedPrescriptions = $linked
+            ->unique('id')
+            ->sortByDesc(fn ($rx) => optional($rx->requested_at)->getTimestamp() ?? strtotime((string) $rx->requested_at))
+            ->values();
+        $primaryPrescription = $linkedPrescriptions->first();
+
         $canEditByPatient = $entry->doctor_user_id === null;
+        $linkedRehabEntries = $entry->relationLoaded('rehabEntries')
+            ? $entry->rehabEntries
+            : collect();
+
         return [
             ...$entry->toArray(),
             'doctor_name' => $entry->doctor?->name,
             'family_member_name' => $entry->familyMember?->name,
-            'prescription_requested_at' => optional($entry->prescription?->requested_at)->toIso8601String(),
-            'prescription_print_code' => $entry->prescription?->print_code,
+            'prescription_id' => $primaryPrescription?->id ?? $entry->prescription_id,
+            'prescription_requested_at' => optional($primaryPrescription?->requested_at ?? $entry->prescription?->requested_at)->toIso8601String(),
+            'prescription_print_code' => $primaryPrescription?->print_code ?? $entry->prescription?->print_code,
+            'linked_prescriptions' => $linkedPrescriptions->map(fn ($rx) => [
+                'id' => $rx->id,
+                'print_code' => $rx->print_code,
+                'requested_at' => optional($rx->requested_at)->toIso8601String(),
+            ])->values(),
+            'linked_rehab_entries' => $linkedRehabEntries
+                ->sortByDesc(fn ($rehab) => optional($rehab->created_at)->getTimestamp() ?? strtotime((string) $rehab->created_at))
+                ->map(fn ($rehab) => [
+                    'id' => $rehab->id,
+                    'reference' => 'REH-' . str_pad((string) $rehab->id, 6, '0', STR_PAD_LEFT),
+                    'doctor_user_id' => $rehab->doctor_user_id,
+                    'created_at' => optional($rehab->created_at)->toIso8601String(),
+                    'sessions_per_week' => $rehab->sessions_per_week,
+                    'duration_weeks' => $rehab->duration_weeks,
+                    'goals' => $rehab->goals,
+                    'exercise_type' => $rehab->exercise_type,
+                    'exercise_reps' => $rehab->exercise_reps,
+                    'exercise_frequency' => $rehab->exercise_frequency,
+                    'exercise_notes' => $rehab->exercise_notes,
+                    'pain_score' => $rehab->pain_score,
+                    'mobility_score' => $rehab->mobility_score,
+                    'progress_notes' => $rehab->progress_notes,
+                    'follow_up_date' => optional($rehab->follow_up_date)->toDateString(),
+                ])->values(),
             'can_edit_by_patient' => $canEditByPatient,
             'can_delete_by_patient' => $canEditByPatient,
         ];
+    }
+
+    private function syncEntryPrescriptionLinks(MedicalHistoryEntry $entry, ?int $prescriptionId): void
+    {
+        if ($prescriptionId) {
+            $entry->prescriptions()->syncWithoutDetaching([$prescriptionId]);
+            if (!$entry->prescription_id) {
+                $entry->update(['prescription_id' => $prescriptionId]);
+            }
+            return;
+        }
+
+        if ($entry->prescription_id && !$entry->prescriptions()->where('prescription_id', $entry->prescription_id)->exists()) {
+            $entry->prescriptions()->syncWithoutDetaching([$entry->prescription_id]);
+        }
     }
 
     public function patientIndex(Request $request)
@@ -148,6 +208,8 @@ class MedicalHistoryController extends Controller
                 'doctor:id,name',
                 'familyMember:id,name',
                 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+                'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+                'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at',
             ])
             ->orderByDesc('started_at')
             ->orderByDesc('created_at');
@@ -195,9 +257,10 @@ class MedicalHistoryController extends Controller
             'entry_code' => $this->generateEntryCode(),
             'patient_user_id' => $patient->id,
             'doctor_user_id' => null,
-        ])->load(['doctor:id,name', 'familyMember:id,name']);
+        ])->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
+        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
-        return response()->json($this->formatEntry($entry), 201);
+        return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at'])), 201);
     }
 
     public function patientUpdate(Request $request, MedicalHistoryEntry $entry)
@@ -220,8 +283,15 @@ class MedicalHistoryController extends Controller
         }
 
         $entry->update($data);
+        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
-        return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name'])));
+        return response()->json($this->formatEntry($entry->fresh([
+            'doctor:id,name',
+            'familyMember:id,name',
+            'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at',
+        ])));
     }
 
     public function patientDestroy(Request $request, MedicalHistoryEntry $entry)
@@ -285,9 +355,16 @@ class MedicalHistoryController extends Controller
             'entry_code' => $this->generateEntryCode(),
             'patient_user_id' => $patient->id,
             'doctor_user_id' => $doctor->id,
-        ])->load(['doctor:id,name', 'familyMember:id,name']);
+        ])->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
+        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
-        return response()->json($this->formatEntry($entry), 201);
+        return response()->json($this->formatEntry($entry->fresh([
+            'doctor:id,name',
+            'familyMember:id,name',
+            'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at',
+        ])), 201);
     }
 
     public function doctorUpdate(Request $request, User $patient, MedicalHistoryEntry $entry)
@@ -308,13 +385,23 @@ class MedicalHistoryController extends Controller
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
+        if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
+        }
 
         $entry->update([
             ...$data,
             'doctor_user_id' => $doctor->id,
         ]);
+        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
-        return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name'])));
+        return response()->json($this->formatEntry($entry->fresh([
+            'doctor:id,name',
+            'familyMember:id,name',
+            'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at',
+        ])));
     }
 
     public function doctorLinkPrescription(Request $request, User $patient, MedicalHistoryEntry $entry)
@@ -339,11 +426,20 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
-        $entry->update([
-            'prescription_id' => (int) $data['prescription_id'],
-            'doctor_user_id' => $doctor->id,
-        ]);
+        $prescriptionId = (int) $data['prescription_id'];
+        $entry->prescriptions()->syncWithoutDetaching([$prescriptionId]);
+        if (!$entry->prescription_id) {
+            $entry->update(['prescription_id' => $prescriptionId]);
+        } else {
+            $entry->update(['doctor_user_id' => $doctor->id]);
+        }
 
-        return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name', 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code'])));
+        return response()->json($this->formatEntry($entry->fresh([
+            'doctor:id,name',
+            'familyMember:id,name',
+            'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code',
+            'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at',
+        ])));
     }
 }

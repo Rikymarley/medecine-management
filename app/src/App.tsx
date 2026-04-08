@@ -11,6 +11,7 @@ import DoctorDashboard from './pages/DoctorDashboard';
 import DoctorCreatePrescriptionPage from './pages/DoctorCreatePrescriptionPage';
 import DoctorPrescriptionDetailPage from './pages/DoctorPrescriptionDetailPage';
 import DoctorPatientPrescriptionsPage from './pages/DoctorPatientPrescriptionsPage';
+import DoctorVisitFormPage from './pages/DoctorVisitFormPage';
 import PharmacyDashboard from './pages/PharmacyDashboard';
 import PharmacyPrescriptionsPage from './pages/PharmacyPrescriptionsPage';
 import PatientDashboard from './pages/PatientDashboard';
@@ -20,6 +21,8 @@ import DoctorDoctorsDirectoryPage from './pages/DoctorDoctorsDirectoryPage';
 import DoctorDoctorDetailPage from './pages/DoctorDoctorDetailPage';
 import DoctorPharmaciesDirectoryPage from './pages/DoctorPharmaciesDirectoryPage';
 import DoctorPharmacyDetailPage from './pages/DoctorPharmacyDetailPage';
+import DoctorMedicalHistoryEntryPage from './pages/DoctorMedicalHistoryEntryPage';
+import DoctorVisitDetailPage from './pages/DoctorVisitDetailPage';
 import PharmacyDoctorsDirectoryPage from './pages/PharmacyDoctorsDirectoryPage';
 import PharmacyDoctorDetailPage from './pages/PharmacyDoctorDetailPage';
 import PharmacyPharmaciesDirectoryPage from './pages/PharmacyPharmaciesDirectoryPage';
@@ -168,6 +171,16 @@ const App: React.FC = () => (
               <DoctorPatientPrescriptionsPage />
             </RequireRole>
           </Route>
+          <Route exact path="/doctor/visits/new">
+            <RequireRole role="doctor">
+              <DoctorVisitFormPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/visits/:visitId">
+            <RequireRole role="doctor">
+              <DoctorVisitDetailPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/doctor/prescriptions">
             <RequireRole role="doctor">
               <DoctorPrescriptionsPage />
@@ -196,6 +209,11 @@ const App: React.FC = () => (
           <Route exact path="/doctor/pharmacies/:pharmacyId">
             <RequireRole role="doctor">
               <DoctorPharmacyDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/medical-history/:id">
+            <RequireRole role="doctor">
+              <DoctorMedicalHistoryEntryPage />
             </RequireRole>
           </Route>
           <Route exact path="/pharmacy">

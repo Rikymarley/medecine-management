@@ -541,16 +541,99 @@ export type ApiMedicalHistoryEntry = {
   family_member_name?: string | null;
   prescription_requested_at?: string | null;
   prescription_print_code?: string | null;
+  linked_prescriptions?: Array<{
+    id: number;
+    print_code: string | null;
+    requested_at: string | null;
+  }>;
+  linked_rehab_entries?: Array<{
+    id: number;
+    reference: string;
+    doctor_user_id: number;
+    created_at: string | null;
+    sessions_per_week: number | null;
+    duration_weeks: number | null;
+    goals: string | null;
+    exercise_type: string | null;
+    exercise_reps: string | null;
+    exercise_frequency: string | null;
+    exercise_notes: string | null;
+    pain_score: number | null;
+    mobility_score: string | null;
+    progress_notes: string | null;
+    follow_up_date: string | null;
+  }>;
   can_edit_by_patient?: boolean;
   can_delete_by_patient?: boolean;
   created_at: string;
   updated_at: string;
 };
 
+export type ApiVisit = {
+  id: number;
+  patient_user_id: number;
+  family_member_id: number | null;
+  doctor_user_id: number;
+  visit_date: string | null;
+  visit_type: string | null;
+  chief_complaint: string | null;
+  diagnosis: string | null;
+  clinical_notes: string | null;
+  treatment_plan: string | null;
+  status: string;
+  patient_name?: string | null;
+  doctor_name?: string | null;
+  family_member_name?: string | null;
+  linked_prescriptions_count?: number;
+  linked_medical_history_count?: number;
+  linked_rehab_entries_count?: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiVisitDetail = ApiVisit & {
+  prescriptions: Array<{
+    id: number;
+    print_code: string | null;
+    status: string;
+    requested_at: string | null;
+    patient_user_id: number;
+    doctor_user_id: number;
+  }>;
+  medical_history_entries: Array<{
+    id: number;
+    entry_code: string | null;
+    title: string;
+    type: ApiMedicalHistoryEntry['type'];
+    status: ApiMedicalHistoryEntry['status'];
+    details: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+    doctor_name: string | null;
+    family_member_name: string | null;
+  }>;
+  rehab_entries: Array<{
+    id: number;
+    reference: string;
+    sessions_per_week: number | null;
+    duration_weeks: number | null;
+    goals: string | null;
+    exercise_type: string | null;
+    exercise_reps: string | null;
+    exercise_frequency: string | null;
+    exercise_notes: string | null;
+    pain_score: number | null;
+    mobility_score: number | null;
+    progress_notes: string | null;
+    follow_up_date: string | null;
+  }>;
+};
+
 export type ApiRehabEntry = {
   id: number;
   patient_user_id: number;
   doctor_user_id: number;
+  medical_history_entry_id: number | null;
   prescription_id: number | null;
   sessions_per_week: number | null;
   duration_weeks: number | null;
@@ -563,6 +646,8 @@ export type ApiRehabEntry = {
   mobility_score: string | null;
   progress_notes: string | null;
   follow_up_date: string | null;
+  medical_history_entry_code?: string | null;
+  medical_history_entry_title?: string | null;
   prescription_print_code?: string | null;
   prescription_requested_at?: string | null;
   created_at: string;
@@ -1455,12 +1540,69 @@ export const api = {
       token,
       body: JSON.stringify({ prescription_id })
     }),
+  getDoctorVisits: (
+    token: string,
+    patientUserId: number,
+    params?: { family_member_id?: number | null }
+  ) => {
+    const search = new URLSearchParams();
+    search.set('patient_user_id', String(patientUserId));
+    if (typeof params?.family_member_id === 'number') {
+      search.set('family_member_id', String(params.family_member_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiVisit[]>(`/doctor/visits${suffix}`, { token });
+  },
+  getDoctorVisitById: (token: string, visitId: number) =>
+    request<ApiVisitDetail>(`/doctor/visits/${visitId}`, {
+      token
+    }),
+  createDoctorVisit: (
+    token: string,
+    payload: {
+      patient_user_id: number;
+      family_member_id?: number | null;
+      visit_date: string;
+      visit_type?: string | null;
+      chief_complaint?: string | null;
+      diagnosis?: string | null;
+      clinical_notes?: string | null;
+      treatment_plan?: string | null;
+      status?: string | null;
+    }
+  ) =>
+    request<ApiVisit>('/doctor/visits', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updateDoctorVisit: (
+    token: string,
+    visitId: number,
+    payload: {
+      patient_user_id: number;
+      family_member_id?: number | null;
+      visit_date: string;
+      visit_type?: string | null;
+      chief_complaint?: string | null;
+      diagnosis?: string | null;
+      clinical_notes?: string | null;
+      treatment_plan?: string | null;
+      status?: string | null;
+    }
+  ) =>
+    request<ApiVisitDetail>(`/doctor/visits/${visitId}`, {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(payload)
+    }),
   getDoctorPatientRehabEntries: (token: string, patientUserId: number) =>
     request<ApiRehabEntry[]>(`/doctor/patients/${patientUserId}/rehab-entries`, { token }),
   createDoctorPatientRehabEntry: (
     token: string,
     patientUserId: number,
     payload: {
+      medical_history_entry_id?: number | null;
       prescription_id?: number | null;
       sessions_per_week?: number | null;
       duration_weeks?: number | null;
@@ -1477,6 +1619,31 @@ export const api = {
   ) =>
     request<ApiRehabEntry>(`/doctor/patients/${patientUserId}/rehab-entries`, {
       method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updateDoctorPatientRehabEntry: (
+    token: string,
+    patientUserId: number,
+    entryId: number,
+    payload: {
+      medical_history_entry_id?: number | null;
+      prescription_id?: number | null;
+      sessions_per_week?: number | null;
+      duration_weeks?: number | null;
+      goals?: string | null;
+      exercise_type?: string | null;
+      exercise_reps?: string | null;
+      exercise_frequency?: string | null;
+      exercise_notes?: string | null;
+      pain_score?: number | null;
+      mobility_score?: string | null;
+      progress_notes?: string | null;
+      follow_up_date?: string | null;
+    }
+  ) =>
+    request<ApiRehabEntry>(`/doctor/patients/${patientUserId}/rehab-entries/${entryId}`, {
+      method: 'PATCH',
       token,
       body: JSON.stringify(payload)
     }),

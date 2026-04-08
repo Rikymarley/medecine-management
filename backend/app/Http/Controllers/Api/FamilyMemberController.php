@@ -14,6 +14,19 @@ use Illuminate\Support\Str;
 
 class FamilyMemberController extends Controller
 {
+    private function resolvePrincipalPatientId(User $patient): int
+    {
+        if (!empty($patient->principal_patient_id)) {
+            return (int) $patient->principal_patient_id;
+        }
+
+        $ownerId = FamilyMember::query()
+            ->where('linked_user_id', $patient->id)
+            ->value('patient_user_id');
+
+        return $ownerId ? (int) $ownerId : (int) $patient->id;
+    }
+
     private function generateUserClaimToken(): string
     {
         do {
@@ -49,15 +62,19 @@ class FamilyMemberController extends Controller
 
     private function createLinkedPatientFromFamilyMember(Request $request, array $memberPayload): User
     {
+        $requestUser = $request->user();
+        $principalPatientId = $this->resolvePrincipalPatientId($requestUser);
+
         return User::query()->create([
             'name' => $memberPayload['name'],
             'email' => $this->makeDependentEmail($memberPayload['name']),
             'password' => Hash::make(Str::random(40)),
             'role' => 'patient',
+            'principal_patient_id' => $principalPatientId,
             'account_status' => 'provisional',
             'verification_status' => 'approved',
             'verified_at' => now(),
-            'verified_by' => $request->user()->id,
+            'verified_by' => $requestUser->id,
             'claim_token' => $this->generateUserClaimToken(),
             'claim_token_expires_at' => now()->addMonths(12),
             'date_of_birth' => $memberPayload['date_of_birth'] ?? null,
@@ -169,8 +186,9 @@ class FamilyMemberController extends Controller
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
+        $principalPatientId = $this->resolvePrincipalPatientId($patient);
         $members = FamilyMember::query()
-            ->where('patient_user_id', $patient->id)
+            ->where('patient_user_id', $principalPatientId)
             ->whereNull('archived_at')
             ->orderBy('name')
             ->get([

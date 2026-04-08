@@ -244,6 +244,7 @@ const PatientDashboard: React.FC = () => {
       address.trim(),
       ninu.trim(),
       whatsapp.trim(),
+      recoveryWhatsapp.trim(),
       dateOfBirth.trim(),
       gender,
       allergies.trim(),
@@ -257,7 +258,7 @@ const PatientDashboard: React.FC = () => {
     ];
     const done = checks.filter(Boolean).length;
     return Math.round((done / checks.length) * 100);
-  }, [address, allergies, bloodType, chronicDiseases, dateOfBirth, emergencyNotes, gender, heightCm, name, ninu, phone, surgicalHistory, vaccinationUpToDate, weightKg, whatsapp]);
+  }, [address, allergies, bloodType, chronicDiseases, dateOfBirth, emergencyNotes, gender, heightCm, name, ninu, phone, recoveryWhatsapp, surgicalHistory, vaccinationUpToDate, weightKg, whatsapp]);
 
   const computedAge = useMemo(() => {
     if (!dateOfBirth) return null;

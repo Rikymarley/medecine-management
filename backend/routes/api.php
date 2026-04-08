@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\LicenseVerificationController;
 use App\Http\Controllers\Api\DoctorSpecialtyController;
 use App\Http\Controllers\Api\DoctorRehabController;
+use App\Http\Controllers\Api\DoctorVisitController;
 use App\Http\Controllers\Api\UserVerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -132,6 +133,14 @@ Route::delete('/patient/medical-history/{entry}', [MedicalHistoryController::cla
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::get('/doctor/patients/{patient}/medical-history', [MedicalHistoryController::class, 'doctorIndex'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/visits', [DoctorVisitController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/visits/{visit}', [DoctorVisitController::class, 'show'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::post('/doctor/visits', [DoctorVisitController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
+Route::put('/doctor/visits/{visit}', [DoctorVisitController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 Route::post('/doctor/patients/{patient}/medical-history', [MedicalHistoryController::class, 'doctorStore'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/medical-history/{entry}', [MedicalHistoryController::class, 'doctorUpdate'])

@@ -591,6 +591,7 @@ class PrescriptionController extends Controller
                 'claim_token' => $this->generateClaimToken(),
                 'claim_token_expires_at' => now()->addMonths(12),
             ]);
+            $patient->update(['principal_patient_id' => $patient->id]);
         }
 
         $prescription->update([

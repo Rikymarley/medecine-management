@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\MedicalHistoryEntry;
 use App\Models\Prescription;
 use App\Models\RehabEntry;
 use App\Models\User;
@@ -30,6 +31,7 @@ class DoctorRehabController extends Controller
     private function validatePayload(Request $request): array
     {
         return $request->validate([
+            'medical_history_entry_id' => ['nullable', 'integer', 'exists:medical_history_entries,id'],
             'prescription_id' => ['nullable', 'integer', 'exists:prescriptions,id'],
             'sessions_per_week' => ['nullable', 'integer', 'min:1', 'max:14'],
             'duration_weeks' => ['nullable', 'integer', 'min:1', 'max:104'],
@@ -58,6 +60,24 @@ class DoctorRehabController extends Controller
             ->exists();
     }
 
+    private function ensureMedicalHistoryLinkForDoctor(?int $entryId, int $doctorId, int $patientId): bool
+    {
+        if (!$entryId) {
+            return true;
+        }
+
+        return MedicalHistoryEntry::query()
+            ->where('id', $entryId)
+            ->where('patient_user_id', $patientId)
+            ->where('visibility', '!=', 'patient_only')
+            ->where(function ($query) use ($doctorId) {
+                $query
+                    ->where('visibility', '!=', 'doctor_only')
+                    ->orWhere('doctor_user_id', $doctorId);
+            })
+            ->exists();
+    }
+
     private function formatRow(RehabEntry $entry): array
     {
         return [
@@ -65,6 +85,8 @@ class DoctorRehabController extends Controller
             'doctor_name' => $entry->doctor?->name,
             'prescription_print_code' => $entry->prescription?->print_code,
             'prescription_requested_at' => optional($entry->prescription?->requested_at)->toIso8601String(),
+            'medical_history_entry_code' => $entry->medicalHistoryEntry?->entry_code,
+            'medical_history_entry_title' => $entry->medicalHistoryEntry?->title,
         ];
     }
 
@@ -78,7 +100,11 @@ class DoctorRehabController extends Controller
         $rows = RehabEntry::query()
             ->where('patient_user_id', $patient->id)
             ->where('doctor_user_id', $doctor->id)
-            ->with(['doctor:id,name', 'prescription:id,print_code,requested_at'])
+            ->with([
+                'doctor:id,name',
+                'prescription:id,print_code,requested_at',
+                'medicalHistoryEntry:id,entry_code,title',
+            ])
             ->orderByDesc('follow_up_date')
             ->orderByDesc('created_at')
             ->get();
@@ -97,12 +123,19 @@ class DoctorRehabController extends Controller
         if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
+        if (!$this->ensureMedicalHistoryLinkForDoctor($data['medical_history_entry_id'] ?? null, $doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Historique medical invalide pour ce patient.'], 422);
+        }
 
         $row = RehabEntry::create([
             ...$data,
             'patient_user_id' => $patient->id,
             'doctor_user_id' => $doctor->id,
-        ])->load(['doctor:id,name', 'prescription:id,print_code,requested_at']);
+        ])->load([
+            'doctor:id,name',
+            'prescription:id,print_code,requested_at',
+            'medicalHistoryEntry:id,entry_code,title',
+        ]);
 
         return response()->json($this->formatRow($row), 201);
     }
@@ -121,10 +154,16 @@ class DoctorRehabController extends Controller
         if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
+        if (!$this->ensureMedicalHistoryLinkForDoctor($data['medical_history_entry_id'] ?? null, $doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Historique medical invalide pour ce patient.'], 422);
+        }
 
         $entry->update($data);
 
-        return response()->json($this->formatRow($entry->fresh(['doctor:id,name', 'prescription:id,print_code,requested_at'])));
+        return response()->json($this->formatRow($entry->fresh([
+            'doctor:id,name',
+            'prescription:id,print_code,requested_at',
+            'medicalHistoryEntry:id,entry_code,title',
+        ])));
     }
 }
-

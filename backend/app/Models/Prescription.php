@@ -19,11 +19,12 @@ class Prescription extends Model
         'requested_at',
         'claim_token',
         'claim_expires_at',
-        'qr_token',
-        'print_code',
-        'printed_at',
-        'print_count',
-    ];
+    'qr_token',
+    'print_code',
+    'printed_at',
+    'print_count',
+    'visit_id',
+];
 
     protected $casts = [
         'requested_at' => 'datetime',
@@ -51,9 +52,24 @@ class Prescription extends Model
         return $this->belongsTo(FamilyMember::class);
     }
 
+    public function visit()
+    {
+        return $this->belongsTo(Visit::class);
+    }
+
     public function responses()
     {
         return $this->hasMany(PharmacyResponse::class);
+    }
+
+    public function medicalHistoryEntries()
+    {
+        return $this->belongsToMany(
+            MedicalHistoryEntry::class,
+            'medical_history_prescriptions',
+            'prescription_id',
+            'medical_history_entry_id'
+        )->withTimestamps();
     }
 
     public function statusLogs()

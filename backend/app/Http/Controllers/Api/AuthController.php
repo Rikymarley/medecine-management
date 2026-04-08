@@ -290,6 +290,9 @@ class AuthController extends Controller
         $data['license_verification_notes'] = null;
 
         $user = User::create($data);
+        if ($user->role === 'patient') {
+            $user->update(['principal_patient_id' => $user->id]);
+        }
         if ($user->role === 'doctor') {
             $this->queueDoctorSpecialtyIfNew($user->specialty, $user->id);
         }

@@ -203,6 +203,7 @@ const DoctorDashboard: React.FC = () => {
       { label: 'specialite', value: specialty.trim() },
       { label: 'telephone', value: phone.trim() },
       { label: 'whatsapp', value: whatsapp.trim() },
+      { label: 'whatsapp de recuperation', value: recoveryWhatsapp.trim() },
       { label: 'adresse', value: address.trim() },
       { label: 'ville', value: city.trim() },
       { label: 'departement', value: department.trim() },
@@ -226,13 +227,14 @@ const DoctorDashboard: React.FC = () => {
     licenseNumber,
     longitude,
     phone,
+    recoveryWhatsapp,
     specialty,
     whatsapp,
     yearsExperience
   ]);
   const profileIncomplete = completionMissingFields.length > 0;
   const profileCompletion = useMemo(() => {
-    const total = 13;
+    const total = 14;
     const done = total - completionMissingFields.length;
     return Math.round((done / total) * 100);
   }, [
@@ -256,6 +258,7 @@ const DoctorDashboard: React.FC = () => {
       'specialite',
       'telephone',
       'whatsapp',
+      'whatsapp de recuperation',
       'adresse',
       'ville',
       'departement',

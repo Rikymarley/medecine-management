@@ -61,6 +61,7 @@ use Laravel\Sanctum\HasApiTokens;
     'blocked_by',
     'blocked_at',
     'created_by_doctor_id',
+    'principal_patient_id',
     'pharmacy_id',
     'verification_status',
     'verified_at',
@@ -119,6 +120,11 @@ class User extends Authenticatable
     public function licenseVerifiedByDoctor()
     {
         return $this->belongsTo(self::class, 'license_verified_by_doctor_id');
+    }
+
+    public function principalPatient()
+    {
+        return $this->belongsTo(self::class, 'principal_patient_id');
     }
 
     public function delegatedBy()

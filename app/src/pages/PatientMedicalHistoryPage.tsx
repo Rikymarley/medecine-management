@@ -68,6 +68,7 @@ const PatientMedicalHistoryPage: React.FC = () => {
   const [entries, setEntries] = useState<ApiMedicalHistoryEntry[]>([]);
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [expandedPrescriptionByHistoryId, setExpandedPrescriptionByHistoryId] = useState<Record<number, boolean>>({});
+  const [expandedRehabByHistoryId, setExpandedRehabByHistoryId] = useState<Record<number, boolean>>({});
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
@@ -216,6 +217,13 @@ const PatientMedicalHistoryPage: React.FC = () => {
     }));
   };
 
+  const toggleRehabDetails = (historyId: number) => {
+    setExpandedRehabByHistoryId((prev) => ({
+      ...prev,
+      [historyId]: !prev[historyId]
+    }));
+  };
+
   return (
     <IonPage>
       <IonHeader>
@@ -243,12 +251,21 @@ const PatientMedicalHistoryPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div style={{ marginTop: '8px', display: 'grid', gap: '8px' }}>
+              <div style={{ marginTop: '8px', display: 'grid', gap: '12px' }}>
                 {pagedEntries.map((entry) => (
-                  <IonCard key={entry.id} className="surface-card" style={{ margin: 0 }}>
+                  <IonCard
+                    key={entry.id}
+                    className="surface-card"
+                    style={{
+                      margin: 0,
+                      border: '1px solid #d1e1ec',
+                      borderLeft: '4px solid #8fb3c9',
+                      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.05)'
+                    }}
+                  >
                     <IonCardContent>
-                      <p style={{ margin: 0 }}>
-                        <strong>Reference:</strong> {entry.entry_code ?? `MH-${entry.id}`}
+                      <p style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0f172a' }}>
+                        Reference medicale: {entry.entry_code ?? `MH-${entry.id}`}
                       </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                         <h3 style={{ margin: '6px 0 2px 0' }}>{entry.title}</h3>
@@ -266,43 +283,141 @@ const PatientMedicalHistoryPage: React.FC = () => {
                         {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'Non precise'}
                       </p>
                       {entry.details ? <p style={{ margin: '2px 0' }}>{entry.details}</p> : null}
-                      {entry.prescription_id ? (
-                        <>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', margin: '2px 0' }}>
-                            <IonBadge color="light">
-                              Ordonnance: {entry.prescription_print_code ?? `#${entry.prescription_id}`}
-                            </IonBadge>
+                      {((entry.linked_prescriptions && entry.linked_prescriptions.length > 0) || entry.prescription_id) ? (
+                        <div
+                          style={{
+                            marginTop: '8px',
+                            border: '1px solid var(--ion-color-light-shade)',
+                            borderRadius: '10px',
+                            padding: '8px 10px',
+                            background: 'var(--ion-color-light)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <strong>Ordonnance(s) liee(s):</strong>
                             <IonButton
                               size="small"
-                              fill="clear"
+                              fill="outline"
                               onClick={() => togglePrescriptionDetails(entry.id)}
                             >
                               {expandedPrescriptionByHistoryId[entry.id] ? 'Masquer details' : 'Voir details'}
                             </IonButton>
                           </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                            {(entry.linked_prescriptions && entry.linked_prescriptions.length > 0)
+                              ? entry.linked_prescriptions.map((rx) => (
+                                  <IonBadge key={`mh-rx-${entry.id}-${rx.id}`} color="light">
+                                    {rx.print_code ?? `#${rx.id}`}
+                                  </IonBadge>
+                                ))
+                              : (
+                                  <IonBadge color="light">
+                                    {entry.prescription_print_code ?? `#${entry.prescription_id}`}
+                                  </IonBadge>
+                                )}
+                          </div>
                           {expandedPrescriptionByHistoryId[entry.id] ? (
                             <div
                               style={{
-                                border: '1px solid #dbe7ef',
-                                borderRadius: '10px',
-                                padding: '8px',
-                                marginTop: '4px'
+                                marginTop: '8px',
+                                borderTop: '1px solid var(--ion-color-light-shade)',
+                                paddingTop: '8px'
                               }}
                             >
-                              {(prescriptionById[entry.prescription_id]?.medicine_requests ?? []).length === 0 ? (
-                                <IonText color="medium">Details ordonnance indisponibles.</IonText>
-                              ) : (
-                                <div style={{ display: 'grid', gap: '4px' }}>
-                                  {prescriptionById[entry.prescription_id].medicine_requests.map((med) => (
-                                    <p key={med.id} style={{ margin: 0 }}>
-                                      <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qte: {med.quantity ?? 1}
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
+                              {(() => {
+                                const linkedIds = (entry.linked_prescriptions ?? []).map((rx) => rx.id);
+                                if (linkedIds.length === 0 && entry.prescription_id) {
+                                  linkedIds.push(entry.prescription_id);
+                                }
+                                const linkedRows = prescriptions.filter((rx) => linkedIds.includes(rx.id));
+                                if (linkedRows.length === 0) {
+                                  return <IonText color="medium">Details ordonnance indisponibles.</IonText>;
+                                }
+                                return (
+                                  <div style={{ display: 'grid', gap: '8px' }}>
+                                    {linkedRows.map((row) => (
+                                      <div key={`mh-rx-details-${entry.id}-${row.id}`} style={{ borderTop: '1px solid #dbe7ef', paddingTop: '6px' }}>
+                                        <p style={{ margin: '0 0 4px 0' }}>
+                                          <strong>{row.print_code ?? `#${row.id}`}</strong>
+                                        </p>
+                                        <div style={{ display: 'grid', gap: '4px' }}>
+                                          {row.medicine_requests.map((med) => (
+                                            <p key={`mh-rx-med-${entry.id}-${row.id}-${med.id}`} style={{ margin: 0 }}>
+                                              <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qte: {med.quantity ?? 1}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           ) : null}
-                        </>
+                        </div>
+                      ) : null}
+                      {entry.linked_rehab_entries && entry.linked_rehab_entries.length > 0 ? (
+                        <div
+                          style={{
+                            marginTop: '8px',
+                            border: '1px solid var(--ion-color-light-shade)',
+                            borderRadius: '10px',
+                            padding: '8px 10px',
+                            background: 'var(--ion-color-light)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <strong>Reeducation liee:</strong>
+                            <IonButton size="small" fill="outline" onClick={() => toggleRehabDetails(entry.id)}>
+                              {expandedRehabByHistoryId[entry.id] ? 'Masquer details' : 'Afficher details'}
+                            </IonButton>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                            {entry.linked_rehab_entries.map((rehab) => (
+                              <IonBadge key={`mh-rehab-${entry.id}-${rehab.id}`} color="tertiary">
+                                {rehab.reference}
+                              </IonBadge>
+                            ))}
+                          </div>
+                          {expandedRehabByHistoryId[entry.id] ? (
+                            <div
+                              style={{
+                                marginTop: '8px',
+                                borderTop: '1px solid var(--ion-color-light-shade)',
+                                paddingTop: '8px',
+                                display: 'grid',
+                                gap: '8px'
+                              }}
+                            >
+                              {entry.linked_rehab_entries.map((rehab) => (
+                                <div key={`mh-rehab-details-${entry.id}-${rehab.id}`} style={{ marginBottom: '8px' }}>
+                                  <p style={{ margin: '0 0 4px 0' }}>
+                                    <strong>{rehab.reference}</strong>
+                                    {' · '}
+                                    {rehab.follow_up_date
+                                      ? formatDateHaiti(rehab.follow_up_date)
+                                      : (rehab.created_at ? formatDateTime(rehab.created_at) : 'N/D')}
+                                  </p>
+                                  <p style={{ margin: '2px 0' }}>
+                                    Sessions/semaine: {rehab.sessions_per_week ?? 'N/D'} · Duree (sem): {rehab.duration_weeks ?? 'N/D'}
+                                  </p>
+                                  <p style={{ margin: '2px 0' }}>
+                                    Douleur: {rehab.pain_score ?? 'N/D'} · Mobilite: {rehab.mobility_score || 'N/D'}
+                                  </p>
+                                  <p style={{ margin: '2px 0' }}>
+                                    Exercice: {rehab.exercise_type || 'N/D'} · Frequence: {rehab.exercise_frequency || 'N/D'} · Reps: {rehab.exercise_reps || 'N/D'}
+                                  </p>
+                                  <p style={{ margin: '2px 0' }}>
+                                    Suivi: {rehab.follow_up_date ? formatDateHaiti(rehab.follow_up_date) : 'N/D'}
+                                  </p>
+                                  {rehab.goals ? <p style={{ margin: '2px 0' }}><strong>Objectifs:</strong> {rehab.goals}</p> : null}
+                                  {rehab.progress_notes ? <p style={{ margin: '2px 0' }}><strong>Progression:</strong> {rehab.progress_notes}</p> : null}
+                                  {rehab.exercise_notes ? <p style={{ margin: '2px 0' }}><strong>Notes:</strong> {rehab.exercise_notes}</p> : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       ) : null}
                       <p style={{ margin: '2px 0' }}>Mise a jour: {formatDateTime(entry.updated_at)}</p>
                       {entry.can_edit_by_patient ? (

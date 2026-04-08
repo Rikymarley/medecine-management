@@ -381,6 +381,11 @@ const PharmacyDashboard: React.FC = () => {
   const profileChecks = useMemo(
     () => [
       { key: 'telephone', label: 'telephone', filled: profileForm.phone.trim().length > 0 },
+      {
+        key: 'whatsapp de recuperation',
+        label: 'whatsapp de recuperation',
+        filled: profileForm.recovery_whatsapp.trim().length > 0
+      },
       { key: 'adresse', label: 'adresse', filled: profileForm.address.trim().length > 0 },
       {
         key: 'horaires',
@@ -424,7 +429,7 @@ const PharmacyDashboard: React.FC = () => {
   const focusMissingField = (field: string) => {
     setProfileCardExpanded(true);
     setEditMode(true);
-    setIdentitySectionExpanded(['telephone', 'adresse'].includes(field));
+    setIdentitySectionExpanded(['telephone', 'whatsapp de recuperation', 'adresse'].includes(field));
     setHoursSectionExpanded(field === 'horaires');
     setServicesSectionExpanded(['paiements', 'services'].includes(field));
     setBusinessSectionExpanded(field === 'numero licence');

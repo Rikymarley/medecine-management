@@ -9,6 +9,7 @@ class RehabEntry extends Model
     protected $fillable = [
         'patient_user_id',
         'doctor_user_id',
+        'medical_history_entry_id',
         'prescription_id',
         'sessions_per_week',
         'duration_weeks',
@@ -21,6 +22,7 @@ class RehabEntry extends Model
         'mobility_score',
         'progress_notes',
         'follow_up_date',
+        'visit_id',
     ];
 
     protected $casts = [
@@ -39,5 +41,14 @@ class RehabEntry extends Model
     {
         return $this->belongsTo(Prescription::class);
     }
-}
 
+    public function medicalHistoryEntry()
+    {
+        return $this->belongsTo(MedicalHistoryEntry::class);
+    }
+
+    public function visit()
+    {
+        return $this->belongsTo(Visit::class);
+    }
+}
