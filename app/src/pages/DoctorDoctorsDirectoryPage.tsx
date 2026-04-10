@@ -20,32 +20,39 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, medkitOutline } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
 const DoctorDoctorsDirectoryPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const { token } = useAuth();
   const [doctors, setDoctors] = useState<ApiDoctorDirectory[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'tele'>('all');
+  const lastLoadedAtRef = useRef(0);
 
-  const loadDoctors = useCallback(async () => {
+  const loadDoctors = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (!token) {
       await api.getDoctorsDirectory().then(setDoctors).catch(() => undefined);
+      lastLoadedAtRef.current = Date.now();
       return;
     }
     await api.getDoctorsDirectoryForDoctor(token).then(setDoctors).catch(() => undefined);
-  }, [token]);
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, token]);
 
   useEffect(() => {
-    loadDoctors().catch(() => undefined);
+    loadDoctors(true).catch(() => undefined);
   }, [loadDoctors]);
 
   useIonViewWillEnter(() => {
-    loadDoctors().catch(() => undefined);
+    loadDoctors(false).catch(() => undefined);
   });
 
   const filtered = useMemo(() => {

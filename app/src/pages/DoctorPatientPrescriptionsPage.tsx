@@ -37,7 +37,7 @@ import {
   pulseOutline,
   personOutline
 } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useHistory } from 'react-router';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
@@ -96,6 +96,7 @@ const toDateInputValue = (value: string | null | undefined): string => {
 };
 
 const DoctorPatientPrescriptionsPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const { patientName } = useParams<{ patientName: string }>();
@@ -138,6 +139,8 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [accessRequestLoading, setAccessRequestLoading] = useState(false);
   const [accessRequestWhatsApp, setAccessRequestWhatsApp] = useState<string | null>(null);
   const [accessRequestError, setAccessRequestError] = useState<string | null>(null);
+  const lastPrescriptionsLoadAtRef = useRef(0);
+  const lastVisitsLoadAtRef = useRef(0);
 
   const [historyForm, setHistoryForm] = useState<{
     family_member_id: string;
@@ -229,7 +232,10 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     return `doctor-visits-${user.id}-${patientUserId}-${effectiveFamilyMemberId ?? 'principal'}`;
   }, [user, patientUserId, effectiveFamilyMemberId]);
 
-  const loadPrescriptions = useCallback(async () => {
+  const loadPrescriptions = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastPrescriptionsLoadAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (!cacheKey) {
       return;
     }
@@ -252,9 +258,13 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     const data = await api.getDoctorPrescriptions(token);
     setPrescriptions(data);
     localStorage.setItem(cacheKey, JSON.stringify(data));
-  }, [cacheKey, token]);
+    lastPrescriptionsLoadAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, cacheKey, token]);
 
-  const loadVisits = useCallback(async () => {
+  const loadVisits = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastVisitsLoadAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (!token || !patientUserId) {
       setVisits([]);
       return;
@@ -284,19 +294,20 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     if (visitCacheKey) {
       localStorage.setItem(visitCacheKey, JSON.stringify(data));
     }
-  }, [effectiveFamilyMemberId, patientUserId, token, visitCacheKey]);
+    lastVisitsLoadAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, effectiveFamilyMemberId, patientUserId, token, visitCacheKey]);
 
   useEffect(() => {
-    loadPrescriptions().catch(() => undefined);
+    loadPrescriptions(true).catch(() => undefined);
   }, [loadPrescriptions]);
 
   useIonViewWillEnter(() => {
-    loadPrescriptions().catch(() => undefined);
-    loadVisits().catch(() => undefined);
+    loadPrescriptions(false).catch(() => undefined);
+    loadVisits(false).catch(() => undefined);
   });
 
   useEffect(() => {
-    loadVisits().catch(() => undefined);
+    loadVisits(true).catch(() => undefined);
   }, [loadVisits]);
 
 
@@ -663,6 +674,7 @@ useEffect(() => {
   };
 
   const isRequestPending = Boolean(accessStatus?.has_pending_request);
+  const isBlockedByPatient = Boolean(accessStatus?.is_blocked);
   const showClinicalCards = accessStatus?.has_link === true;
   const closeHistoryModal = () => {
     setShowHistoryModal(false);
@@ -1012,13 +1024,15 @@ useEffect(() => {
                   <IonButton
                     size="small"
                     fill="outline"
-                    disabled={accessRequestLoading || isRequestPending}
+                    disabled={accessRequestLoading || isRequestPending || isBlockedByPatient}
                     onClick={() => handleRequestAccess().catch(() => undefined)}
                   >
                     {accessRequestLoading
                       ? 'Envoi...'
                       : isRequestPending
                       ? 'Demande en attente'
+                      : isBlockedByPatient
+                      ? 'Acces bloque'
                       : "Demande d'acces"}
                   </IonButton>
                 ) : null}
@@ -1033,6 +1047,11 @@ useEffect(() => {
               {!showClinicalCards && accessRequestError ? (
                 <IonText color="danger">
                   <p>{accessRequestError}</p>
+                </IonText>
+              ) : null}
+              {!showClinicalCards && isBlockedByPatient ? (
+                <IonText color="warning">
+                  <p>Ce patient a bloque vos demandes d'acces.</p>
                 </IonText>
               ) : null}
               {!showClinicalCards && accessRequestWhatsApp ? (

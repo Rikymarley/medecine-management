@@ -20,12 +20,14 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { businessOutline, chevronForwardOutline } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { isFacilityOpenNow } from '../utils/businessHours';
 
 const PharmacyHospitalsDirectoryPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const { token, loading: authLoading } = useAuth();
   const ionRouter = useIonRouter();
   const [hospitals, setHospitals] = useState<ApiPharmacy[]>([]);
@@ -33,22 +35,28 @@ const PharmacyHospitalsDirectoryPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'
   >('all');
+  const lastLoadedAtRef = useRef(0);
 
-  const loadHospitals = useCallback(async () => {
+  const loadHospitals = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (authLoading) {
       return;
     }
     if (!token) {
-      await api.getPharmacies().then(setHospitals).catch(() => undefined);
+      await api.getHospitals().then(setHospitals).catch(() => undefined);
+      lastLoadedAtRef.current = Date.now();
       return;
     }
-    await api.getPharmaciesForPharmacy(token).then(setHospitals).catch(() => undefined);
-  }, [authLoading, token]);
+    await api.getHospitalsForPharmacy(token).then(setHospitals).catch(() => undefined);
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, authLoading, token]);
   useEffect(() => {
-    loadHospitals().catch(() => undefined);
+    loadHospitals(true).catch(() => undefined);
   }, [loadHospitals]);
   useIonViewWillEnter(() => {
-    loadHospitals().catch(() => undefined);
+    loadHospitals(false).catch(() => undefined);
   });
 
   const filtered = useMemo(() => {
@@ -62,8 +70,8 @@ const PharmacyHospitalsDirectoryPage: React.FC = () => {
       : hospitals;
 
     const rows = searched.filter((hospital) => {
-      if (statusFilter === 'open') return !!hospital.open_now && !hospital.temporary_closed;
-      if (statusFilter === 'closed') return !hospital.open_now || !!hospital.temporary_closed;
+      if (statusFilter === 'open') return isFacilityOpenNow(hospital);
+      if (statusFilter === 'closed') return !isFacilityOpenNow(hospital);
       if (statusFilter === 'approved') return hospital.account_verification_status === 'approved';
       if (statusFilter === 'pending') return hospital.account_verification_status !== 'approved';
       if (statusFilter === 'licensed') return !!hospital.license_verified;
@@ -133,7 +141,7 @@ const PharmacyHospitalsDirectoryPage: React.FC = () => {
                     key={hospital.id}
                     lines="full"
                     button
-                    onClick={() => ionRouter.push(`/pharmacy/pharmacies/${hospital.id}`, 'forward', 'push')}
+                    onClick={() => ionRouter.push(`/pharmacy/hopitaux/${hospital.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
                       {hospital.logo_url ? (
@@ -156,8 +164,8 @@ const PharmacyHospitalsDirectoryPage: React.FC = () => {
                       <h3>{hospital.name}</h3>
                       <p>{hospital.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color={hospital.temporary_closed ? 'danger' : hospital.open_now ? 'success' : 'medium'}>
-                          {hospital.temporary_closed ? 'Fermeture temporaire' : hospital.open_now ? 'Ouvert' : 'Ferme'}
+                        <IonBadge color={hospital.temporary_closed ? 'danger' : isFacilityOpenNow(hospital) ? 'success' : 'medium'}>
+                          {hospital.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(hospital) ? 'Ouvert' : 'Ferme'}
                         </IonBadge>
                         <IonBadge color={hospital.account_verification_status === 'approved' ? 'success' : 'warning'}>
                           {hospital.account_verification_status === 'approved' ? 'Compte Approuve' : 'Compte en attente'}

@@ -20,51 +20,47 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, medkitOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
 const PatientDoctorsPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const { token } = useAuth();
   const [directoryDoctors, setDirectoryDoctors] = useState<ApiDoctorDirectory[]>([]);
   const [myDoctorNames, setMyDoctorNames] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'mine' | 'all' | 'licensed' | 'unlicensed' | 'tele'>('mine');
+  const lastLoadedAtRef = useRef(0);
+
+  const loadDoctors = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
+    if (!token) {
+      await api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
+      lastLoadedAtRef.current = Date.now();
+      return;
+    }
+    await api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
+    const prescriptions = await api.getPatientPrescriptions(token).catch(() => []);
+    const names = new Set(
+      prescriptions
+        .map((p) => p.doctor_name?.trim().toLowerCase())
+        .filter((name): name is string => !!name)
+    );
+    setMyDoctorNames(names);
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, token]);
 
   useEffect(() => {
-    const loadDoctors = async () => {
-      if (!token) {
-        await api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
-        return;
-      }
-      await api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
-      const prescriptions = await api.getPatientPrescriptions(token).catch(() => []);
-      const names = new Set(
-        prescriptions
-          .map((p) => p.doctor_name?.trim().toLowerCase())
-          .filter((name): name is string => !!name)
-      );
-      setMyDoctorNames(names);
-    };
-    loadDoctors().catch(() => undefined);
-  }, [token]);
+    loadDoctors(true).catch(() => undefined);
+  }, [loadDoctors]);
 
   useIonViewWillEnter(() => {
-    api.getDoctorsDirectory().then(setDirectoryDoctors).catch(() => setDirectoryDoctors([]));
-    if (token) {
-      api.getPatientPrescriptions(token)
-        .then((prescriptions) => {
-          const names = new Set(
-            prescriptions
-              .map((p) => p.doctor_name?.trim().toLowerCase())
-              .filter((name): name is string => !!name)
-          );
-          setMyDoctorNames(names);
-        })
-        .catch(() => undefined);
-    }
+    loadDoctors(false).catch(() => undefined);
   });
 
   const doctors = useMemo(() => {

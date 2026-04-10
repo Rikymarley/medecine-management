@@ -26,7 +26,7 @@ import { api, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
-import { formatDateHaiti, formatDateTime } from '../utils/time';
+import { formatDateTime } from '../utils/time';
 
 const escapeHtml = (value: string): string =>
   value

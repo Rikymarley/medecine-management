@@ -43,7 +43,7 @@ import {
 } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiUser } from '../services/api';
+import { api, ApiPatientMedicineCabinetItem, ApiUser } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
 import { getPasswordStrength } from '../utils/passwordStrength';
@@ -87,6 +87,7 @@ const PatientDashboard: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [cabinetItems, setCabinetItems] = useState<ApiPatientMedicineCabinetItem[]>([]);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
@@ -200,6 +201,17 @@ const PatientDashboard: React.FC = () => {
     user?.id_document_url
   ]);
 
+  useEffect(() => {
+    if (!token) {
+      setCabinetItems([]);
+      return;
+    }
+
+    api.getPatientCabinetItems(token)
+      .then(setCabinetItems)
+      .catch(() => setCabinetItems([]));
+  }, [token]);
+
   const profileMissingFields = useMemo(() => {
     const missing: string[] = [];
     if (!name.trim()) missing.push('nom');
@@ -244,6 +256,54 @@ const PatientDashboard: React.FC = () => {
     return age >= 0 ? age : null;
   }, [dateOfBirth]);
   const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
+
+  const medicationReminderOverview = useMemo(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const parseTimeToMinutes = (value: string): number | null => {
+      const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+      if (!match) return null;
+      return Number(match[1]) * 60 + Number(match[2]);
+    };
+
+    const withReminders = cabinetItems.filter((item) => item.reminder_times.length > 0);
+    const activeItems = withReminders.filter((item) => {
+      if (!item.expiration_date) return true;
+      const exp = new Date(`${item.expiration_date}T00:00:00`);
+      if (Number.isNaN(exp.getTime())) return true;
+      return exp.getTime() >= todayDate.getTime();
+    });
+
+    const reminderEvents = activeItems.flatMap((item) =>
+      item.reminder_times
+        .map((time) => {
+          const minutes = parseTimeToMinutes(time);
+          if (minutes === null) return null;
+          return { minutes, time, medication: item.medication_name };
+        })
+        .filter((row): row is { minutes: number; time: string; medication: string } => row !== null)
+    );
+
+    const remainingToday = reminderEvents.filter((event) => event.minutes >= currentMinutes).length;
+    const nextToday = reminderEvents
+      .filter((event) => event.minutes >= currentMinutes)
+      .sort((a, b) => a.minutes - b.minutes)[0];
+    const firstTomorrow = reminderEvents.sort((a, b) => a.minutes - b.minutes)[0];
+
+    const nextDose = nextToday
+      ? { label: "Aujourd'hui", ...nextToday }
+      : firstTomorrow
+      ? { label: 'Demain', ...firstTomorrow }
+      : null;
+
+    return {
+      medicinesWithReminders: activeItems.length,
+      remainingToday,
+      nextDose,
+    };
+  }, [cabinetItems]);
 
   const saveProfile = async () => {
     if (!token) {
@@ -958,14 +1018,14 @@ const PatientDashboard: React.FC = () => {
             button
             className="surface-card"
             style={{ margin: 0 }}
-            onClick={() => setMessage('Module rappel medicament bientot disponible.')}
+            onClick={() => ionRouter.push('/patient/medication-reminders', 'forward', 'push')}
           >
             <IonCardContent>
               <div className="quick-icon quick-icon-gold">
                 <IonIcon icon={alarmOutline} />
               </div>
               <h3>Rappel medicament</h3>
-              <p className="muted-note">Programmer vos rappels de prise.</p>
+              <p className="muted-note">Voir tous vos rappels medicaments.</p>
             </IonCardContent>
           </IonCard>
           <IonCard

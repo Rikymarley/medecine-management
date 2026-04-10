@@ -36,6 +36,7 @@ import { maskHaitiPhone } from '../utils/phoneMask';
 import { formatDateHaiti } from '../utils/time';
 
 const DoctorPatientsPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
@@ -59,8 +60,13 @@ const DoctorPatientsPage: React.FC = () => {
   });
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
+  const lastPrescriptionsLoadAtRef = useRef(0);
+  const lastDoctorPatientsLoadAtRef = useRef(0);
 
-  const loadPrescriptions = useCallback(async () => {
+  const loadPrescriptions = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastPrescriptionsLoadAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (!cacheKey) {
       return;
     }
@@ -86,25 +92,30 @@ const DoctorPatientsPage: React.FC = () => {
     const data = await api.getDoctorPrescriptions(token);
     setPrescriptions(data);
     localStorage.setItem(cacheKey, JSON.stringify(data));
-  }, [cacheKey, token]);
+    lastPrescriptionsLoadAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, cacheKey, token]);
 
-  const loadDoctorPatients = useCallback(async () => {
+  const loadDoctorPatients = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastDoctorPatientsLoadAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (!token) return;
     const rows = await api.getDoctorPatients(token);
     setDoctorPatients(rows);
-  }, [token]);
+    lastDoctorPatientsLoadAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, token]);
 
   useEffect(() => {
-    loadPrescriptions().catch(() => undefined);
+    loadPrescriptions(true).catch(() => undefined);
   }, [loadPrescriptions]);
 
   useEffect(() => {
-    loadDoctorPatients().catch(() => undefined);
+    loadDoctorPatients(true).catch(() => undefined);
   }, [loadDoctorPatients]);
 
   useIonViewWillEnter(() => {
-    loadPrescriptions().catch(() => undefined);
-    loadDoctorPatients().catch(() => undefined);
+    loadPrescriptions(false).catch(() => undefined);
+    loadDoctorPatients(false).catch(() => undefined);
   });
 
   useEffect(() => {

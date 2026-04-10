@@ -1,6 +1,25 @@
 const API_URL = import.meta.env.VITE_API_URL ?? '/api';
+const DEFAULT_GET_CACHE_TTL_MS = 30_000;
 
-type RequestOptions = RequestInit & { token?: string };
+type RequestOptions = RequestInit & {
+  token?: string;
+  cacheTtlMs?: number;
+  bypassCache?: boolean;
+  dedupe?: boolean;
+};
+
+type CachedEntry = {
+  expiresAt: number;
+  payload: unknown;
+};
+
+const getResponseCache = new Map<string, CachedEntry>();
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
+const makeGetCacheKey = (path: string, options: RequestOptions): string => {
+  const tokenPart = options.token ?? 'anonymous';
+  return `${tokenPart}::${path}`;
+};
 
 const normalizeStorageUrl = (value: string): string => {
   const match = value.match(/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/storage\/.+)$/i);
@@ -31,6 +50,29 @@ const normalizePayloadStorageUrls = <T>(payload: T): T => {
 };
 
 const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
+  const method = (options.method ?? 'GET').toUpperCase();
+  const isGetRequest = method === 'GET';
+  const cacheKey = isGetRequest ? makeGetCacheKey(path, options) : null;
+  const shouldUseCache = isGetRequest && !options.bypassCache;
+  const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_GET_CACHE_TTL_MS;
+  const shouldDedupe = options.dedupe !== false;
+
+  if (cacheKey && shouldUseCache) {
+    const cached = getResponseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.payload as T;
+    }
+    if (cached) {
+      getResponseCache.delete(cacheKey);
+    }
+    if (shouldDedupe) {
+      const inFlight = inFlightGetRequests.get(cacheKey);
+      if (inFlight) {
+        return (await inFlight) as T;
+      }
+    }
+  }
+
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -41,26 +83,53 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
     headers.Authorization = `Bearer ${options.token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    const message = errorBody.message ?? 'Echec de la requete';
-    console.error('[API ERROR]', {
-      url: `${API_URL}${path}`,
-      method: options.method ?? 'GET',
-      status: response.status,
-      statusText: response.statusText,
-      body: errorBody
+  const fetchPromise = (async () => {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers
     });
-    throw new Error(message);
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const message = errorBody.message ?? 'Echec de la requete';
+      console.error('[API ERROR]', {
+        url: `${API_URL}${path}`,
+        method,
+        status: response.status,
+        statusText: response.statusText,
+        body: errorBody
+      });
+      throw new Error(message);
+    }
+
+    const body = normalizePayloadStorageUrls(await response.json()) as T;
+
+    if (cacheKey && shouldUseCache && cacheTtlMs > 0) {
+      getResponseCache.set(cacheKey, {
+        expiresAt: Date.now() + cacheTtlMs,
+        payload: body
+      });
+    }
+
+    if (!isGetRequest) {
+      // Conservative invalidation: mutating requests can make many cached GET payloads stale.
+      getResponseCache.clear();
+    }
+
+    return body;
+  })();
+
+  if (cacheKey && shouldUseCache && shouldDedupe) {
+    inFlightGetRequests.set(cacheKey, fetchPromise as Promise<unknown>);
   }
 
-  const body = await response.json();
-  return normalizePayloadStorageUrls(body) as T;
+  try {
+    return await fetchPromise;
+  } finally {
+    if (cacheKey && shouldUseCache && shouldDedupe) {
+      inFlightGetRequests.delete(cacheKey);
+    }
+  }
 };
 
 const requestFormData = async <T>(path: string, formData: FormData, token?: string): Promise<T> => {
@@ -92,6 +161,7 @@ const requestFormData = async <T>(path: string, formData: FormData, token?: stri
   }
 
   const body = await response.json();
+  getResponseCache.clear();
   return normalizePayloadStorageUrls(body) as T;
 };
 
@@ -207,6 +277,12 @@ export type ApiPharmacy = {
   longitude: string | null;
   open_now: boolean;
   opening_hours: string | null;
+  opening_hours_json: Array<{
+    day: string;
+    open: boolean;
+    from: string;
+    to: string;
+  }> | null;
   closes_at: string | null;
   temporary_closed: boolean;
   emergency_available: boolean;
@@ -380,6 +456,7 @@ export type ApiDoctorPatientAvailability = {
 export type ApiDoctorPatientAccessStatus = {
   has_link: boolean;
   has_pending_request: boolean;
+  is_blocked?: boolean;
 };
 
 export type ApiDoctorPatientAccessRequest = {
@@ -391,6 +468,7 @@ export type ApiDoctorPatientAccessRequest = {
   response_message: string | null;
   responded_at: string | null;
   created_at: string;
+  is_blocked?: boolean;
   whatsapp_url?: string | null;
 };
 
@@ -428,12 +506,47 @@ export type ApiPatientMedicinePurchase = {
   quantity: number;
 };
 
+export type ApiPatientMedicineCabinetItem = {
+  id: number;
+  patient_user_id: number;
+  family_member_id: number | null;
+  family_member_name: string | null;
+  patient_medicine_purchase_id: number | null;
+  prescription_id: number | null;
+  medicine_request_id: number | null;
+  pharmacy_id: number | null;
+  pharmacy_name: string | null;
+  medication_name: string;
+  form: string | null;
+  dosage_strength: string | null;
+  daily_dosage: number | null;
+  quantity: number;
+  refill_reminder_days: number;
+  reminder_times: string[];
+  expiration_date: string | null;
+  photo_url: string | null;
+  manufacturer: string | null;
+  requires_refrigeration: boolean;
+  note: string | null;
+  doctor_name?: string | null;
+  patient_name?: string | null;
+  prescription_code?: string | null;
+  prescription_requested_at?: string | null;
+  treatment_duration_days?: number | null;
+  prescription_note?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ApiEmergencyContact = {
   id: number;
   patient_user_id: number;
   name: string;
   phone: string;
   category: 'hospital' | 'clinic' | 'laboratory' | 'pharmacy' | 'doctor' | 'ambulance';
+  source_type?: 'manual' | 'doctor_user' | 'pharmacy' | 'hospital' | 'laboratory' | null;
+  source_id?: number | null;
+  added_from_profile?: boolean;
   city: string | null;
   department: string | null;
   address: string | null;
@@ -852,6 +965,12 @@ export const api = {
   getPharmacies: () => request<ApiPharmacy[]>('/pharmacies'),
   getPharmaciesForDoctor: (token: string) => request<ApiPharmacy[]>('/doctor/pharmacies-directory', { token }),
   getPharmaciesForPharmacy: (token: string) => request<ApiPharmacy[]>('/pharmacy/pharmacies-directory', { token }),
+  getHospitals: () => request<ApiPharmacy[]>('/hospitals'),
+  getHospitalsForDoctor: (token: string) => request<ApiPharmacy[]>('/doctor/hospitals-directory', { token }),
+  getHospitalsForPharmacy: (token: string) => request<ApiPharmacy[]>('/pharmacy/hospitals-directory', { token }),
+  getLaboratories: () => request<ApiPharmacy[]>('/laboratories'),
+  getLaboratoriesForDoctor: (token: string) => request<ApiPharmacy[]>('/doctor/laboratories-directory', { token }),
+  getLaboratoriesForPharmacy: (token: string) => request<ApiPharmacy[]>('/pharmacy/laboratories-directory', { token }),
   getMyPharmacy: (token: string) => request<ApiPharmacy>('/pharmacy/me', { token }),
   updateMyPharmacy: (
     token: string,
@@ -863,6 +982,12 @@ export const api = {
       longitude: string | null;
       open_now: boolean;
       opening_hours: string | null;
+      opening_hours_json: Array<{
+        day: string;
+        open: boolean;
+        from: string;
+        to: string;
+      }> | null;
       closes_at: string | null;
       temporary_closed: boolean;
       emergency_available: boolean;
@@ -1308,6 +1433,63 @@ export const api = {
         body: JSON.stringify({ items: payload.items })
       }
     ),
+  getPatientCabinetItems: (token: string) =>
+    request<ApiPatientMedicineCabinetItem[]>('/patient/cabinet-items', { token }),
+  createPatientCabinetItem: (
+    token: string,
+    payload: {
+      family_member_id?: number | null;
+      medication_name: string;
+      form?: string | null;
+      dosage_strength?: string | null;
+      daily_dosage?: number | null;
+      quantity: number;
+      refill_reminder_days?: number;
+      reminder_times?: string[];
+      expiration_date?: string | null;
+      manufacturer?: string | null;
+      requires_refrigeration?: boolean;
+      note?: string | null;
+    }
+  ) =>
+    request<{ message: string; item: ApiPatientMedicineCabinetItem }>('/patient/cabinet-items', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updatePatientCabinetItem: (
+    token: string,
+    itemId: number,
+    payload: Partial<{
+      family_member_id: number | null;
+      medication_name: string;
+      form: string | null;
+      dosage_strength: string | null;
+      daily_dosage: number | null;
+      quantity: number;
+      expiration_date: string | null;
+      manufacturer: string | null;
+      requires_refrigeration: boolean;
+      refill_reminder_days: number;
+      reminder_times: string[];
+      note: string | null;
+    }>
+  ) =>
+    request<{ message: string; item: ApiPatientMedicineCabinetItem }>(`/patient/cabinet-items/${itemId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  uploadPatientCabinetItemPhoto: (token: string, itemId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    return requestFormData<{ message: string; photo_url: string }>(`/patient/cabinet-items/${itemId}/photo`, formData, token);
+  },
+  deletePatientCabinetItem: (token: string, itemId: number) =>
+    request<{ message: string }>(`/patient/cabinet-items/${itemId}`, {
+      method: 'DELETE',
+      token
+    }),
   getPatientEmergencyContacts: (token: string) =>
     request<ApiEmergencyContact[]>('/patient/emergency-contacts', { token }),
   createPatientEmergencyContact: (
@@ -1331,6 +1513,21 @@ export const api = {
       token,
       body: JSON.stringify(payload)
     }),
+  createPatientEmergencyContactFromProfile: (
+    token: string,
+    payload: {
+      source_type: 'doctor_user' | 'pharmacy' | 'hospital' | 'laboratory';
+      source_id: number;
+    }
+  ) =>
+    request<{ message: string; created: boolean; contact: ApiEmergencyContact }>(
+      '/patient/emergency-contacts/from-profile',
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify(payload)
+      }
+    ),
   updatePatientEmergencyContact: (
     token: string,
     id: number,
@@ -1535,6 +1732,27 @@ export const api = {
       token,
       body: JSON.stringify(payload)
     }),
+  blockPatientAccessDoctor: (token: string, doctorUserId: number) =>
+    request<{ message: string; doctor_id: number; is_blocked: boolean }>(
+      `/patient/access-requests/doctors/${doctorUserId}/block`,
+      {
+        method: 'POST',
+        token
+      }
+    ),
+  getPatientAccessDoctorBlockStatus: (token: string, doctorUserId: number) =>
+    request<{ doctor_id: number; is_blocked: boolean }>(
+      `/patient/access-requests/doctors/${doctorUserId}/block-status`,
+      { token }
+    ),
+  unblockPatientAccessDoctor: (token: string, doctorUserId: number) =>
+    request<{ message: string; doctor_id: number; is_blocked: boolean }>(
+      `/patient/access-requests/doctors/${doctorUserId}/block`,
+      {
+        method: 'DELETE',
+        token
+      }
+    ),
   createDoctorPatientMedicalHistory: (
     token: string,
     patientUserId: number,
@@ -1709,6 +1927,10 @@ export const api = {
   },
   getAdminPharmacies: (token: string) =>
     request<ApiPharmacy[]>('/admin/accounts/pharmacies', { token }),
+  getAdminHospitals: (token: string) =>
+    request<ApiPharmacy[]>('/admin/accounts/hospitals', { token }),
+  getAdminLaboratories: (token: string) =>
+    request<ApiPharmacy[]>('/admin/accounts/laboratories', { token }),
   getAdminPasswordResetEvents: (
     token: string,
     params?: { action?: 'request' | 'complete'; success?: '0' | '1'; q?: string; limit?: number }
@@ -1808,6 +2030,84 @@ export const api = {
     payload?: { verified?: boolean; notes?: string | null }
   ) =>
     request<ApiPharmacy>(`/admin/accounts/pharmacies/${pharmacyId}/verify-license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminApproveHospital: (token: string, hospitalId: number, payload?: { notes?: string | null }) =>
+    request<ApiPharmacy>(`/admin/accounts/hospitals/${hospitalId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminUnapproveHospital: (token: string, hospitalId: number, payload?: { notes?: string | null }) =>
+    request<ApiPharmacy>(`/admin/accounts/hospitals/${hospitalId}/unapprove`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminBlockHospital: (token: string, hospitalId: number, payload?: { notes?: string | null }) =>
+    request<ApiPharmacy>(`/admin/accounts/hospitals/${hospitalId}/block`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminUnblockHospital: (token: string, hospitalId: number) =>
+    request<ApiPharmacy>(`/admin/accounts/hospitals/${hospitalId}/unblock`, {
+      method: 'POST',
+      token
+    }),
+  adminSetHospitalVerifierPermission: (token: string, hospitalId: number, canVerifyAccounts: boolean) =>
+    request<ApiPharmacy>(`/admin/accounts/hospitals/${hospitalId}/verifier-permission`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ can_verify_accounts: canVerifyAccounts })
+    }),
+  adminVerifyHospitalLicense: (
+    token: string,
+    hospitalId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiPharmacy>(`/admin/accounts/hospitals/${hospitalId}/verify-license`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminApproveLaboratory: (token: string, laboratoryId: number, payload?: { notes?: string | null }) =>
+    request<ApiPharmacy>(`/admin/accounts/laboratories/${laboratoryId}/approve`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminUnapproveLaboratory: (token: string, laboratoryId: number, payload?: { notes?: string | null }) =>
+    request<ApiPharmacy>(`/admin/accounts/laboratories/${laboratoryId}/unapprove`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminBlockLaboratory: (token: string, laboratoryId: number, payload?: { notes?: string | null }) =>
+    request<ApiPharmacy>(`/admin/accounts/laboratories/${laboratoryId}/block`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  adminUnblockLaboratory: (token: string, laboratoryId: number) =>
+    request<ApiPharmacy>(`/admin/accounts/laboratories/${laboratoryId}/unblock`, {
+      method: 'POST',
+      token
+    }),
+  adminSetLaboratoryVerifierPermission: (token: string, laboratoryId: number, canVerifyAccounts: boolean) =>
+    request<ApiPharmacy>(`/admin/accounts/laboratories/${laboratoryId}/verifier-permission`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ can_verify_accounts: canVerifyAccounts })
+    }),
+  adminVerifyLaboratoryLicense: (
+    token: string,
+    laboratoryId: number,
+    payload?: { verified?: boolean; notes?: string | null }
+  ) =>
+    request<ApiPharmacy>(`/admin/accounts/laboratories/${laboratoryId}/verify-license`, {
       method: 'POST',
       token,
       body: JSON.stringify(payload ?? {})

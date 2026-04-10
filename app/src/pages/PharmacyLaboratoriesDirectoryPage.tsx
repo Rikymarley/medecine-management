@@ -20,12 +20,14 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, flaskOutline } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { isFacilityOpenNow } from '../utils/businessHours';
 
 const PharmacyLaboratoriesDirectoryPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const { token, loading: authLoading } = useAuth();
   const ionRouter = useIonRouter();
   const [laboratories, setLaboratories] = useState<ApiPharmacy[]>([]);
@@ -33,22 +35,28 @@ const PharmacyLaboratoriesDirectoryPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'
   >('all');
+  const lastLoadedAtRef = useRef(0);
 
-  const loadLaboratories = useCallback(async () => {
+  const loadLaboratories = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (authLoading) {
       return;
     }
     if (!token) {
-      await api.getPharmacies().then(setLaboratories).catch(() => undefined);
+      await api.getLaboratories().then(setLaboratories).catch(() => undefined);
+      lastLoadedAtRef.current = Date.now();
       return;
     }
-    await api.getPharmaciesForPharmacy(token).then(setLaboratories).catch(() => undefined);
-  }, [authLoading, token]);
+    await api.getLaboratoriesForPharmacy(token).then(setLaboratories).catch(() => undefined);
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, authLoading, token]);
   useEffect(() => {
-    loadLaboratories().catch(() => undefined);
+    loadLaboratories(true).catch(() => undefined);
   }, [loadLaboratories]);
   useIonViewWillEnter(() => {
-    loadLaboratories().catch(() => undefined);
+    loadLaboratories(false).catch(() => undefined);
   });
 
   const filtered = useMemo(() => {
@@ -62,8 +70,8 @@ const PharmacyLaboratoriesDirectoryPage: React.FC = () => {
       : laboratories;
 
     const rows = searched.filter((laboratory) => {
-      if (statusFilter === 'open') return !!laboratory.open_now && !laboratory.temporary_closed;
-      if (statusFilter === 'closed') return !laboratory.open_now || !!laboratory.temporary_closed;
+      if (statusFilter === 'open') return isFacilityOpenNow(laboratory);
+      if (statusFilter === 'closed') return !isFacilityOpenNow(laboratory);
       if (statusFilter === 'approved') return laboratory.account_verification_status === 'approved';
       if (statusFilter === 'pending') return laboratory.account_verification_status !== 'approved';
       if (statusFilter === 'licensed') return !!laboratory.license_verified;
@@ -133,7 +141,7 @@ const PharmacyLaboratoriesDirectoryPage: React.FC = () => {
                     key={laboratory.id}
                     lines="full"
                     button
-                    onClick={() => ionRouter.push(`/pharmacy/pharmacies/${laboratory.id}`, 'forward', 'push')}
+                    onClick={() => ionRouter.push(`/pharmacy/laboratoires/${laboratory.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
                       {laboratory.logo_url ? (
@@ -156,8 +164,8 @@ const PharmacyLaboratoriesDirectoryPage: React.FC = () => {
                       <h3>{laboratory.name}</h3>
                       <p>{laboratory.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color={laboratory.temporary_closed ? 'danger' : laboratory.open_now ? 'success' : 'medium'}>
-                          {laboratory.temporary_closed ? 'Fermeture temporaire' : laboratory.open_now ? 'Ouvert' : 'Ferme'}
+                        <IonBadge color={laboratory.temporary_closed ? 'danger' : isFacilityOpenNow(laboratory) ? 'success' : 'medium'}>
+                          {laboratory.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(laboratory) ? 'Ouvert' : 'Ferme'}
                         </IonBadge>
                         <IonBadge color={laboratory.account_verification_status === 'approved' ? 'success' : 'warning'}>
                           {laboratory.account_verification_status === 'approved' ? 'Compte Approuve' : 'Compte en attente'}

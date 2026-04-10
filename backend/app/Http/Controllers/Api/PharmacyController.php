@@ -99,6 +99,7 @@ class PharmacyController extends Controller
             'longitude' => ['nullable', 'numeric'],
             'open_now' => ['boolean'],
             'opening_hours' => ['nullable', 'string', 'max:2000'],
+            'opening_hours_json' => ['nullable', 'array'],
             'closes_at' => ['nullable', 'date_format:H:i'],
             'temporary_closed' => ['boolean'],
             'emergency_available' => ['boolean'],
@@ -119,6 +120,7 @@ class PharmacyController extends Controller
         if (
             array_key_exists('open_now', $data) ||
             array_key_exists('opening_hours', $data) ||
+            array_key_exists('opening_hours_json', $data) ||
             array_key_exists('closes_at', $data) ||
             array_key_exists('temporary_closed', $data) ||
             array_key_exists('emergency_available', $data)
@@ -188,6 +190,7 @@ class PharmacyController extends Controller
             'longitude' => ['nullable', 'numeric'],
             'open_now' => ['sometimes', 'boolean'],
             'opening_hours' => ['nullable', 'string', 'max:2000'],
+            'opening_hours_json' => ['nullable', 'array'],
             'closes_at' => ['nullable', 'date_format:H:i'],
             'temporary_closed' => ['sometimes', 'boolean'],
             'emergency_available' => ['sometimes', 'boolean'],
@@ -212,6 +215,7 @@ class PharmacyController extends Controller
         if (
             array_key_exists('open_now', $data) ||
             array_key_exists('opening_hours', $data) ||
+            array_key_exists('opening_hours_json', $data) ||
             array_key_exists('closes_at', $data) ||
             array_key_exists('temporary_closed', $data) ||
             array_key_exists('emergency_available', $data)

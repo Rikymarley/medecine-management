@@ -20,26 +20,33 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, storefrontOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { isFacilityOpenNow } from '../utils/businessHours';
 
 const PatientPharmaciesPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const [pharmacies, setPharmacies] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'licensed' | 'unlicensed' | 'emergency'>('all');
+  const lastLoadedAtRef = useRef(0);
 
-  const loadPharmacies = async () => {
+  const loadPharmacies = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     await api.getPharmacies().then(setPharmacies).catch(() => setPharmacies([]));
-  };
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS]);
 
   useEffect(() => {
-    loadPharmacies().catch(() => undefined);
-  }, []);
+    loadPharmacies(true).catch(() => undefined);
+  }, [loadPharmacies]);
 
   useIonViewWillEnter(() => {
-    loadPharmacies().catch(() => undefined);
+    loadPharmacies(false).catch(() => undefined);
   });
 
   const filtered = useMemo(() => {
@@ -49,8 +56,8 @@ const PatientPharmaciesPage: React.FC = () => {
       : pharmacies;
 
     const rows = searched.filter((pharmacy) => {
-      if (statusFilter === 'open') return !!pharmacy.open_now && !pharmacy.temporary_closed;
-      if (statusFilter === 'closed') return !pharmacy.open_now || !!pharmacy.temporary_closed;
+      if (statusFilter === 'open') return isFacilityOpenNow(pharmacy);
+      if (statusFilter === 'closed') return !isFacilityOpenNow(pharmacy);
       if (statusFilter === 'licensed') return !!pharmacy.license_verified;
       if (statusFilter === 'unlicensed') return !pharmacy.license_verified;
       if (statusFilter === 'emergency') return !!pharmacy.emergency_available;
@@ -139,8 +146,8 @@ const PatientPharmaciesPage: React.FC = () => {
                       <h3>{pharmacy.name}</h3>
                       <p>{pharmacy.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
-                          {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                        <IonBadge color={pharmacy.temporary_closed ? 'danger' : isFacilityOpenNow(pharmacy) ? 'success' : 'medium'}>
+                          {pharmacy.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(pharmacy) ? 'Ouverte' : 'Fermee'}
                         </IonBadge>
                         <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
                           {pharmacy.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}

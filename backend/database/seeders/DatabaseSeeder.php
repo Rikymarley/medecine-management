@@ -16,6 +16,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             CurrentStateSeeder::class,
+            HospitalDirectorySeeder::class,
+            LaboratoryDirectorySeeder::class,
         ]);
     }
 }

@@ -36,6 +36,7 @@ import {
   getPendingPatientPurchaseCount
 } from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
+import { isFacilityOpenNow } from '../utils/businessHours';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime, minutesAgo, minutesUntil } from '../utils/time';
@@ -684,10 +685,10 @@ const PatientPrescriptionDetailPage: React.FC = () => {
                           <p style={{ margin: 0 }}>
                             <strong>{pharmacy.name}</strong>
                             <IonBadge
-                              color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}
+                              color={pharmacy.temporary_closed ? 'danger' : isFacilityOpenNow(pharmacy) ? 'success' : 'medium'}
                               style={{ marginLeft: '8px' }}
                             >
-                              {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                              {pharmacy.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(pharmacy) ? 'Ouverte' : 'Fermee'}
                             </IonBadge>
                           </p>
                           <div style={{ display: 'flex', gap: '4px' }}>

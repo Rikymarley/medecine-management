@@ -12,11 +12,11 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
+  useIonRouter,
   useIonViewWillEnter
 } from '@ionic/react';
 import { businessOutline } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useHistory } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -24,7 +24,7 @@ import { useAuth } from '../state/AuthState';
 type FilterKey = 'all' | 'pending_account' | 'unverified_license' | 'blocked' | 'can_verify';
 
 const AdminHospitalsPage: React.FC = () => {
-  const history = useHistory();
+  const ionRouter = useIonRouter();
   const { token } = useAuth();
   const [rows, setRows] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
@@ -35,7 +35,7 @@ const AdminHospitalsPage: React.FC = () => {
     if (!token) return;
     try {
       setError(null);
-      const data = await api.getAdminPharmacies(token);
+      const data = await api.getAdminHospitals(token);
       setRows(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Echec de chargement.');
@@ -86,7 +86,8 @@ const AdminHospitalsPage: React.FC = () => {
       key={hospital.id}
       className="surface-card"
       style={{ margin: '8px 0', cursor: 'pointer' }}
-      onClick={() => history.push(`/admin/pharmacies/${hospital.id}`)}
+      button
+      onClick={() => ionRouter.push(`/admin/hopitaux/${hospital.id}`, 'forward', 'push')}
     >
       <IonCardContent>
         <div style={{ display: 'block' }}>

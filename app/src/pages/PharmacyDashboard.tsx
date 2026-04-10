@@ -43,6 +43,7 @@ import {
   getPendingPharmacyResponseCount
 } from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
+import { isFacilityOpenNow } from '../utils/businessHours';
 import { maskHaitiPhone } from '../utils/phoneMask';
 import { getPasswordStrength } from '../utils/passwordStrength';
 import { minutesAgo } from '../utils/time';
@@ -220,7 +221,25 @@ const PharmacyDashboard: React.FC = () => {
         .map((item) => item.trim())
         .filter(Boolean)
     );
-    setWeeklySchedule(parseOpeningHours(meData.opening_hours));
+    if (Array.isArray(meData.opening_hours_json) && meData.opening_hours_json.length > 0) {
+      const next = defaultSchedule();
+      meData.opening_hours_json.forEach((entry) => {
+        const day = String(entry.day ?? '').trim().toLowerCase();
+        const index = next.findIndex((item) => item.day.toLowerCase() === day);
+        if (index < 0) {
+          return;
+        }
+        next[index] = {
+          day: next[index].day,
+          open: !!entry.open,
+          from: entry.from || next[index].from,
+          to: entry.to || next[index].to
+        };
+      });
+      setWeeklySchedule(next);
+    } else {
+      setWeeklySchedule(parseOpeningHours(meData.opening_hours));
+    }
   }, []);
 
   const loadData = useCallback(async () => {
@@ -406,6 +425,7 @@ const PharmacyDashboard: React.FC = () => {
         open_now: profileForm.open_now,
         closes_at: profileForm.closes_at.trim() || null,
         opening_hours: serializeOpeningHours(weeklySchedule),
+        opening_hours_json: weeklySchedule,
         temporary_closed: profileForm.temporary_closed,
         emergency_available: profileForm.emergency_available,
         address: profileForm.address.trim() || null,
@@ -594,8 +614,8 @@ const PharmacyDashboard: React.FC = () => {
                   <IonBadge color={profileCompletion === 100 ? 'success' : 'warning'}>
                     Completion du profil : {profileCompletion}%
                   </IonBadge>
-                  <IonBadge color={pharmacy.temporary_closed ? 'danger' : pharmacy.open_now ? 'success' : 'medium'}>
-                    {pharmacy.temporary_closed ? 'Fermeture temporaire' : pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                  <IonBadge color={pharmacy.temporary_closed ? 'danger' : isFacilityOpenNow(pharmacy) ? 'success' : 'medium'}>
+                    {pharmacy.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(pharmacy) ? 'Ouverte' : 'Fermee'}
                   </IonBadge>
                 </div>
                 <IonButton fill="clear" size="small" onClick={() => setProfileCardExpanded((prev) => !prev)}>

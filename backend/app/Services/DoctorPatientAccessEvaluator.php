@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DoctorPatientAccessRequest;
+use App\Models\DoctorPatientBlock;
 use App\Models\Prescription;
 use App\Models\User;
 
@@ -11,6 +12,10 @@ class DoctorPatientAccessEvaluator
     public static function hasLink(int $doctorId, int $patientId): bool
     {
         if (!User::query()->where('id', $patientId)->where('role', 'patient')->exists()) {
+            return false;
+        }
+
+        if (DoctorPatientBlock::isBlocked($doctorId, $patientId)) {
             return false;
         }
 

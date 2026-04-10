@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\DoctorPatientAccessRequest;
+use App\Models\DoctorPatientBlock;
 use App\Models\User;
 use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Http\Request;
@@ -31,7 +32,14 @@ class DoctorPatientAccessRequestController extends Controller
         return 'https://wa.me/' . $digits . '?text=' . rawurlencode($text);
     }
 
-    private function formatRequest(DoctorPatientAccessRequest $requestRow): array
+    private function ensureDoctor(User $doctor): void
+    {
+        if ($doctor->role !== 'doctor') {
+            abort(422, 'Medecin invalide.');
+        }
+    }
+
+    private function formatRequest(DoctorPatientAccessRequest $requestRow, bool $isBlocked = false): array
     {
         return [
             'id' => $requestRow->id,
@@ -42,6 +50,7 @@ class DoctorPatientAccessRequestController extends Controller
             'response_message' => $requestRow->response_message,
             'responded_at' => optional($requestRow->responded_at)?->toIso8601String(),
             'created_at' => $requestRow->created_at->toIso8601String(),
+            'is_blocked' => $isBlocked,
         ];
     }
 
@@ -50,12 +59,14 @@ class DoctorPatientAccessRequestController extends Controller
         $this->ensurePatient($patient);
 
         $doctor = $request->user();
+        $isBlocked = DoctorPatientBlock::isBlocked($doctor->id, $patient->id);
         $hasLink = DoctorPatientAccessEvaluator::hasLink($doctor->id, $patient->id);
-        $pending = DoctorPatientAccessRequest::hasPendingRequest($doctor->id, $patient->id);
+        $pending = !$isBlocked && DoctorPatientAccessRequest::hasPendingRequest($doctor->id, $patient->id);
 
         return response()->json([
             'has_link' => $hasLink,
             'has_pending_request' => $pending,
+            'is_blocked' => $isBlocked,
         ]);
     }
 
@@ -66,6 +77,10 @@ class DoctorPatientAccessRequestController extends Controller
         $doctor = $request->user();
         if (DoctorPatientAccessEvaluator::hasLink($doctor->id, $patient->id)) {
             return response()->json(['message' => 'Vous avez deja acces a ce patient.'], 409);
+        }
+
+        if (DoctorPatientBlock::isBlocked($doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Ce patient a bloque vos demandes d\'acces.'], 403);
         }
 
         if (DoctorPatientAccessRequest::hasPendingRequest($doctor->id, $patient->id)) {
@@ -109,9 +124,14 @@ class DoctorPatientAccessRequestController extends Controller
             ->with('doctor:id,name')
             ->orderByDesc('created_at')
             ->get();
+        $blockedDoctorIds = DoctorPatientBlock::query()
+            ->where('patient_user_id', $patient->id)
+            ->pluck('doctor_user_id')
+            ->map(fn ($id) => (int) $id)
+            ->flip();
 
         return response()->json($rows->map(fn (DoctorPatientAccessRequest $row) => [
-            ...$this->formatRequest($row),
+            ...$this->formatRequest($row, $blockedDoctorIds->has($row->doctor_user_id)),
             'doctor_name' => $row->doctor?->name,
         ])->values());
     }
@@ -131,12 +151,84 @@ class DoctorPatientAccessRequestController extends Controller
             'response_message' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        if (
+            $data['status'] === 'approved'
+            && DoctorPatientBlock::isBlocked($accessRequest->doctor_user_id, $accessRequest->patient_user_id)
+        ) {
+            return response()->json(['message' => 'Debloquez ce medecin avant de l\'approuver.'], 422);
+        }
+
         $accessRequest->update([
             'status' => $data['status'],
             'response_message' => $data['response_message'] ?? null,
             'responded_at' => now(),
         ]);
 
-        return response()->json($this->formatRequest($accessRequest));
+        return response()->json(
+            $this->formatRequest(
+                $accessRequest,
+                DoctorPatientBlock::isBlocked($accessRequest->doctor_user_id, $accessRequest->patient_user_id)
+            )
+        );
+    }
+
+    public function blockDoctor(Request $request, User $doctor)
+    {
+        $this->ensureDoctor($doctor);
+        $patient = $request->user();
+
+        DoctorPatientBlock::query()->updateOrCreate(
+            [
+                'patient_user_id' => $patient->id,
+                'doctor_user_id' => $doctor->id,
+            ],
+            [
+                'blocked_at' => now(),
+            ]
+        );
+
+        DoctorPatientAccessRequest::query()
+            ->where('patient_user_id', $patient->id)
+            ->where('doctor_user_id', $doctor->id)
+            ->where('status', 'pending')
+            ->update([
+                'status' => 'denied',
+                'response_message' => 'Acces bloque par le patient.',
+                'responded_at' => now(),
+            ]);
+
+        return response()->json([
+            'message' => 'Medecin bloque.',
+            'doctor_id' => $doctor->id,
+            'is_blocked' => true,
+        ]);
+    }
+
+    public function unblockDoctor(Request $request, User $doctor)
+    {
+        $this->ensureDoctor($doctor);
+        $patient = $request->user();
+
+        DoctorPatientBlock::query()
+            ->where('patient_user_id', $patient->id)
+            ->where('doctor_user_id', $doctor->id)
+            ->delete();
+
+        return response()->json([
+            'message' => 'Medecin debloque.',
+            'doctor_id' => $doctor->id,
+            'is_blocked' => false,
+        ]);
+    }
+
+    public function blockStatus(Request $request, User $doctor)
+    {
+        $this->ensureDoctor($doctor);
+        $patient = $request->user();
+
+        return response()->json([
+            'doctor_id' => $doctor->id,
+            'is_blocked' => DoctorPatientBlock::isBlocked($doctor->id, $patient->id),
+        ]);
     }
 }

@@ -1,4 +1,5 @@
 import {
+  IonAlert,
   IonBackButton,
   IonBadge,
   IonButtons,
@@ -51,6 +52,13 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
   const [professionalExpanded, setProfessionalExpanded] = useState(false);
   const [consultationExpanded, setConsultationExpanded] = useState(false);
   const [verificationExpanded, setVerificationExpanded] = useState(false);
+  const [isDoctorBlocked, setIsDoctorBlocked] = useState(false);
+  const [blockActionLoading, setBlockActionLoading] = useState(false);
+  const [blockMessage, setBlockMessage] = useState<string | null>(null);
+  const [savingEmergencyContact, setSavingEmergencyContact] = useState(false);
+  const [emergencyContactMessage, setEmergencyContactMessage] = useState<string | null>(null);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
   const decodedDoctorName = decodeURIComponent(doctorName);
 
@@ -164,6 +172,67 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
     };
   }, [decodedDoctorName, doctorPrescriptions, directoryDoctor]);
 
+  const doctorUserId = useMemo(() => {
+    const fromPrescription = doctorPrescriptions.find((row) => Number.isFinite(row.doctor_user_id ?? NaN))?.doctor_user_id;
+    if (typeof fromPrescription === 'number' && fromPrescription > 0) {
+      return fromPrescription;
+    }
+    if (directoryDoctor?.id && directoryDoctor.id > 0) {
+      return directoryDoctor.id;
+    }
+    return null;
+  }, [directoryDoctor?.id, doctorPrescriptions]);
+
+  useEffect(() => {
+    if (!token || !doctorUserId) {
+      setIsDoctorBlocked(false);
+      return;
+    }
+
+    api.getPatientAccessDoctorBlockStatus(token, doctorUserId)
+      .then((response) => setIsDoctorBlocked(response.is_blocked))
+      .catch(() => setIsDoctorBlocked(false));
+  }, [doctorUserId, token]);
+
+  const handleSetDoctorBlocked = useCallback(async (nextBlocked: boolean) => {
+    if (!token || !doctorUserId || blockActionLoading) {
+      return;
+    }
+    setBlockActionLoading(true);
+    setBlockMessage(null);
+    try {
+      const response = nextBlocked
+        ? await api.blockPatientAccessDoctor(token, doctorUserId)
+        : await api.unblockPatientAccessDoctor(token, doctorUserId);
+      setIsDoctorBlocked(response.is_blocked);
+      setBlockMessage(response.message);
+    } catch (err) {
+      setBlockMessage(err instanceof Error ? err.message : 'Action impossible.');
+    } finally {
+      setBlockActionLoading(false);
+    }
+  }, [blockActionLoading, doctorUserId, token]);
+
+  const addToEmergencyContacts = useCallback(async () => {
+    if (!token || !doctorUserId || savingEmergencyContact) {
+      return;
+    }
+
+    setSavingEmergencyContact(true);
+    setEmergencyContactMessage(null);
+    try {
+      const response = await api.createPatientEmergencyContactFromProfile(token, {
+        source_type: 'doctor_user',
+        source_id: doctorUserId,
+      });
+      setEmergencyContactMessage(response.message);
+    } catch (err) {
+      setEmergencyContactMessage(err instanceof Error ? err.message : 'Action impossible.');
+    } finally {
+      setSavingEmergencyContact(false);
+    }
+  }, [doctorUserId, savingEmergencyContact, token]);
+
   return (
     <IonPage>
       <IonHeader>
@@ -220,16 +289,61 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
                   <div style={{ fontSize: '0.9rem', color: '#64748b' }}>{doctorInfo.specialty || 'Specialite non renseignee'}</div>
                 </div>
               </IonCardTitle>
-              <IonButton size="small" fill="clear" onClick={() => setDoctorInfoExpanded((prev) => !prev)}>
-                <IonIcon icon={doctorInfoExpanded ? chevronUpOutline : chevronDownOutline} />
-              </IonButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {isDoctorBlocked ? (
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    color="success"
+                    disabled={blockActionLoading || !doctorUserId}
+                    onClick={() => setShowUnblockConfirm(true)}
+                  >
+                    Debloquer
+                  </IonButton>
+                ) : (
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    color="danger"
+                    disabled={blockActionLoading || !doctorUserId}
+                    onClick={() => setShowBlockConfirm(true)}
+                  >
+                    Bloquer
+                  </IonButton>
+                )}
+                <IonButton size="small" fill="clear" onClick={() => setDoctorInfoExpanded((prev) => !prev)}>
+                  <IonIcon icon={doctorInfoExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
             </div>
           </IonCardHeader>
           <IonCardContent style={{ display: doctorInfoExpanded ? 'block' : 'none' }}>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
               {doctorInfo.licenseVerified ? <IonBadge color="success">Verifie</IonBadge> : <IonBadge color="medium">Non verifie</IonBadge>}
               {doctorInfo.teleconsultationAvailable ? <IonBadge color="primary">Teleconsultation</IonBadge> : null}
+              {isDoctorBlocked ? <IonBadge color="danger">Bloque</IonBadge> : null}
             </div>
+            {blockMessage ? (
+              <IonText color={isDoctorBlocked ? 'warning' : 'success'}>
+                <p>{blockMessage}</p>
+              </IonText>
+            ) : null}
+            <IonButton
+              expand="block"
+              fill="outline"
+              color="warning"
+              disabled={!doctorUserId || savingEmergencyContact}
+              onClick={() => {
+                void addToEmergencyContacts();
+              }}
+            >
+              {savingEmergencyContact ? 'Ajout...' : "Ajouter aux contacts d'urgence"}
+            </IonButton>
+            {emergencyContactMessage ? (
+              <IonText color="medium">
+                <p>{emergencyContactMessage}</p>
+              </IonText>
+            ) : null}
 
             <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px', marginBottom: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -339,6 +453,43 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
             </div>
           </IonCardContent>
         </IonCard>
+        <IonAlert
+          isOpen={showBlockConfirm}
+          onDidDismiss={() => setShowBlockConfirm(false)}
+          header="Bloquer ce medecin ?"
+          message="Le medecin ne pourra plus demander l'acces a votre dossier tant qu'il reste bloque."
+          buttons={[
+            {
+              text: 'Annuler',
+              role: 'cancel'
+            },
+            {
+              text: 'Bloquer',
+              role: 'destructive',
+              handler: () => {
+                void handleSetDoctorBlocked(true);
+              }
+            }
+          ]}
+        />
+        <IonAlert
+          isOpen={showUnblockConfirm}
+          onDidDismiss={() => setShowUnblockConfirm(false)}
+          header="Debloquer ce medecin ?"
+          message="Le medecin pourra a nouveau envoyer des demandes d'acces a votre dossier."
+          buttons={[
+            {
+              text: 'Annuler',
+              role: 'cancel'
+            },
+            {
+              text: 'Debloquer',
+              handler: () => {
+                void handleSetDoctorBlocked(false);
+              }
+            }
+          ]}
+        />
         <IonCard className="surface-card">
           <IonCardHeader>
             <IonCardTitle>Ordonnances</IonCardTitle>

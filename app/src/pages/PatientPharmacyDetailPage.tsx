@@ -1,6 +1,7 @@
 import {
   IonBackButton,
   IonBadge,
+  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -20,6 +21,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { useAuth } from '../state/AuthState';
+import { isFacilityOpenNow } from '../utils/businessHours';
 import { formatDateTime } from '../utils/time';
 
 type RouteParams = {
@@ -28,8 +31,11 @@ type RouteParams = {
 
 const PatientPharmacyDetailPage: React.FC = () => {
   const { pharmacyId } = useParams<RouteParams>();
+  const { token } = useAuth();
   const [pharmacy, setPharmacy] = useState<ApiPharmacy | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingEmergencyContact, setSavingEmergencyContact] = useState(false);
+  const [emergencyContactMessage, setEmergencyContactMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -54,6 +60,26 @@ const PatientPharmacyDetailPage: React.FC = () => {
       active = false;
     };
   }, [pharmacyId]);
+
+  const addToEmergencyContacts = async () => {
+    if (!token || !pharmacy || savingEmergencyContact) {
+      return;
+    }
+
+    setSavingEmergencyContact(true);
+    setEmergencyContactMessage(null);
+    try {
+      const response = await api.createPatientEmergencyContactFromProfile(token, {
+        source_type: 'pharmacy',
+        source_id: pharmacy.id,
+      });
+      setEmergencyContactMessage(response.message);
+    } catch (err) {
+      setEmergencyContactMessage(err instanceof Error ? err.message : 'Action impossible.');
+    } finally {
+      setSavingEmergencyContact(false);
+    }
+  };
 
   return (
     <IonPage>
@@ -116,12 +142,28 @@ const PatientPharmacyDetailPage: React.FC = () => {
                     <p>{pharmacy.address || 'Adresse non renseignee'}</p>
                   </IonLabel>
                   <div slot="end">
-                    <IonBadge color={pharmacy.open_now ? 'success' : 'medium'}>
-                      {pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                    <IonBadge color={isFacilityOpenNow(pharmacy) ? 'success' : 'medium'}>
+                      {isFacilityOpenNow(pharmacy) ? 'Ouverte' : 'Fermee'}
                     </IonBadge>
                   </div>
                 </IonItem>
                 <div style={{ margin: '4px 0 8px' }} />
+                <IonButton
+                  expand="block"
+                  fill="outline"
+                  color="warning"
+                  disabled={!token || savingEmergencyContact}
+                  onClick={() => {
+                    void addToEmergencyContacts();
+                  }}
+                >
+                  {savingEmergencyContact ? 'Ajout...' : "Ajouter aux contacts d'urgence"}
+                </IonButton>
+                {emergencyContactMessage ? (
+                  <IonText color="medium">
+                    <p style={{ marginTop: '8px' }}>{emergencyContactMessage}</p>
+                  </IonText>
+                ) : null}
 
                 <IonList>
                   <IonItem lines="full">

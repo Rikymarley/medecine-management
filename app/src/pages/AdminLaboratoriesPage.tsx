@@ -12,11 +12,11 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
+  useIonRouter,
   useIonViewWillEnter
 } from '@ionic/react';
-import { flaskOutline } from 'ionicons/icons';
+import { beaker } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useHistory } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -24,7 +24,7 @@ import { useAuth } from '../state/AuthState';
 type FilterKey = 'all' | 'pending_account' | 'unverified_license' | 'blocked' | 'can_verify';
 
 const AdminLaboratoriesPage: React.FC = () => {
-  const history = useHistory();
+  const ionRouter = useIonRouter();
   const { token } = useAuth();
   const [rows, setRows] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
@@ -35,7 +35,7 @@ const AdminLaboratoriesPage: React.FC = () => {
     if (!token) return;
     try {
       setError(null);
-      const data = await api.getAdminPharmacies(token);
+      const data = await api.getAdminLaboratories(token);
       setRows(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Echec de chargement.');
@@ -86,7 +86,8 @@ const AdminLaboratoriesPage: React.FC = () => {
       key={lab.id}
       className="surface-card"
       style={{ margin: '8px 0', cursor: 'pointer' }}
-      onClick={() => history.push(`/admin/pharmacies/${lab.id}`)}
+      button
+      onClick={() => ionRouter.push(`/admin/laboratoires/${lab.id}`, 'forward', 'push')}
     >
       <IonCardContent>
         <div style={{ display: 'block' }}>
@@ -106,7 +107,7 @@ const AdminLaboratoriesPage: React.FC = () => {
                 }}
               />
             ) : (
-              <IonIcon icon={flaskOutline} color="primary" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
+              <IonIcon icon={beaker} color="primary" style={{ marginRight: '10px', float: 'left', fontSize: '26px' }} />
             )}
             <h3>{lab.name}</h3>
             <p>{lab.address || 'Adresse N/D'}</p>

@@ -15,6 +15,7 @@ class Pharmacy extends Model
         'longitude',
         'open_now',
         'opening_hours',
+        'opening_hours_json',
         'closes_at',
         'temporary_closed',
         'emergency_available',
@@ -40,6 +41,7 @@ class Pharmacy extends Model
 
     protected $casts = [
         'open_now' => 'boolean',
+        'opening_hours_json' => 'array',
         'temporary_closed' => 'boolean',
         'emergency_available' => 'boolean',
         'delivery_available' => 'boolean',

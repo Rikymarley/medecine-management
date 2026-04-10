@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Hospital;
+use App\Models\Laboratory;
 use App\Models\PasswordResetEvent;
 use App\Models\Pharmacy;
 use App\Models\User;
@@ -130,6 +132,86 @@ class AdminAccountController extends Controller
             ->values();
 
         return response()->json($rows);
+    }
+
+    public function hospitals()
+    {
+        $rows = Hospital::query()
+            ->with([
+                'licenseVerifiedByDoctor:id,name',
+                'accountVerifiedBy:id,name',
+                'blockedBy:id,name',
+                'delegatedBy:id,name',
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Hospital $hospital) => $this->presentHospital($hospital))
+            ->values();
+
+        return response()->json($rows);
+    }
+
+    public function laboratories()
+    {
+        $rows = Laboratory::query()
+            ->with([
+                'licenseVerifiedByDoctor:id,name',
+                'accountVerifiedBy:id,name',
+                'blockedBy:id,name',
+                'delegatedBy:id,name',
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Laboratory $laboratory) => $this->presentLaboratory($laboratory))
+            ->values();
+
+        return response()->json($rows);
+    }
+
+    private function presentHospital(Hospital $hospital): array
+    {
+        $row = $hospital->toArray();
+        $row['pharmacy_user_id'] = null;
+        $row['pharmacy_user_name'] = null;
+        $row['pharmacy_user_email'] = null;
+        $row['account_can_verify_accounts'] = (bool) $hospital->can_verify_accounts;
+        $row['account_verified_at'] = $hospital->account_verified_at;
+        $row['account_verified_by'] = $hospital->account_verified_by;
+        $row['account_verified_by_name'] = $hospital->accountVerifiedBy?->name;
+        $row['blocked_by_name'] = $hospital->blockedBy?->name;
+        $row['delegated_by_name'] = $hospital->delegatedBy?->name;
+        $row['approved_by'] = $hospital->accountVerifiedBy?->name;
+        $row['approved_at'] = $hospital->account_verified_at;
+        $row['verified_by'] = $hospital->licenseVerifiedByDoctor?->name;
+        $row['verified_at'] = $hospital->license_verified_at;
+        $row['license_verified_by_doctor_name'] = $hospital->licenseVerifiedByDoctor?->name;
+        $row['pharmacy_mode'] = 'quick_manual';
+        $row['last_confirmed_stock_time'] = null;
+        $row['reliability_score'] = 0;
+        return $row;
+    }
+
+    private function presentLaboratory(Laboratory $laboratory): array
+    {
+        $row = $laboratory->toArray();
+        $row['pharmacy_user_id'] = null;
+        $row['pharmacy_user_name'] = null;
+        $row['pharmacy_user_email'] = null;
+        $row['account_can_verify_accounts'] = (bool) $laboratory->can_verify_accounts;
+        $row['account_verified_at'] = $laboratory->account_verified_at;
+        $row['account_verified_by'] = $laboratory->account_verified_by;
+        $row['account_verified_by_name'] = $laboratory->accountVerifiedBy?->name;
+        $row['blocked_by_name'] = $laboratory->blockedBy?->name;
+        $row['delegated_by_name'] = $laboratory->delegatedBy?->name;
+        $row['approved_by'] = $laboratory->accountVerifiedBy?->name;
+        $row['approved_at'] = $laboratory->account_verified_at;
+        $row['verified_by'] = $laboratory->licenseVerifiedByDoctor?->name;
+        $row['verified_at'] = $laboratory->license_verified_at;
+        $row['license_verified_by_doctor_name'] = $laboratory->licenseVerifiedByDoctor?->name;
+        $row['pharmacy_mode'] = 'quick_manual';
+        $row['last_confirmed_stock_time'] = null;
+        $row['reliability_score'] = 0;
+        return $row;
     }
 
     public function approveUser(Request $request, User $user)
@@ -328,5 +410,251 @@ class AdminAccountController extends Controller
         $row['license_verified_by_doctor_name'] = $pharmacy->licenseVerifiedByDoctor?->name;
 
         return response()->json($row);
+    }
+
+    public function approveHospital(Request $request, Hospital $hospital)
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $hospital->update([
+            'account_verification_status' => 'approved',
+            'account_verified_at' => now(),
+            'account_verified_by' => $request->user()->id,
+            'account_verification_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($this->presentHospital($hospital->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function unapproveHospital(Request $request, Hospital $hospital)
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $hospital->update([
+            'account_verification_status' => 'pending',
+            'account_verified_at' => null,
+            'account_verified_by' => null,
+            'account_verification_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($this->presentHospital($hospital->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function blockHospital(Request $request, Hospital $hospital)
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $hospital->update([
+            'account_status' => 'blocked',
+            'account_verification_notes' => $data['notes'] ?? $hospital->account_verification_notes,
+            'blocked_by' => $request->user()->id,
+            'blocked_at' => now(),
+        ]);
+
+        return response()->json($this->presentHospital($hospital->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function unblockHospital(Hospital $hospital)
+    {
+        $hospital->update([
+            'account_status' => 'active',
+            'blocked_by' => null,
+            'blocked_at' => null,
+        ]);
+
+        return response()->json($this->presentHospital($hospital->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function setHospitalVerifierPermission(Request $request, Hospital $hospital)
+    {
+        $data = $request->validate([
+            'can_verify_accounts' => ['required', 'boolean'],
+        ]);
+
+        $hospital->update([
+            'can_verify_accounts' => $data['can_verify_accounts'],
+            'delegated_by' => $data['can_verify_accounts'] ? $request->user()->id : null,
+            'delegated_at' => $data['can_verify_accounts'] ? now() : null,
+        ]);
+
+        return response()->json($this->presentHospital($hospital->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function verifyHospitalLicense(Request $request, Hospital $hospital)
+    {
+        $data = $request->validate([
+            'verified' => ['sometimes', 'boolean'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $verified = $data['verified'] ?? true;
+
+        $hospital->update([
+            'license_verified' => $verified,
+            'license_verified_at' => $verified ? now() : null,
+            'license_verified_by_doctor_id' => $verified ? $request->user()->id : null,
+            'license_verification_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($this->presentHospital($hospital->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function approveLaboratory(Request $request, Laboratory $laboratory)
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $laboratory->update([
+            'account_verification_status' => 'approved',
+            'account_verified_at' => now(),
+            'account_verified_by' => $request->user()->id,
+            'account_verification_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($this->presentLaboratory($laboratory->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function unapproveLaboratory(Request $request, Laboratory $laboratory)
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $laboratory->update([
+            'account_verification_status' => 'pending',
+            'account_verified_at' => null,
+            'account_verified_by' => null,
+            'account_verification_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($this->presentLaboratory($laboratory->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function blockLaboratory(Request $request, Laboratory $laboratory)
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $laboratory->update([
+            'account_status' => 'blocked',
+            'account_verification_notes' => $data['notes'] ?? $laboratory->account_verification_notes,
+            'blocked_by' => $request->user()->id,
+            'blocked_at' => now(),
+        ]);
+
+        return response()->json($this->presentLaboratory($laboratory->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function unblockLaboratory(Laboratory $laboratory)
+    {
+        $laboratory->update([
+            'account_status' => 'active',
+            'blocked_by' => null,
+            'blocked_at' => null,
+        ]);
+
+        return response()->json($this->presentLaboratory($laboratory->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function setLaboratoryVerifierPermission(Request $request, Laboratory $laboratory)
+    {
+        $data = $request->validate([
+            'can_verify_accounts' => ['required', 'boolean'],
+        ]);
+
+        $laboratory->update([
+            'can_verify_accounts' => $data['can_verify_accounts'],
+            'delegated_by' => $data['can_verify_accounts'] ? $request->user()->id : null,
+            'delegated_at' => $data['can_verify_accounts'] ? now() : null,
+        ]);
+
+        return response()->json($this->presentLaboratory($laboratory->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
+    }
+
+    public function verifyLaboratoryLicense(Request $request, Laboratory $laboratory)
+    {
+        $data = $request->validate([
+            'verified' => ['sometimes', 'boolean'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $verified = $data['verified'] ?? true;
+
+        $laboratory->update([
+            'license_verified' => $verified,
+            'license_verified_at' => $verified ? now() : null,
+            'license_verified_by_doctor_id' => $verified ? $request->user()->id : null,
+            'license_verification_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json($this->presentLaboratory($laboratory->fresh([
+            'licenseVerifiedByDoctor:id,name',
+            'accountVerifiedBy:id,name',
+            'blockedBy:id,name',
+            'delegatedBy:id,name',
+        ])));
     }
 }

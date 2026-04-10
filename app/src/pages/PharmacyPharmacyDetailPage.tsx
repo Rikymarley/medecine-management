@@ -22,6 +22,7 @@ import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { isFacilityOpenNow } from '../utils/businessHours';
 import { formatDateTime } from '../utils/time';
 
 type RouteParams = {
@@ -245,8 +246,8 @@ const PharmacyPharmacyDetailPage: React.FC = () => {
                   <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
                     {pharmacy.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
                   </IonBadge>
-                  <IonBadge color={pharmacy.open_now ? 'success' : 'medium'}>
-                    {pharmacy.open_now ? 'Ouverte' : 'Fermee'}
+                  <IonBadge color={isFacilityOpenNow(pharmacy) ? 'success' : 'medium'}>
+                    {isFacilityOpenNow(pharmacy) ? 'Ouverte' : 'Fermee'}
                   </IonBadge>
                 </div>
                 <div style={{ display: 'grid', gap: '10px', marginTop: '8px', marginBottom: '8px' }}>

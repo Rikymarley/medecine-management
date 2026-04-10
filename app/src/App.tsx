@@ -60,6 +60,8 @@ const DoctorDoctorDetailPage = lazy(() => import('./pages/DoctorDoctorDetailPage
 const DoctorSecretariesPage = lazy(() => import('./pages/DoctorSecretariesPage'));
 const DoctorLaboratoriesDirectoryPage = lazy(() => import('./pages/DoctorLaboratoriesDirectoryPage'));
 const DoctorHospitalsDirectoryPage = lazy(() => import('./pages/DoctorHospitalsDirectoryPage'));
+const DoctorLaboratoryDetailPage = lazy(() => import('./pages/DoctorLaboratoryDetailPage'));
+const DoctorHospitalDetailPage = lazy(() => import('./pages/DoctorHospitalDetailPage'));
 const DoctorPharmaciesDirectoryPage = lazy(() => import('./pages/DoctorPharmaciesDirectoryPage'));
 const DoctorPharmacyDetailPage = lazy(() => import('./pages/DoctorPharmacyDetailPage'));
 const DoctorMedicalHistoryEntryPage = lazy(() => import('./pages/DoctorMedicalHistoryEntryPage'));
@@ -68,6 +70,8 @@ const PharmacyDoctorsDirectoryPage = lazy(() => import('./pages/PharmacyDoctorsD
 const PharmacyDoctorDetailPage = lazy(() => import('./pages/PharmacyDoctorDetailPage'));
 const PharmacyLaboratoriesDirectoryPage = lazy(() => import('./pages/PharmacyLaboratoriesDirectoryPage'));
 const PharmacyHospitalsDirectoryPage = lazy(() => import('./pages/PharmacyHospitalsDirectoryPage'));
+const PharmacyLaboratoryDetailPage = lazy(() => import('./pages/PharmacyLaboratoryDetailPage'));
+const PharmacyHospitalDetailPage = lazy(() => import('./pages/PharmacyHospitalDetailPage'));
 const PharmacyPharmaciesDirectoryPage = lazy(() => import('./pages/PharmacyPharmaciesDirectoryPage'));
 const PharmacyPharmacyDetailPage = lazy(() => import('./pages/PharmacyPharmacyDetailPage'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -75,6 +79,8 @@ const AdminDoctorsPage = lazy(() => import('./pages/AdminDoctorsPage'));
 const AdminDoctorDetailPage = lazy(() => import('./pages/AdminDoctorDetailPage'));
 const AdminHospitalsPage = lazy(() => import('./pages/AdminHospitalsPage'));
 const AdminLaboratoriesPage = lazy(() => import('./pages/AdminLaboratoriesPage'));
+const AdminHospitalDetailPage = lazy(() => import('./pages/AdminHospitalDetailPage'));
+const AdminLaboratoryDetailPage = lazy(() => import('./pages/AdminLaboratoryDetailPage'));
 const AdminPharmaciesPage = lazy(() => import('./pages/AdminPharmaciesPage'));
 const AdminPharmacyDetailPage = lazy(() => import('./pages/AdminPharmacyDetailPage'));
 const AdminPatientsPage = lazy(() => import('./pages/AdminPatientsPage'));
@@ -84,10 +90,13 @@ const AdminRoleAccountsPage = lazy(() => import('./pages/AdminRoleAccountsPage')
 const PatientDoctorsPage = lazy(() => import('./pages/PatientDoctorsPage'));
 const PatientHospitalsPage = lazy(() => import('./pages/PatientHospitalsPage'));
 const PatientLaboratoriesPage = lazy(() => import('./pages/PatientLaboratoriesPage'));
+const PatientHospitalDetailPage = lazy(() => import('./pages/PatientHospitalDetailPage'));
+const PatientLaboratoryDetailPage = lazy(() => import('./pages/PatientLaboratoryDetailPage'));
 const PatientPharmaciesPage = lazy(() => import('./pages/PatientPharmaciesPage'));
 const PatientPharmacyDetailPage = lazy(() => import('./pages/PatientPharmacyDetailPage'));
 const PatientDoctorPrescriptionsPage = lazy(() => import('./pages/PatientDoctorPrescriptionsPage'));
 const PatientMedicationsPage = lazy(() => import('./pages/PatientMedicationsPage'));
+const PatientMedicationRemindersPage = lazy(() => import('./pages/PatientMedicationRemindersPage'));
 const PatientVisitsPage = lazy(() => import('./pages/PatientVisitsPage'));
 const PatientAppointmentsPage = lazy(() => import('./pages/PatientAppointmentsPage'));
 const PatientPrescriptionsPage = lazy(() => import('./pages/PatientPrescriptionsPage'));
@@ -163,6 +172,8 @@ const RoutePreloader: React.FC = () => {
         import('./pages/DoctorDoctorDetailPage'),
         import('./pages/DoctorLaboratoriesDirectoryPage'),
         import('./pages/DoctorHospitalsDirectoryPage'),
+        import('./pages/DoctorLaboratoryDetailPage'),
+        import('./pages/DoctorHospitalDetailPage'),
         import('./pages/DoctorPharmaciesDirectoryPage'),
         import('./pages/DoctorPharmacyDetailPage'),
         import('./pages/DoctorMedicalHistoryEntryPage'),
@@ -174,16 +185,21 @@ const RoutePreloader: React.FC = () => {
         import('./pages/PharmacyDoctorDetailPage'),
         import('./pages/PharmacyLaboratoriesDirectoryPage'),
         import('./pages/PharmacyHospitalsDirectoryPage'),
+        import('./pages/PharmacyLaboratoryDetailPage'),
+        import('./pages/PharmacyHospitalDetailPage'),
         import('./pages/PharmacyPharmaciesDirectoryPage'),
         import('./pages/PharmacyPharmacyDetailPage'),
         import('./pages/PatientDashboard'),
         import('./pages/PatientDoctorsPage'),
         import('./pages/PatientHospitalsPage'),
         import('./pages/PatientLaboratoriesPage'),
+        import('./pages/PatientHospitalDetailPage'),
+        import('./pages/PatientLaboratoryDetailPage'),
         import('./pages/PatientPharmaciesPage'),
         import('./pages/PatientPharmacyDetailPage'),
         import('./pages/PatientDoctorPrescriptionsPage'),
         import('./pages/PatientMedicationsPage'),
+        import('./pages/PatientMedicationRemindersPage'),
         import('./pages/PatientVisitsPage'),
         import('./pages/PatientAppointmentsPage'),
         import('./pages/PatientPrescriptionDetailPage'),
@@ -197,6 +213,8 @@ const RoutePreloader: React.FC = () => {
         import('./pages/AdminDoctorDetailPage'),
         import('./pages/AdminHospitalsPage'),
         import('./pages/AdminLaboratoriesPage'),
+        import('./pages/AdminHospitalDetailPage'),
+        import('./pages/AdminLaboratoryDetailPage'),
         import('./pages/AdminPharmaciesPage'),
         import('./pages/AdminPharmacyDetailPage'),
         import('./pages/AdminPatientsPage'),
@@ -357,6 +375,16 @@ const App: React.FC = () => (
               <DoctorPharmacyDetailPage />
             </RequireRole>
           </Route>
+          <Route exact path="/doctor/hopitaux/:facilityId">
+            <RequireRole role="doctor">
+              <DoctorHospitalDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/laboratoires/:facilityId">
+            <RequireRole role="doctor">
+              <DoctorLaboratoryDetailPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/doctor/medical-history/:id">
             <RequireRole role="doctor">
               <DoctorMedicalHistoryEntryPage />
@@ -402,6 +430,16 @@ const App: React.FC = () => (
               <PharmacyPharmacyDetailPage />
             </RequireRole>
           </Route>
+          <Route exact path="/pharmacy/hopitaux/:facilityId">
+            <RequireRole role="pharmacy">
+              <PharmacyHospitalDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/laboratoires/:facilityId">
+            <RequireRole role="pharmacy">
+              <PharmacyLaboratoryDetailPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/admin">
             <RequireRole role="admin">
               <AdminDashboard />
@@ -430,6 +468,16 @@ const App: React.FC = () => (
           <Route exact path="/admin/laboratoires">
             <RequireRole role="admin">
               <AdminLaboratoriesPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/hopitaux/:hospitalId">
+            <RequireRole role="admin">
+              <AdminHospitalDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/laboratoires/:laboratoryId">
+            <RequireRole role="admin">
+              <AdminLaboratoryDetailPage />
             </RequireRole>
           </Route>
           <Route exact path="/admin/pharmacies/:pharmacyId">
@@ -487,7 +535,17 @@ const App: React.FC = () => (
               <PatientLaboratoriesPage />
             </RequireRole>
           </Route>
+          <Route exact path="/patient/laboratories">
+            <RequireRole role="patient">
+              <PatientLaboratoriesPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/patient/hopitaux">
+            <RequireRole role="patient">
+              <PatientHospitalsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/hospitals">
             <RequireRole role="patient">
               <PatientHospitalsPage />
             </RequireRole>
@@ -495,6 +553,26 @@ const App: React.FC = () => (
           <Route exact path="/patient/pharmacies/:pharmacyId">
             <RequireRole role="patient">
               <PatientPharmacyDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/hopitaux/:facilityId">
+            <RequireRole role="patient">
+              <PatientHospitalDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/hospitals/:facilityId">
+            <RequireRole role="patient">
+              <PatientHospitalDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/laboratoires/:facilityId">
+            <RequireRole role="patient">
+              <PatientLaboratoryDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/laboratories/:facilityId">
+            <RequireRole role="patient">
+              <PatientLaboratoryDetailPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient/doctors/:doctorName">
@@ -510,6 +588,11 @@ const App: React.FC = () => (
           <Route exact path="/patient/medicaments">
             <RequireRole role="patient">
               <PatientMedicationsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/medication-reminders">
+            <RequireRole role="patient">
+              <PatientMedicationRemindersPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient/visites">

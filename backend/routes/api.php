@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\FamilyMemberController;
 use App\Http\Controllers\Api\DoctorPatientController;
 use App\Http\Controllers\Api\MedicalHistoryController;
 use App\Http\Controllers\Api\PatientMedicinePurchaseController;
+use App\Http\Controllers\Api\PatientMedicineCabinetController;
 use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\LicenseVerificationController;
 use App\Http\Controllers\Api\DoctorSpecialtyController;
@@ -17,6 +18,8 @@ use App\Http\Controllers\Api\DoctorPatientAccessRequestController;
 use App\Http\Controllers\Api\DoctorRehabController;
 use App\Http\Controllers\Api\DoctorVisitController;
 use App\Http\Controllers\Api\UserVerificationController;
+use App\Http\Controllers\Api\HospitalController;
+use App\Http\Controllers\Api\LaboratoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:8,1');
@@ -36,9 +39,19 @@ Route::get('/pharmacy/doctors-directory', [AuthController::class, 'doctorsDirect
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 
 Route::get('/pharmacies', [PharmacyController::class, 'index']);
+Route::get('/hospitals', [HospitalController::class, 'index']);
+Route::get('/laboratories', [LaboratoryController::class, 'index']);
 Route::get('/doctor/pharmacies-directory', [PharmacyController::class, 'directoryForDoctor'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/pharmacy/pharmacies-directory', [PharmacyController::class, 'directoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
+Route::get('/doctor/hospitals-directory', [HospitalController::class, 'directoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/pharmacy/hospitals-directory', [HospitalController::class, 'directoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
+Route::get('/doctor/laboratories-directory', [LaboratoryController::class, 'directoryForDoctor'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/pharmacy/laboratories-directory', [LaboratoryController::class, 'directoryForDoctor'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 Route::post('/pharmacies', [PharmacyController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:admin', 'throttle:30,1']);
@@ -85,6 +98,12 @@ Route::post('/doctor/patients/{patient}/access-requests', [DoctorPatientAccessRe
 
 Route::get('/patient/access-requests', [DoctorPatientAccessRequestController::class, 'patientIndex'])
     ->middleware(['auth:sanctum', 'role:patient']);
+Route::get('/patient/access-requests/doctors/{doctor}/block-status', [DoctorPatientAccessRequestController::class, 'blockStatus'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::post('/patient/access-requests/doctors/{doctor}/block', [DoctorPatientAccessRequestController::class, 'blockDoctor'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
+Route::delete('/patient/access-requests/doctors/{doctor}/block', [DoctorPatientAccessRequestController::class, 'unblockDoctor'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::patch('/patient/access-requests/{accessRequest}', [DoctorPatientAccessRequestController::class, 'respond'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::get('/patient/prescriptions', [PrescriptionController::class, 'mineForPatient'])
@@ -110,10 +129,22 @@ Route::post('/patient/prescriptions/{prescription}/purchases', [PatientMedicineP
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:180,1']);
 Route::post('/patient/prescriptions/{prescription}/purchases/batch', [PatientMedicinePurchaseController::class, 'upsertBatch'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:60,1']);
+Route::get('/patient/cabinet-items', [PatientMedicineCabinetController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::post('/patient/cabinet-items', [PatientMedicineCabinetController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
+Route::patch('/patient/cabinet-items/{cabinetItem}', [PatientMedicineCabinetController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
+Route::post('/patient/cabinet-items/{cabinetItem}/photo', [PatientMedicineCabinetController::class, 'uploadPhoto'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
+Route::delete('/patient/cabinet-items/{cabinetItem}', [PatientMedicineCabinetController::class, 'destroy'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::get('/patient/emergency-contacts', [EmergencyContactController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/patient/emergency-contacts', [EmergencyContactController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
+Route::post('/patient/emergency-contacts/from-profile', [EmergencyContactController::class, 'storeFromProfile'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:60,1']);
 Route::patch('/patient/emergency-contacts/{emergencyContact}', [EmergencyContactController::class, 'update'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::delete('/patient/emergency-contacts/{emergencyContact}', [EmergencyContactController::class, 'destroy'])
@@ -199,6 +230,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/verifications'
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/accounts')->group(function () {
     Route::get('/users', [AdminAccountController::class, 'users']);
     Route::get('/pharmacies', [AdminAccountController::class, 'pharmacies']);
+    Route::get('/hospitals', [AdminAccountController::class, 'hospitals']);
+    Route::get('/laboratories', [AdminAccountController::class, 'laboratories']);
     Route::get('/password-reset-events', [AdminAccountController::class, 'passwordResetEvents']);
     Route::post('/users/{user}/approve', [AdminAccountController::class, 'approveUser']);
     Route::post('/users/{user}/unapprove', [AdminAccountController::class, 'unapproveUser']);
@@ -208,6 +241,18 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('/admin/accounts')->gr
     Route::post('/doctors/{doctor}/verifier-permission', [AdminAccountController::class, 'setDoctorVerifierPermission']);
     Route::post('/pharmacies/{pharmacy}/verify-license', [AdminAccountController::class, 'verifyPharmacyLicense']);
     Route::post('/pharmacy-accounts/{user}/verifier-permission', [AdminAccountController::class, 'setPharmacyVerifierPermission']);
+    Route::post('/hospitals/{hospital}/approve', [AdminAccountController::class, 'approveHospital']);
+    Route::post('/hospitals/{hospital}/unapprove', [AdminAccountController::class, 'unapproveHospital']);
+    Route::post('/hospitals/{hospital}/block', [AdminAccountController::class, 'blockHospital']);
+    Route::post('/hospitals/{hospital}/unblock', [AdminAccountController::class, 'unblockHospital']);
+    Route::post('/hospitals/{hospital}/verify-license', [AdminAccountController::class, 'verifyHospitalLicense']);
+    Route::post('/hospitals/{hospital}/verifier-permission', [AdminAccountController::class, 'setHospitalVerifierPermission']);
+    Route::post('/laboratories/{laboratory}/approve', [AdminAccountController::class, 'approveLaboratory']);
+    Route::post('/laboratories/{laboratory}/unapprove', [AdminAccountController::class, 'unapproveLaboratory']);
+    Route::post('/laboratories/{laboratory}/block', [AdminAccountController::class, 'blockLaboratory']);
+    Route::post('/laboratories/{laboratory}/unblock', [AdminAccountController::class, 'unblockLaboratory']);
+    Route::post('/laboratories/{laboratory}/verify-license', [AdminAccountController::class, 'verifyLaboratoryLicense']);
+    Route::post('/laboratories/{laboratory}/verifier-permission', [AdminAccountController::class, 'setLaboratoryVerifierPermission']);
 });
 
 Route::middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'can_verify_accounts'])

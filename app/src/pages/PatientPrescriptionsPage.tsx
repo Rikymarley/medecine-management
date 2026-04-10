@@ -19,7 +19,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { medkitOutline } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -28,6 +28,7 @@ import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../u
 import { formatDateTime } from '../utils/time';
 
 const PatientPrescriptionsPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
@@ -35,8 +36,12 @@ const PatientPrescriptionsPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const pageSize = 12;
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
+  const lastLoadedAtRef = useRef(0);
 
-  const loadPrescriptions = useCallback(async () => {
+  const loadPrescriptions = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
     if (!cacheKey) {
       return;
     }
@@ -60,14 +65,15 @@ const PatientPrescriptionsPage: React.FC = () => {
     const data = await api.getPatientPrescriptions(token);
     setPrescriptions(data);
     localStorage.setItem(cacheKey, JSON.stringify(data));
-  }, [cacheKey, token]);
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS, cacheKey, token]);
 
   useEffect(() => {
-    loadPrescriptions().catch(() => undefined);
+    loadPrescriptions(true).catch(() => undefined);
   }, [loadPrescriptions]);
 
   useIonViewWillEnter(() => {
-    loadPrescriptions().catch(() => undefined);
+    loadPrescriptions(false).catch(() => undefined);
   });
 
   const sortedPrescriptions = useMemo(() => {

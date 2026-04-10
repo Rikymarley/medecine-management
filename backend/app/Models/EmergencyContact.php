@@ -11,6 +11,9 @@ class EmergencyContact extends Model
         'name',
         'phone',
         'category',
+        'source_type',
+        'source_id',
+        'added_from_profile',
         'city',
         'department',
         'address',
@@ -24,6 +27,7 @@ class EmergencyContact extends Model
     protected $casts = [
         'is_24_7' => 'boolean',
         'is_favorite' => 'boolean',
+        'added_from_profile' => 'boolean',
         'priority' => 'integer',
     ];
 

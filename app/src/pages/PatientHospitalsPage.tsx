@@ -20,26 +20,33 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { businessOutline, chevronForwardOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { isFacilityOpenNow } from '../utils/businessHours';
 
 const PatientHospitalsPage: React.FC = () => {
+  const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const [hospitals, setHospitals] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'licensed' | 'unlicensed' | 'emergency'>('all');
+  const lastLoadedAtRef = useRef(0);
 
-  const loadHospitals = async () => {
-    await api.getPharmacies().then(setHospitals).catch(() => setHospitals([]));
-  };
+  const loadHospitals = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
+      return;
+    }
+    await api.getHospitals().then(setHospitals).catch(() => setHospitals([]));
+    lastLoadedAtRef.current = Date.now();
+  }, [LOAD_TTL_MS]);
 
   useEffect(() => {
-    loadHospitals().catch(() => undefined);
-  }, []);
+    loadHospitals(true).catch(() => undefined);
+  }, [loadHospitals]);
 
   useIonViewWillEnter(() => {
-    loadHospitals().catch(() => undefined);
+    loadHospitals(false).catch(() => undefined);
   });
 
   const filtered = useMemo(() => {
@@ -49,8 +56,8 @@ const PatientHospitalsPage: React.FC = () => {
       : hospitals;
 
     const rows = searched.filter((hospital) => {
-      if (statusFilter === 'open') return !!hospital.open_now && !hospital.temporary_closed;
-      if (statusFilter === 'closed') return !hospital.open_now || !!hospital.temporary_closed;
+      if (statusFilter === 'open') return isFacilityOpenNow(hospital);
+      if (statusFilter === 'closed') return !isFacilityOpenNow(hospital);
       if (statusFilter === 'licensed') return !!hospital.license_verified;
       if (statusFilter === 'unlicensed') return !hospital.license_verified;
       if (statusFilter === 'emergency') return !!hospital.emergency_available;
@@ -116,7 +123,7 @@ const PatientHospitalsPage: React.FC = () => {
                     key={hospital.id}
                     lines="full"
                     button
-                    onClick={() => ionRouter.push(`/patient/pharmacies/${hospital.id}`, 'forward', 'push')}
+                    onClick={() => ionRouter.push(`/patient/hospitals/${hospital.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
                       {hospital.logo_url ? (
@@ -139,8 +146,8 @@ const PatientHospitalsPage: React.FC = () => {
                       <h3>{hospital.name}</h3>
                       <p>{hospital.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color={hospital.temporary_closed ? 'danger' : hospital.open_now ? 'success' : 'medium'}>
-                          {hospital.temporary_closed ? 'Fermeture temporaire' : hospital.open_now ? 'Ouvert' : 'Ferme'}
+                        <IonBadge color={hospital.temporary_closed ? 'danger' : isFacilityOpenNow(hospital) ? 'success' : 'medium'}>
+                          {hospital.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(hospital) ? 'Ouvert' : 'Ferme'}
                         </IonBadge>
                         <IonBadge color={hospital.license_verified ? 'success' : 'warning'}>
                           {hospital.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}

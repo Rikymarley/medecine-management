@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PatientMedicineCabinetItem;
 use App\Models\PatientMedicinePurchase;
 use App\Models\Prescription;
 use App\Services\PrescriptionAccessEvaluator;
@@ -10,6 +11,35 @@ use Illuminate\Http\Request;
 
 class PatientMedicinePurchaseController extends Controller
 {
+    private function syncCabinetItemFromPurchase(PatientMedicinePurchase $purchase, Prescription $prescription): void
+    {
+        $medicineRequest = $prescription->medicineRequests()
+            ->where('id', $purchase->medicine_request_id)
+            ->first();
+
+        if (!$medicineRequest) {
+            return;
+        }
+
+        PatientMedicineCabinetItem::query()->updateOrCreate(
+            [
+                'patient_medicine_purchase_id' => $purchase->id,
+            ],
+            [
+                'patient_user_id' => $purchase->patient_user_id,
+                'family_member_id' => $prescription->family_member_id,
+                'prescription_id' => $prescription->id,
+                'medicine_request_id' => $medicineRequest->id,
+                'pharmacy_id' => $purchase->pharmacy_id,
+                'medication_name' => $medicineRequest->name,
+                'form' => $medicineRequest->form,
+                'dosage_strength' => $medicineRequest->strength,
+                'daily_dosage' => $medicineRequest->daily_dosage,
+                'quantity' => $purchase->quantity ?? 1,
+            ]
+        );
+    }
+
     public function index(Request $request, Prescription $prescription)
     {
         if (!$this->canAccessAsPatient($request, $prescription)) {
@@ -57,13 +87,18 @@ class PatientMedicinePurchaseController extends Controller
                 $attributes,
                 ['quantity' => $data['quantity'] ?? 1]
             );
+            $this->syncCabinetItemFromPurchase($purchase, $prescription);
 
             return response()->json($purchase, 201);
         }
 
-        PatientMedicinePurchase::query()
-            ->where($attributes)
-            ->delete();
+        $purchase = PatientMedicinePurchase::query()->where($attributes)->first();
+        if ($purchase) {
+            PatientMedicineCabinetItem::query()
+                ->where('patient_medicine_purchase_id', $purchase->id)
+                ->delete();
+            $purchase->delete();
+        }
 
         return response()->json(['message' => 'Mise a jour enregistree.']);
     }
@@ -98,12 +133,19 @@ class PatientMedicinePurchaseController extends Controller
             ];
 
             if ($item['purchased']) {
-                PatientMedicinePurchase::updateOrCreate(
+                $purchase = PatientMedicinePurchase::updateOrCreate(
                     $attributes,
                     ['quantity' => $item['quantity'] ?? 1]
                 );
+                $this->syncCabinetItemFromPurchase($purchase, $prescription);
             } else {
-                PatientMedicinePurchase::query()->where($attributes)->delete();
+                $purchase = PatientMedicinePurchase::query()->where($attributes)->first();
+                if ($purchase) {
+                    PatientMedicineCabinetItem::query()
+                        ->where('patient_medicine_purchase_id', $purchase->id)
+                        ->delete();
+                    $purchase->delete();
+                }
             }
         }
 
