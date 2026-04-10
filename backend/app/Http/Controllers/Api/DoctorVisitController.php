@@ -134,28 +134,31 @@ class DoctorVisitController extends Controller
     public function index(Request $request)
     {
         $data = $request->validate([
-            'patient_user_id' => ['required', 'integer', 'exists:users,id'],
+            'patient_user_id' => ['nullable', 'integer', 'exists:users,id'],
             'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
         ]);
 
         $familyMemberId = $request->input('family_member_id');
+        $patientUserId = $data['patient_user_id'] ?? null;
 
-        $patient = User::query()
-            ->where('id', $data['patient_user_id'])
-            ->where('role', 'patient')
-            ->first();
+        if ($patientUserId !== null) {
+            $patient = User::query()
+                ->where('id', $patientUserId)
+                ->where('role', 'patient')
+                ->first();
 
-        if ($patient === null) {
-            return response()->json(['message' => 'Patient introuvable.'], 404);
-        }
+            if ($patient === null) {
+                return response()->json(['message' => 'Patient introuvable.'], 404);
+            }
 
-        if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId ?? null, $data['patient_user_id'])) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId ?? null, $patientUserId)) {
+                return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            }
         }
 
         $query = Visit::query()
-            ->where('patient_user_id', $data['patient_user_id'])
             ->where('doctor_user_id', $request->user()->id)
+            ->when($patientUserId, fn ($builder) => $builder->where('patient_user_id', $patientUserId))
             ->when($familyMemberId, fn ($builder) => $builder->where('family_member_id', $familyMemberId))
             ->with(['doctor:id,name', 'patient:id,name', 'familyMember:id,name'])
             ->withCount(['prescriptions', 'medicalHistoryEntries', 'rehabEntries'])
@@ -178,6 +181,31 @@ class DoctorVisitController extends Controller
         }
 
         return response()->json($this->formatVisitDetail($visit));
+    }
+
+    public function patientIndex(Request $request)
+    {
+        $data = $request->validate([
+            'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
+        ]);
+
+        $familyMemberId = $data['family_member_id'] ?? null;
+        $patientUserId = $request->user()->id;
+
+        if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId, $patientUserId)) {
+            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+        }
+
+        $visits = Visit::query()
+            ->where('patient_user_id', $patientUserId)
+            ->when($familyMemberId, fn ($builder) => $builder->where('family_member_id', $familyMemberId))
+            ->with(['doctor:id,name', 'patient:id,name', 'familyMember:id,name'])
+            ->withCount(['prescriptions', 'medicalHistoryEntries', 'rehabEntries'])
+            ->orderByDesc('visit_date')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json($visits->map(fn (Visit $visit) => $this->formatVisit($visit)));
     }
 
     public function store(Request $request)

@@ -97,6 +97,7 @@ const PatientPharmacyDetailPage = lazy(() => import('./pages/PatientPharmacyDeta
 const PatientDoctorPrescriptionsPage = lazy(() => import('./pages/PatientDoctorPrescriptionsPage'));
 const PatientMedicationsPage = lazy(() => import('./pages/PatientMedicationsPage'));
 const PatientMedicationRemindersPage = lazy(() => import('./pages/PatientMedicationRemindersPage'));
+const PatientVitalSignsPage = lazy(() => import('./pages/PatientVitalSignsPage'));
 const PatientVisitsPage = lazy(() => import('./pages/PatientVisitsPage'));
 const PatientAppointmentsPage = lazy(() => import('./pages/PatientAppointmentsPage'));
 const PatientPrescriptionsPage = lazy(() => import('./pages/PatientPrescriptionsPage'));
@@ -200,6 +201,7 @@ const RoutePreloader: React.FC = () => {
         import('./pages/PatientDoctorPrescriptionsPage'),
         import('./pages/PatientMedicationsPage'),
         import('./pages/PatientMedicationRemindersPage'),
+        import('./pages/PatientVitalSignsPage'),
         import('./pages/PatientVisitsPage'),
         import('./pages/PatientAppointmentsPage'),
         import('./pages/PatientPrescriptionDetailPage'),
@@ -593,6 +595,11 @@ const App: React.FC = () => (
           <Route exact path="/patient/medication-reminders">
             <RequireRole role="patient">
               <PatientMedicationRemindersPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/signes-vitaux">
+            <RequireRole role="patient">
+              <PatientVitalSignsPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient/visites">

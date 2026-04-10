@@ -179,6 +179,8 @@ Route::get('/doctor/patients/{patient}/medical-history', [MedicalHistoryControll
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/visits', [DoctorVisitController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/patient/visits', [DoctorVisitController::class, 'patientIndex'])
+    ->middleware(['auth:sanctum', 'role:patient']);
 Route::get('/doctor/visits/{visit}', [DoctorVisitController::class, 'show'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::post('/doctor/visits', [DoctorVisitController::class, 'store'])

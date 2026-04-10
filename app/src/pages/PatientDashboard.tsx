@@ -1032,7 +1032,7 @@ const PatientDashboard: React.FC = () => {
             button
             className="surface-card"
             style={{ margin: 0 }}
-            onClick={() => setMessage('Module Signes vitaux bientot disponible.')}
+            onClick={() => ionRouter.push('/patient/signes-vitaux', 'forward', 'push')}
           >
             <IonCardContent>
               <div className="quick-icon quick-icon-red">

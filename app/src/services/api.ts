@@ -1807,11 +1807,13 @@ export const api = {
     }),
   getDoctorVisits: (
     token: string,
-    patientUserId: number,
+    patientUserId?: number | null,
     params?: { family_member_id?: number | null }
   ) => {
     const search = new URLSearchParams();
-    search.set('patient_user_id', String(patientUserId));
+    if (typeof patientUserId === 'number') {
+      search.set('patient_user_id', String(patientUserId));
+    }
     if (typeof params?.family_member_id === 'number') {
       search.set('family_member_id', String(params.family_member_id));
     }
@@ -1822,6 +1824,17 @@ export const api = {
     request<ApiVisitDetail>(`/doctor/visits/${visitId}`, {
       token
     }),
+  getPatientVisits: (
+    token: string,
+    params?: { family_member_id?: number | null }
+  ) => {
+    const search = new URLSearchParams();
+    if (typeof params?.family_member_id === 'number') {
+      search.set('family_member_id', String(params.family_member_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiVisit[]>(`/patient/visits${suffix}`, { token });
+  },
   createDoctorVisit: (
     token: string,
     payload: {
