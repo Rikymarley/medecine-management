@@ -11,7 +11,6 @@ import {
   IonInput,
   IonItem,
   IonLabel,
-  IonList,
   IonPage,
   IonText,
   IonToggle,
@@ -25,6 +24,8 @@ import {
 } from '@ionic/react';
 import {
   alertCircleOutline,
+  beaker,
+  businessOutline,
   checkmarkCircleOutline,
   chevronDownOutline,
   chevronUpOutline,
@@ -34,49 +35,17 @@ import {
   starOutline,
   storefrontOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiPharmacy, ApiPrescription, ApiPharmacyResponse } from '../services/api';
+import { api, ApiPharmacy, ApiPrescription } from '../services/api';
 import {
-  enqueuePharmacyResponse,
   flushPharmacyResponsesOutbox,
   getPendingPharmacyResponseCount
 } from '../services/offlineQueue';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
 import { getPasswordStrength } from '../utils/passwordStrength';
-import { getPrescriptionCode } from '../utils/prescriptionCode';
-import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
-import { minutesAgo, minutesUntil } from '../utils/time';
-
-const STATUS_ACTIONS: { key: ApiPharmacyResponse['status']; label: string; color: string }[] = [
-  { key: 'out_of_stock', label: '❌ 0 - Rupture', color: 'danger' },
-  { key: 'very_low', label: '🔴 1-10 - Tres bas', color: 'danger' },
-  { key: 'low', label: '🟠 11-30 - Bas', color: 'warning' },
-  { key: 'available', label: '🟡 31-100 - Disponible', color: 'tertiary' },
-  { key: 'high', label: '🟢 100+ - Eleve', color: 'success' },
-  { key: 'equivalent', label: '🔄 Equivalent', color: 'medium' }
-];
-
-const statusLabel = (status: ApiPharmacyResponse['status']) => {
-  switch (status) {
-    case 'out_of_stock':
-    case 'not_available':
-      return '❌ Rupture';
-    case 'very_low':
-      return '🔴 Tres bas (1-10)';
-    case 'low':
-      return '🟠 Bas (11-30)';
-    case 'available':
-      return '🟡 Disponible (31-100)';
-    case 'high':
-      return '🟢 Eleve (100+)';
-    case 'equivalent':
-      return '🔄 Equivalent disponible';
-    default:
-      return '❌ Rupture';
-  }
-};
+import { minutesAgo } from '../utils/time';
 
 type DaySchedule = {
   day: string;
@@ -102,18 +71,6 @@ const SERVICE_OPTIONS = [
   'Renouvellement traitement',
   'Service de nuit'
 ];
-const ALL_PRESCRIPTION_STATUSES = [
-  'sent_to_pharmacies',
-  'partially_available',
-  'available',
-  'expired'
-];
-
-const getStatusTimeDiffLabel = (requestedAt: string) => {
-  const diffMinutes = Math.max(0, Math.round((Date.now() - new Date(requestedAt).getTime()) / 60000));
-  return `il y a ${diffMinutes} min`;
-};
-
 const defaultSchedule = (): DaySchedule[] =>
   WEEK_DAYS.map((day) => ({ day, open: false, from: '08:00', to: '18:00' }));
 
@@ -189,9 +146,6 @@ const PharmacyDashboard: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
-  const [expandedPrescriptions, setExpandedPrescriptions] = useState<Record<number, boolean>>({});
-  const [statusFilter, setStatusFilter] = useState<string>('sent_to_pharmacies');
-  const [reactivatingPrescriptionId, setReactivatingPrescriptionId] = useState<number | null>(null);
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(defaultSchedule());
   const [profileForm, setProfileForm] = useState({
     pharmacy_mode: 'quick_manual' as 'quick_manual' | 'pos_integrated',
@@ -222,14 +176,14 @@ const PharmacyDashboard: React.FC = () => {
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const dashboardCacheKey = user ? `pharmacy-dashboard-cache-${user.id}` : null;
 
-  const applyMyPharmacyToForm = (meData: ApiPharmacy | null) => {
+  const applyMyPharmacyToForm = useCallback((meData: ApiPharmacy | null) => {
     if (!meData) {
       return;
     }
     setProfileForm({
       pharmacy_mode: 'quick_manual',
       phone: maskHaitiPhone(meData.phone ?? ''),
-      recovery_whatsapp: maskHaitiPhone((meData as any).recovery_whatsapp ?? ''),
+      recovery_whatsapp: maskHaitiPhone(meData.recovery_whatsapp ?? ''),
       open_now: !!meData.open_now,
       closes_at: meData.closes_at ?? '',
       opening_hours: meData.opening_hours ?? '',
@@ -267,14 +221,18 @@ const PharmacyDashboard: React.FC = () => {
         .filter(Boolean)
     );
     setWeeklySchedule(parseOpeningHours(meData.opening_hours));
-  };
+  }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       const calls: [Promise<ApiPharmacy[]>, Promise<ApiPrescription[]>, Promise<ApiPharmacy | null>] = [
         api.getPharmacies(),
-        api.getPrescriptions(),
-        token ? api.getMyPharmacy(token).then((data) => data).catch(() => null) : Promise.resolve(null)
+        api.getPharmacyPrescriptions(token),
+        api.getMyPharmacy(token).then((data) => data).catch(() => null)
       ];
       const [pharmacyData, prescriptionData, meData] = await Promise.all(calls);
       setPharmacies(pharmacyData);
@@ -315,11 +273,11 @@ const PharmacyDashboard: React.FC = () => {
         localStorage.removeItem(dashboardCacheKey);
       }
     }
-  };
+  }, [applyMyPharmacyToForm, dashboardCacheKey, token]);
 
   useEffect(() => {
     loadData().catch(() => undefined);
-  }, [token]);
+  }, [loadData]);
 
   useEffect(() => {
     if (!dashboardCacheKey) {
@@ -372,12 +330,9 @@ const PharmacyDashboard: React.FC = () => {
       .catch(() => {
         setPendingOutboxCount(getPendingPharmacyResponseCount());
       });
-  }, [isOnline, token]);
+  }, [isOnline, loadData, token]);
 
   const pharmacy = myPharmacy ?? pharmacies.find((item) => item.id === user?.pharmacy_id) ?? null;
-  const pharmacyHasGps = Boolean(
-    String(pharmacy?.latitude ?? '').trim() && String(pharmacy?.longitude ?? '').trim()
-  );
   const profileChecks = useMemo(
     () => [
       { key: 'telephone', label: 'telephone', filled: profileForm.phone.trim().length > 0 },
@@ -434,120 +389,6 @@ const PharmacyDashboard: React.FC = () => {
     setServicesSectionExpanded(['paiements', 'services'].includes(field));
     setBusinessSectionExpanded(field === 'numero licence');
     setGpsSectionExpanded(['latitude', 'longitude'].includes(field));
-  };
-
-  const togglePrescription = (prescriptionId: number) => {
-    setExpandedPrescriptions((prev) => ({
-      ...prev,
-      [prescriptionId]: !(prev[prescriptionId] ?? false)
-    }));
-  };
-
-  const responsesByKey = useMemo(() => {
-    const map: Record<string, ApiPharmacyResponse> = {};
-    prescriptions.forEach((prescription) => {
-      prescription.responses.forEach((response) => {
-        const key = `${response.prescription_id}-${response.medicine_request_id}-${response.pharmacy_id}`;
-        map[key] = response;
-      });
-    });
-    return map;
-  }, [prescriptions]);
-
-  const filteredPrescriptions = useMemo(() => {
-    return prescriptions.filter((p) => p.status === statusFilter);
-  }, [prescriptions, statusFilter]);
-
-  const handleRespond = async (payload: {
-    prescription_id: number;
-    medicine_request_id: number;
-    status: ApiPharmacyResponse['status'];
-  }) => {
-    const currentPharmacyId = pharmacy?.id ?? user?.pharmacy_id ?? null;
-    if (!token || !currentPharmacyId) {
-      setError('Veuillez vous reconnecter.');
-      return;
-    }
-    if (!pharmacyHasGps) {
-      setError('GPS requis: renseignez latitude et longitude de la pharmacie avant de confirmer une disponibilite.');
-      return;
-    }
-    setError(null);
-    setSyncMessage(null);
-    const queuePayload = {
-      pharmacy_id: currentPharmacyId,
-      prescription_id: payload.prescription_id,
-      medicine_request_id: payload.medicine_request_id,
-      status: payload.status,
-      expires_at_minutes: 60
-    } as const;
-    const applyOptimisticResponse = () => {
-      const nowIso = new Date().toISOString();
-      const expiresAtIso = new Date(Date.now() + queuePayload.expires_at_minutes * 60_000).toISOString();
-      setPrescriptions((prev) =>
-        prev.map((rx) => {
-          if (rx.id !== queuePayload.prescription_id) {
-            return rx;
-          }
-          const nextResponses = rx.responses.filter(
-            (r) =>
-              !(
-                r.pharmacy_id === queuePayload.pharmacy_id &&
-                r.medicine_request_id === queuePayload.medicine_request_id
-              )
-          );
-          const nextResponse: ApiPharmacyResponse = {
-            id: -Date.now(),
-            pharmacy_id: queuePayload.pharmacy_id,
-            prescription_id: queuePayload.prescription_id,
-            medicine_request_id: queuePayload.medicine_request_id,
-            status: queuePayload.status,
-            responded_at: nowIso,
-            expires_at: expiresAtIso
-          };
-          nextResponses.push(nextResponse);
-          return { ...rx, responses: nextResponses };
-        })
-      );
-    };
-
-    // Always update UI immediately so button switches even if network signal is flaky.
-    applyOptimisticResponse();
-
-    if (!isOnline) {
-      const queued = enqueuePharmacyResponse(queuePayload);
-      setPendingOutboxCount(queued);
-      setSyncMessage(`Hors ligne: reponse en file d'attente (${queued}).`);
-      return;
-    }
-
-    try {
-      await api.createPharmacyResponse(token, queuePayload);
-      await loadData();
-    } catch (err) {
-      const queued = enqueuePharmacyResponse(queuePayload);
-      setPendingOutboxCount(queued);
-      setSyncMessage(`Reseau indisponible: reponse en file d'attente (${queued}).`);
-      setError(err instanceof Error ? err.message : "Echec de l'enregistrement de la reponse");
-    }
-  };
-
-  const handleReactivatePrescription = async (prescriptionId: number) => {
-    if (!token) {
-      setError('Veuillez vous reconnecter.');
-      return;
-    }
-    setError(null);
-    setReactivatingPrescriptionId(prescriptionId);
-    try {
-      await api.reactivatePharmacyPrescription(token, prescriptionId);
-      await loadData();
-      setStatusFilter('sent_to_pharmacies');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Echec de la reactivation.");
-    } finally {
-      setReactivatingPrescriptionId(null);
-    }
   };
 
   const saveProfile = async () => {
@@ -1301,7 +1142,7 @@ const PharmacyDashboard: React.FC = () => {
               <div className="quick-icon quick-icon-blue">
                 <IonIcon icon={medkitOutline} />
               </div>
-              <h3>Annuaire medecins</h3>
+              <h3>Medecins</h3>
               <p className="muted-note">Voir les medecins et leur statut.</p>
             </IonCardContent>
           </IonCard>
@@ -1315,8 +1156,36 @@ const PharmacyDashboard: React.FC = () => {
               <div className="quick-icon quick-icon-green">
                 <IonIcon icon={storefrontOutline} />
               </div>
-              <h3>Annuaire pharmacies</h3>
+              <h3>Pharmacies</h3>
               <p className="muted-note">Voir les pharmacies et leur statut.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/pharmacy/laboratoires', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={beaker} />
+              </div>
+              <h3>Laboratoires</h3>
+              <p className="muted-note">Voir les laboratoires et leur statut.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/pharmacy/hopitaux', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-red">
+                <IonIcon icon={businessOutline} />
+              </div>
+              <h3>Hopitaux</h3>
+              <p className="muted-note">Voir les hopitaux et leur statut.</p>
             </IonCardContent>
           </IonCard>
         </div>

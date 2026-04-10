@@ -40,7 +40,8 @@ Route::get('/doctor/pharmacies-directory', [PharmacyController::class, 'director
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/pharmacy/pharmacies-directory', [PharmacyController::class, 'directoryForDoctor'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
-Route::post('/pharmacies', [PharmacyController::class, 'store']);
+Route::post('/pharmacies', [PharmacyController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:admin', 'throttle:30,1']);
 Route::get('/pharmacies/{pharmacy}', [PharmacyController::class, 'show']);
 Route::get('/pharmacy/me', [PharmacyController::class, 'me'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
@@ -53,7 +54,8 @@ Route::post('/pharmacy/me/storefront-image', [PharmacyController::class, 'upload
 Route::get('/medicines', [MedicineController::class, 'index']);
 Route::get('/medicines/{medicine}', [MedicineController::class, 'show']);
 
-Route::get('/prescriptions', [PrescriptionController::class, 'index']);
+Route::get('/prescriptions', [PrescriptionController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 Route::get('/doctor/prescriptions', [PrescriptionController::class, 'mine'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/patients/search', [PrescriptionController::class, 'searchPatients'])
@@ -95,7 +97,8 @@ Route::patch('/patient/prescriptions/{prescription}/reopen', [PrescriptionContro
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::patch('/patient/prescriptions/{prescription}/family-member', [PrescriptionController::class, 'assignFamilyMemberForPatient'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
-Route::get('/prescriptions/{prescription}', [PrescriptionController::class, 'show']);
+Route::get('/prescriptions/{prescription}', [PrescriptionController::class, 'show'])
+    ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 
 Route::post('/pharmacy-responses', [PharmacyResponseController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified', 'throttle:120,1']);

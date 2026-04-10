@@ -13,30 +13,16 @@ import {
   IonInput,
   IonItem,
   IonLabel,
-  IonList,
-  IonModal,
   IonPage,
-  IonSpinner,
   IonText,
   IonTitle,
   IonToolbar
 } from '@ionic/react';
-import {
-  businessOutline,
-  calendarOutline,
-  callOutline,
-  chevronDownOutline,
-  chevronUpOutline,
-  closeOutline,
-  documentTextOutline,
-  flaskOutline,
-  personOutline,
-  printOutline
-} from 'ionicons/icons';
+import { calendarOutline, flaskOutline, personOutline, printOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api, ApiMedicalHistoryEntry, ApiPrescription } from '../services/api';
+import { api, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
@@ -67,8 +53,6 @@ const formatPrintDate = (value: string | null): string => {
   });
 };
 
-const availableResponseStatuses = new Set(['very_low', 'low', 'available', 'high', 'equivalent']);
-
 const DoctorPrescriptionDetailPage: React.FC = () => {
   const { token, user } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -79,14 +63,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
   const [linkDob, setLinkDob] = useState('');
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
-  const [showHistoryPicker, setShowHistoryPicker] = useState(false);
-  const [loadingHistoryEntries, setLoadingHistoryEntries] = useState(false);
-  const [historyEntries, setHistoryEntries] = useState<ApiMedicalHistoryEntry[]>([]);
-  const [historyPickerError, setHistoryPickerError] = useState<string | null>(null);
-  const [historyQuery, setHistoryQuery] = useState('');
-  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'active' | 'resolved'>('all');
-  const [historyVisibilityFilter, setHistoryVisibilityFilter] = useState<'all' | 'shared' | 'doctor_only'>('all');
-  const [isPrescriptionContextCollapsed, setIsPrescriptionContextCollapsed] = useState(false);
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
   const familyMemberNameFromQuery = useMemo(
     () => new URLSearchParams(location.search).get('familyMemberName'),
@@ -103,39 +79,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
     () => (prescription?.medicine_requests ?? []).reduce((sum, med) => sum + (med.quantity ?? 1), 0),
     [prescription]
   );
-  const pharmacyCoverage = useMemo(() => {
-    if (!prescription) {
-      return [];
-    }
-    const coverageByPharmacy = new Map<number, Set<number>>();
-    prescription.responses.forEach((response) => {
-      if (!availableResponseStatuses.has(response.status)) {
-        return;
-      }
-      if (!coverageByPharmacy.has(response.pharmacy_id)) {
-        coverageByPharmacy.set(response.pharmacy_id, new Set<number>());
-      }
-      coverageByPharmacy.get(response.pharmacy_id)?.add(response.medicine_request_id);
-    });
-
-    return Array.from(coverageByPharmacy.entries())
-      .map(([pharmacyId, coveredSet]) => ({
-        pharmacyId,
-        coveredCount: coveredSet.size
-      }))
-      .sort((a, b) => b.coveredCount - a.coveredCount);
-  }, [prescription]);
-  const filteredHistoryEntries = useMemo(() => {
-    const query = historyQuery.trim().toLowerCase();
-    return historyEntries.filter((entry) => {
-      if (historyStatusFilter !== 'all' && entry.status !== historyStatusFilter) return false;
-      if (historyVisibilityFilter !== 'all' && entry.visibility !== historyVisibilityFilter) return false;
-      if (!query) return true;
-      const hay = `${entry.entry_code ?? ''} ${entry.title ?? ''} ${entry.type ?? ''} ${entry.details ?? ''}`.toLowerCase();
-      return hay.includes(query);
-    });
-  }, [historyEntries, historyQuery, historyStatusFilter, historyVisibilityFilter]);
-
   useEffect(() => {
     const load = async () => {
       if (!cacheKey) {
@@ -299,62 +242,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
     }
   };
 
-  const openHistoryPicker = async () => {
-    if (!token || !prescription?.patient_user_id) {
-      return;
-    }
-    setShowHistoryPicker(true);
-    setLoadingHistoryEntries(true);
-    setHistoryPickerError(null);
-    setHistoryQuery('');
-    setHistoryStatusFilter('all');
-    setHistoryVisibilityFilter('all');
-    setIsPrescriptionContextCollapsed(false);
-    try {
-      const rows = await api.getDoctorPatientMedicalHistory(token, prescription.patient_user_id);
-      setHistoryEntries(rows);
-    } catch (err) {
-      setHistoryPickerError(err instanceof Error ? err.message : "Impossible de charger l'historique.");
-      setHistoryEntries([]);
-    } finally {
-      setLoadingHistoryEntries(false);
-    }
-  };
-
-  const linkPrescriptionToHistory = async (entry: ApiMedicalHistoryEntry) => {
-    if (!token || !prescription?.patient_user_id) {
-      return;
-    }
-    setIsLinking(true);
-    setHistoryPickerError(null);
-    try {
-      await api.linkDoctorPatientMedicalHistoryPrescription(
-        token,
-        prescription.patient_user_id,
-        entry.id,
-        prescription.id
-      );
-      setShowHistoryPicker(false);
-      setLinkMessage(`Ordonnance liee a l'historique ${entry.entry_code ?? `MH-${entry.id}`}.`);
-      const params = new URLSearchParams(location.search);
-      const familyMemberId = params.get('familyMemberId');
-      const familyMemberName = params.get('familyMemberName');
-      const patientName = prescription.patient_name ?? '';
-      const targetPath = `/doctor/patients/${encodeURIComponent(patientName)}`;
-      const targetQuery = new URLSearchParams();
-      if (familyMemberId && familyMemberName) {
-        targetQuery.set('familyMemberId', familyMemberId);
-        targetQuery.set('familyMemberName', familyMemberName);
-      }
-      const query = targetQuery.toString();
-      window.location.assign(query ? `${targetPath}?${query}` : targetPath);
-    } catch (err) {
-      setHistoryPickerError(err instanceof Error ? err.message : 'Echec de liaison.');
-    } finally {
-      setIsLinking(false);
-    }
-  };
-
   return (
     <IonPage>
       <IonHeader>
@@ -393,23 +280,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                   {prescription.family_member_id ? <IonBadge color="medium">Membre de famille</IonBadge> : null}
                 </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr',
-                    marginBottom: '10px'
-                  }}
-                >
-                  <div style={{ border: '1px solid #dbe7ef', borderRadius: '10px', padding: '10px' }}>
-                    <p style={{ margin: 0, fontWeight: 700 }}>Patient</p>
-                    <p style={{ margin: '4px 0 0 0' }}>{patientDisplayName}</p>
-                    <p style={{ margin: '2px 0 0 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <IonIcon icon={callOutline} />
-                      {prescription.patient_phone || prescription.patient?.phone || 'N/D'}
-                    </p>
-                  </div>
-                </div>
-
                 <p style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <IonIcon icon={calendarOutline} />
                   Demandee le {formatDateTime(prescription.requested_at)}
@@ -419,13 +289,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                   <IonButton fill="outline" onClick={printPrescription}>
                     <IonIcon icon={printOutline} slot="start" />
                     Reimprimer (QR)
-                  </IonButton>
-                  <IonButton
-                    fill="outline"
-                    disabled={!prescription.patient_user_id}
-                    onClick={() => openHistoryPicker().catch(() => undefined)}
-                  >
-                    Ajouter a l historique
                   </IonButton>
                 </div>
                 {!prescription.patient_user_id ? (
@@ -470,138 +333,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                 {printMessage ? <p style={{ marginTop: '8px' }}>{printMessage}</p> : null}
               </IonCardContent>
             </IonCard>
-            <IonModal isOpen={showHistoryPicker} onDidDismiss={() => setShowHistoryPicker(false)}>
-              <IonContent className="ion-padding app-content">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                  <h2 style={{ marginTop: 0 }}>Selectionner un historique</h2>
-                  <IonButton fill="clear" color="medium" onClick={() => setShowHistoryPicker(false)}>
-                    <IonIcon icon={closeOutline} />
-                  </IonButton>
-                </div>
-                <IonText color="medium">
-                  <p>
-                    Ordonnance <strong>{getPrescriptionCode(prescription)}</strong> · Patient <strong>{patientDisplayName}</strong>
-                  </p>
-                </IonText>
-                <IonCard className="surface-card" style={{ margin: '8px 0' }}>
-                  <IonCardHeader>
-                    <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <IonIcon icon={documentTextOutline} />
-                        Contexte ordonnance
-                      </span>
-                      <IonButton
-                        fill="clear"
-                        size="small"
-                        onClick={() => setIsPrescriptionContextCollapsed((prev) => !prev)}
-                      >
-                        <IonIcon icon={isPrescriptionContextCollapsed ? chevronDownOutline : chevronUpOutline} />
-                      </IonButton>
-                    </IonCardTitle>
-                  </IonCardHeader>
-                  {!isPrescriptionContextCollapsed ? (
-                    <IonCardContent>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color="light">Code: {getPrescriptionCode(prescription)}</IonBadge>
-                        <IonBadge color="light">Statut: {getPrescriptionStatusLabel(prescription.status)}</IonBadge>
-                        <IonBadge color="light">{medicineCount} medicament(s)</IonBadge>
-                        <IonBadge color="light">Quantite totale: {totalQuantity}</IonBadge>
-                      </div>
-                      <p style={{ margin: '8px 0 0 0' }}>Date: {formatDateTime(prescription.requested_at)}</p>
-                      <div style={{ marginTop: '6px', display: 'grid', gap: '4px' }}>
-                        {prescription.medicine_requests.map((med) => (
-                          <p key={`ctx-med-${med.id}`} style={{ margin: 0 }}>
-                            <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qt: {med.quantity ?? 1}
-                            {' · '}Dose/jour: {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
-                          </p>
-                        ))}
-                      </div>
-                    </IonCardContent>
-                  ) : null}
-                </IonCard>
-                <IonInput
-                  value={historyQuery}
-                  placeholder="Rechercher code, titre, type..."
-                  onIonInput={(event) => setHistoryQuery(event.detail.value ?? '')}
-                />
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-                  <IonButton size="small" fill={historyStatusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setHistoryStatusFilter('all')}>
-                    Tous
-                  </IonButton>
-                  <IonButton size="small" fill={historyStatusFilter === 'active' ? 'solid' : 'outline'} onClick={() => setHistoryStatusFilter('active')}>
-                    Actif
-                  </IonButton>
-                  <IonButton size="small" fill={historyStatusFilter === 'resolved' ? 'solid' : 'outline'} onClick={() => setHistoryStatusFilter('resolved')}>
-                    Resolue
-                  </IonButton>
-                  <IonButton
-                    size="small"
-                    fill={historyVisibilityFilter === 'shared' ? 'solid' : 'outline'}
-                    onClick={() => setHistoryVisibilityFilter(historyVisibilityFilter === 'shared' ? 'all' : 'shared')}
-                  >
-                    Partage
-                  </IonButton>
-                  <IonButton
-                    size="small"
-                    fill={historyVisibilityFilter === 'doctor_only' ? 'solid' : 'outline'}
-                    onClick={() => setHistoryVisibilityFilter(historyVisibilityFilter === 'doctor_only' ? 'all' : 'doctor_only')}
-                  >
-                    Docteur seulement
-                  </IonButton>
-                </div>
-
-                {loadingHistoryEntries ? (
-                  <div style={{ display: 'grid', placeItems: 'center', minHeight: '160px' }}>
-                    <IonSpinner name="crescent" />
-                  </div>
-                ) : filteredHistoryEntries.length === 0 ? (
-                  <IonText color="medium">
-                    <p>Aucune entree d'historique disponible pour ce patient.</p>
-                  </IonText>
-                ) : (
-                  <div style={{ display: 'grid', gap: '8px', marginTop: '8px' }}>
-                    {filteredHistoryEntries.map((entry) => (
-                      <IonCard key={entry.id} className="surface-card" style={{ margin: 0 }}>
-                        <IonCardContent>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <h3 id={`history-code-${entry.id}`} style={{ margin: 0 }}>
-                              {entry.entry_code ?? `MH-${entry.id}`}
-                            </h3>
-                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                              <IonBadge color={entry.status === 'resolved' ? 'success' : 'warning'}>
-                                {entry.status === 'resolved' ? 'Resolue' : 'Actif'}
-                              </IonBadge>
-                              <IonBadge color={entry.visibility === 'shared' ? 'primary' : 'dark'}>
-                                {entry.visibility === 'shared' ? 'Partage' : 'Docteur seulement'}
-                              </IonBadge>
-                            </div>
-                          </div>
-                          <p id={`history-title-${entry.id}`} style={{ margin: '4px 0 0 0', fontWeight: 700 }}>
-                            {entry.title}
-                          </p>
-                          <p style={{ margin: '2px 0 0 0' }}>
-                            {entry.type} · Debut: {entry.started_at ? formatDateHaiti(entry.started_at) : 'N/D'} · Fin:{' '}
-                            {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'N/D'}
-                          </p>
-                          {entry.details ? <p id={`history-details-${entry.id}`} style={{ margin: '2px 0 0 0' }}>{entry.details}</p> : null}
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
-                            <IonButton size="small" onClick={() => linkPrescriptionToHistory(entry).catch(() => undefined)}>
-                              Selectionner
-                            </IonButton>
-                          </div>
-                        </IonCardContent>
-                      </IonCard>
-                    ))}
-                  </div>
-                )}
-                {historyPickerError ? (
-                  <IonText color="danger">
-                    <p>{historyPickerError}</p>
-                  </IonText>
-                ) : null}
-              </IonContent>
-            </IonModal>
-
             <IonCard className="surface-card">
               <IonCardHeader>
                 <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -624,32 +355,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                     </div>
                   ))}
                 </div>
-              </IonCardContent>
-            </IonCard>
-            <IonCard className="surface-card">
-              <IonCardHeader>
-                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <IonIcon icon={businessOutline} />
-                  Disponibilite pharmacies
-                </IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                {pharmacyCoverage.length === 0 ? (
-                  <IonText color="medium">
-                    <p>Aucune confirmation pharmacie pour le moment.</p>
-                  </IonText>
-                ) : (
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {pharmacyCoverage.map((row) => (
-                      <div key={row.pharmacyId} style={{ border: '1px solid #dbe7ef', borderRadius: '10px', padding: '10px' }}>
-                        <p style={{ margin: 0, fontWeight: 700 }}>Pharmacie #{row.pharmacyId}</p>
-                        <p style={{ margin: '4px 0 0 0' }}>
-                          Couverture: {row.coveredCount}/{medicineCount}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </IonCardContent>
             </IonCard>
           </>

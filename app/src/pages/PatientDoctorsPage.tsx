@@ -89,7 +89,7 @@ const PatientDoctorsPage: React.FC = () => {
 
     return rows
       .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [directoryDoctors, query, statusFilter]);
+  }, [directoryDoctors, myDoctorNames, query, statusFilter]);
 
   return (
     <IonPage>

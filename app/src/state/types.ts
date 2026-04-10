@@ -1,4 +1,4 @@
-export type Role = 'doctor' | 'pharmacy' | 'patient';
+export type Role = 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
 
 export type AvailabilityStatus = 'available' | 'low' | 'equivalent' | 'not_available';
 

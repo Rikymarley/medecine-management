@@ -139,7 +139,7 @@ export type ApiUser = {
   height_cm: number | null;
   surgical_history: string | null;
   vaccination_up_to_date: boolean | null;
-  role: 'doctor' | 'pharmacy' | 'patient' | 'admin';
+  role: 'doctor' | 'pharmacy' | 'patient' | 'admin' | 'hopital' | 'laboratoire' | 'secretaire';
   account_status?: 'active' | 'provisional' | 'blocked';
   blocked_by?: number | null;
   blocked_at?: string | null;
@@ -301,6 +301,7 @@ export type ApiPrescription = {
   requested_at: string;
   qr_token?: string | null;
   print_code?: string | null;
+  prescription_code?: string | null;
   printed_at?: string | null;
   print_count?: number;
   doctor?: {
@@ -543,6 +544,7 @@ export type ApiPatientLookup = {
 export type ApiMedicalHistoryEntry = {
   id: number;
   entry_code: string | null;
+  history_code?: string | null;
   patient_user_id: number;
   family_member_id: number | null;
   doctor_user_id: number | null;
@@ -562,6 +564,7 @@ export type ApiMedicalHistoryEntry = {
   linked_prescriptions?: Array<{
     id: number;
     print_code: string | null;
+    status?: string | null;
     requested_at: string | null;
   }>;
   linked_rehab_entries?: Array<{
@@ -589,6 +592,7 @@ export type ApiMedicalHistoryEntry = {
 
 export type ApiVisit = {
   id: number;
+  visit_code?: string | null;
   patient_user_id: number;
   family_member_id: number | null;
   doctor_user_id: number;
@@ -653,6 +657,7 @@ export type ApiRehabEntry = {
   doctor_user_id: number;
   medical_history_entry_id: number | null;
   prescription_id: number | null;
+  visit_id: number | null;
   sessions_per_week: number | null;
   duration_weeks: number | null;
   goals: string | null;
@@ -701,7 +706,7 @@ export const api = {
     longitude?: number | null;
     password: string;
     password_confirmation: string;
-    role: 'doctor' | 'pharmacy' | 'patient';
+    role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
     pharmacy_name?: string;
   }) =>
     request<ApiAuthResponse>('/auth/register', {
@@ -1092,7 +1097,8 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : '';
     return request<ApiMedicine[]>(`/medicines${suffix}`);
   },
-  getPrescriptions: () => request<ApiPrescription[]>('/prescriptions'),
+  getPharmacyPrescriptions: (token: string) =>
+    request<ApiPrescription[]>('/prescriptions', { token }),
   getDoctorPrescriptions: (token: string) =>
     request<ApiPrescription[]>('/doctor/prescriptions', { token }),
   searchDoctorPatients: (token: string, q: string, limit = 8) => {
@@ -1175,6 +1181,7 @@ export const api = {
     patient_gender?: 'male' | 'female' | null;
     patient_notes?: string | null;
     family_member_id?: number;
+    visit_id?: number | null;
     medicine_requests: Array<{
       name: string;
       strength?: string | null;
@@ -1455,6 +1462,7 @@ export const api = {
     payload: {
       family_member_id?: number | null;
       prescription_id?: number | null;
+      visit_id?: number | null;
       type: ApiMedicalHistoryEntry['type'];
       title: string;
       details?: string | null;
@@ -1475,6 +1483,7 @@ export const api = {
     payload: {
       family_member_id?: number | null;
       prescription_id?: number | null;
+      visit_id?: number | null;
       type: ApiMedicalHistoryEntry['type'];
       title: string;
       details?: string | null;
@@ -1513,6 +1522,18 @@ export const api = {
       method: 'POST',
       token,
       body: JSON.stringify(payload ?? {})
+    }),
+  getPatientAccessRequests: (token: string) =>
+    request<ApiDoctorPatientAccessRequest[]>('/patient/access-requests', { token }),
+  respondPatientAccessRequest: (
+    token: string,
+    accessRequestId: number,
+    payload: { status: 'approved' | 'denied'; response_message?: string | null }
+  ) =>
+    request<ApiDoctorPatientAccessRequest>(`/patient/access-requests/${accessRequestId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
     }),
   createDoctorPatientMedicalHistory: (
     token: string,
@@ -1630,6 +1651,7 @@ export const api = {
     payload: {
       medical_history_entry_id?: number | null;
       prescription_id?: number | null;
+      visit_id?: number | null;
       sessions_per_week?: number | null;
       duration_weeks?: number | null;
       goals?: string | null;
@@ -1655,6 +1677,7 @@ export const api = {
     payload: {
       medical_history_entry_id?: number | null;
       prescription_id?: number | null;
+      visit_id?: number | null;
       sessions_per_week?: number | null;
       duration_weeks?: number | null;
       goals?: string | null;
@@ -1675,7 +1698,7 @@ export const api = {
     }),
   getAdminUsers: (
     token: string,
-    role?: 'doctor' | 'pharmacy' | 'patient'
+    role?: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire'
   ) => {
     const search = new URLSearchParams();
     if (role) {
@@ -1701,7 +1724,7 @@ export const api = {
   adminApproveUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
     request<{
       id: number;
-      role: 'doctor' | 'pharmacy' | 'patient';
+      role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
       verification_status: 'pending' | 'approved' | 'rejected';
       verified_at: string | null;
       verified_by: number | null;
@@ -1714,7 +1737,7 @@ export const api = {
   adminUnapproveUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
     request<{
       id: number;
-      role: 'doctor' | 'pharmacy' | 'patient';
+      role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
       verification_status: 'pending' | 'approved' | 'rejected';
       verified_at: string | null;
       verified_by: number | null;
@@ -1726,7 +1749,7 @@ export const api = {
   adminBlockUser: (token: string, userId: number, payload?: { notes?: string | null }) =>
     request<{
       id: number;
-      role: 'doctor' | 'pharmacy' | 'patient';
+      role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
       account_status: 'active' | 'provisional' | 'blocked';
       verification_status: 'pending' | 'approved' | 'rejected';
     }>(`/admin/accounts/users/${userId}/block`, {
@@ -1737,7 +1760,7 @@ export const api = {
   adminUnblockUser: (token: string, userId: number) =>
     request<{
       id: number;
-      role: 'doctor' | 'pharmacy' | 'patient';
+      role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
       account_status: 'active' | 'provisional' | 'blocked';
       verification_status: 'pending' | 'approved' | 'rejected';
       verified_at: string | null;

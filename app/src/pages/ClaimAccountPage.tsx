@@ -66,7 +66,10 @@ const ClaimAccountPage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+    type BarcodeDetection = { rawValue?: string };
+    type BarcodeDetectorInstance = { detect: (source: HTMLCanvasElement) => Promise<BarcodeDetection[]> };
+    type BarcodeDetectorCtor = new (options: { formats: string[] }) => BarcodeDetectorInstance;
+    const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
 
     const stopCamera = () => {
       if (rafRef.current) {

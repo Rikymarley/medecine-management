@@ -26,12 +26,14 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import {
+  barChartOutline,
   closeOutline,
   chevronDownOutline,
   chevronUpOutline,
   createOutline,
   documentTextOutline,
   medicalOutline,
+  peopleOutline,
   pulseOutline,
   personOutline
 } from 'ionicons/icons';
@@ -51,6 +53,7 @@ import {
 } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
+import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateHaiti, formatDateTime } from '../utils/time';
 
@@ -85,6 +88,13 @@ const visibilityColor: Record<ApiMedicalHistoryEntry['visibility'], string> = {
   doctor_only: 'dark'
 };
 
+const toDateInputValue = (value: string | null | undefined): string => {
+  if (!value) {
+    return '';
+  }
+  return value.includes('T') ? value.slice(0, 10) : value;
+};
+
 const DoctorPatientPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
@@ -97,6 +107,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [medicalHistory, setMedicalHistory] = useState<ApiMedicalHistoryEntry[]>([]);
   const [rehabEntries, setRehabEntries] = useState<ApiRehabEntry[]>([]);
   const [patientProfile, setPatientProfile] = useState<ApiDoctorPatientProfile | null>(null);
+  const [patientProfileError, setPatientProfileError] = useState<string | null>(null);
   const [principalPatientProfile, setPrincipalPatientProfile] = useState<ApiDoctorPatientProfile | null>(null);
   const [isProfileCollapsed, setIsProfileCollapsed] = useState(false);
   const [isFamilyCollapsed, setIsFamilyCollapsed] = useState(true);
@@ -105,11 +116,11 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [isPrescriptionsCollapsed, setIsPrescriptionsCollapsed] = useState(true);
   const [isIdentityCollapsed, setIsIdentityCollapsed] = useState(true);
   const [isHealthCollapsed, setIsHealthCollapsed] = useState(true);
+  const [isVitalsCollapsed, setIsVitalsCollapsed] = useState(true);
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(true);
   const [isHistoryModalContextCollapsed, setIsHistoryModalContextCollapsed] = useState(false);
   const [isHistoryModalDetailsCollapsed, setIsHistoryModalDetailsCollapsed] = useState(false);
   const [isHistoryModalDatesCollapsed, setIsHistoryModalDatesCollapsed] = useState(false);
-  const [isHistoryModalLinkCollapsed, setIsHistoryModalLinkCollapsed] = useState(false);
   const [expandedLinkedPrescriptions, setExpandedLinkedPrescriptions] = useState<Record<number, boolean>>({});
   const [expandedLinkedRehab, setExpandedLinkedRehab] = useState<Record<number, boolean>>({});
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -131,6 +142,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [historyForm, setHistoryForm] = useState<{
     family_member_id: string;
     prescription_id: string;
+    visit_id: string;
     type: ApiMedicalHistoryEntry['type'];
     title: string;
     details: string;
@@ -141,6 +153,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   }>({
     family_member_id: '',
     prescription_id: '',
+    visit_id: '',
     type: 'condition',
     title: '',
     details: '',
@@ -152,6 +165,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [rehabForm, setRehabForm] = useState<{
     medical_history_entry_id: string;
     prescription_id: string;
+    visit_id: string;
     sessions_per_week: string;
     duration_weeks: string;
     goals: string;
@@ -166,6 +180,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   }>({
     medical_history_entry_id: '',
     prescription_id: '',
+    visit_id: '',
     sessions_per_week: '',
     duration_weeks: '',
     goals: '',
@@ -185,6 +200,11 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const familyMemberId = search.get('familyMemberId') ? Number(search.get('familyMemberId')) : null;
   const patientUserIdFromQuery = search.get('patientUserId') ? Number(search.get('patientUserId')) : null;
   const prefillPrescriptionId = search.get('prescriptionId') ? Number(search.get('prescriptionId')) : null;
+  const prefillVisitId = search.get('visitId') ? Number(search.get('visitId')) : null;
+  const openHistoryModalFromVisit = search.get('openHistoryModal') === '1';
+  const openRehabModalFromVisit = search.get('openRehabModal') === '1';
+  const showLegacyPrescriptionsCard = search.get('legacyPrescriptions') === '1';
+  const isVisitContext = Boolean(prefillVisitId && Number.isFinite(prefillVisitId));
   const familyMemberName = search.get('familyMemberName')
     ? decodeURIComponent(search.get('familyMemberName') as string)
     : null;
@@ -291,9 +311,19 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   useEffect(() => {
     if (!token || !patientUserId) {
       setPatientProfile(null);
+      setPatientProfileError(null);
       return;
     }
-    api.getDoctorPatientProfile(token, patientUserId).then(setPatientProfile).catch(() => setPatientProfile(null));
+    api
+      .getDoctorPatientProfile(token, patientUserId)
+      .then((profile) => {
+        setPatientProfile(profile);
+        setPatientProfileError(null);
+      })
+      .catch((err) => {
+        setPatientProfile(null);
+        setPatientProfileError(err instanceof Error ? err.message : 'Impossible de charger le profil patient.');
+      });
   }, [patientUserId, token]);
 
   useEffect(() => {
@@ -428,7 +458,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         chronic_diseases: principalPatientProfile.chronic_diseases,
         blood_type: principalPatientProfile.blood_type,
         emergency_notes: principalPatientProfile.emergency_notes
-      } as any;
+      } as unknown as ApiFamilyMember;
     }
 
     return null;
@@ -487,7 +517,7 @@ useEffect(() => {
   const historyCodesByPrescriptionId = useMemo(() => {
     const map: Record<number, string[]> = {};
     scopedMedicalHistory.forEach((entry) => {
-      const code = entry.entry_code ?? `MH-${entry.id}`;
+      const code = getMedicalHistoryCode(entry);
       const linkedPrescriptionIds = (entry.linked_prescriptions ?? []).map((rx) => rx.id);
       if (linkedPrescriptionIds.length === 0 && entry.prescription_id) {
         linkedPrescriptionIds.push(entry.prescription_id);
@@ -580,13 +610,17 @@ useEffect(() => {
     },
     [contextQuerySuffix, ionRouter]
   );
-  const selectedPrescriptionForHistory = useMemo(() => {
-    const id = Number(historyForm.prescription_id);
-    if (!Number.isFinite(id) || id <= 0) {
-      return null;
-    }
-    return patientPrescriptions.find((prescription) => prescription.id === id) ?? null;
-  }, [historyForm.prescription_id, patientPrescriptions]);
+  const getVisitDisplayCode = useCallback(
+    (visitId: string | number | null | undefined): string => {
+      const numericId = Number(visitId);
+      if (!numericId || Number.isNaN(numericId)) {
+        return 'N/D';
+      }
+      const visit = visits.find((row) => row.id === numericId);
+      return visit?.visit_code?.trim() ? visit.visit_code : `VIS-${numericId}`;
+    },
+    [visits]
+  );
   const activePatientName = profileFamilyMember?.name ?? familyMemberName ?? decodedPatientName;
   const activeProfilePhotoUrl = profileFamilyMember?.photo_url ?? patientProfile?.profile_photo_url ?? null;
   const activeDateOfBirth = profileFamilyMember?.date_of_birth ?? patientProfile?.date_of_birth ?? null;
@@ -630,6 +664,13 @@ useEffect(() => {
 
   const isRequestPending = Boolean(accessStatus?.has_pending_request);
   const showClinicalCards = accessStatus?.has_link === true;
+  const closeHistoryModal = () => {
+    setShowHistoryModal(false);
+    resetHistoryForm();
+    if (prefillVisitId && Number.isFinite(prefillVisitId)) {
+      navigateToVisitDetail(prefillVisitId);
+    }
+  };
 
   const handleRequestAccess = useCallback(async () => {
     if (!token || !patientUserId) {
@@ -655,10 +696,11 @@ useEffect(() => {
     }
   }, [patientUserId, token]);
 
-  const resetHistoryForm = () => {
+  const resetHistoryForm = useCallback(() => {
     setHistoryForm({
       family_member_id: effectiveFamilyMemberId ? String(effectiveFamilyMemberId) : '',
-      prescription_id: prefillPrescriptionId ? String(prefillPrescriptionId) : '',
+      prescription_id: isVisitContext ? '' : prefillPrescriptionId ? String(prefillPrescriptionId) : '',
+      visit_id: prefillVisitId && Number.isFinite(prefillVisitId) ? String(prefillVisitId) : '',
       type: 'condition',
       title: '',
       details: '',
@@ -668,12 +710,13 @@ useEffect(() => {
       visibility: 'shared'
     });
     setEditingHistoryId(null);
-  };
+  }, [effectiveFamilyMemberId, isVisitContext, prefillPrescriptionId, prefillVisitId]);
 
   const resetRehabForm = () => {
     setRehabForm({
       medical_history_entry_id: '',
       prescription_id: '',
+      visit_id: prefillVisitId && Number.isFinite(prefillVisitId) ? String(prefillVisitId) : '',
       sessions_per_week: '',
       duration_weeks: '',
       goals: '',
@@ -692,7 +735,7 @@ useEffect(() => {
   useEffect(() => {
     resetHistoryForm();
     setHistoryPrefillApplied(false);
-  }, [effectiveFamilyMemberId, prefillPrescriptionId]);
+  }, [resetHistoryForm]);
 
   useEffect(() => {
     if (historyPrefillApplied || !prefillPrescriptionId || patientPrescriptions.length === 0) {
@@ -717,6 +760,50 @@ useEffect(() => {
     setHistoryPrefillApplied(true);
   }, [historyPrefillApplied, patientPrescriptions, prefillPrescriptionId]);
 
+  useEffect(() => {
+    if (!openHistoryModalFromVisit || !prefillVisitId || !Number.isFinite(prefillVisitId)) {
+      return;
+    }
+
+    setHistoryForm((prev) => ({
+      ...prev,
+      visit_id: String(prefillVisitId),
+      title: prev.title.trim() ? prev.title : `Suivi visite #${prefillVisitId}`,
+      details: prev.details.trim() ? prev.details : "Entree creee depuis la fiche de visite."
+    }));
+    setShowHistoryModal(true);
+    setIsHistoryModalContextCollapsed(false);
+    setIsHistoryModalDetailsCollapsed(false);
+    setIsHistoryModalDatesCollapsed(false);
+    const params = new URLSearchParams(location.search);
+    params.delete('openHistoryModal');
+    routerHistory.replace({
+      pathname: location.pathname,
+      search: params.toString() ? `?${params.toString()}` : ''
+    });
+  }, [location.pathname, location.search, openHistoryModalFromVisit, prefillVisitId, routerHistory]);
+
+  useEffect(() => {
+    if (!openRehabModalFromVisit) {
+      return;
+    }
+
+    setRehabForm((prev) => ({
+      ...prev,
+      medical_history_entry_id: '',
+      prescription_id: '',
+      visit_id: prefillVisitId && Number.isFinite(prefillVisitId) ? String(prefillVisitId) : prev.visit_id
+    }));
+    setShowRehabModal(true);
+    setRehabError(null);
+    const params = new URLSearchParams(location.search);
+    params.delete('openRehabModal');
+    routerHistory.replace({
+      pathname: location.pathname,
+      search: params.toString() ? `?${params.toString()}` : ''
+    });
+  }, [location.pathname, location.search, openRehabModalFromVisit, prefillVisitId, routerHistory]);
+
   const startHistoryEdit = useCallback(
     (entry: ApiMedicalHistoryEntry) => {
       setEditingHistoryId(entry.id);
@@ -726,20 +813,20 @@ useEffect(() => {
           : '';
       setHistoryForm({
         family_member_id: editableFamilyMemberId,
-      prescription_id: entry.prescription_id ? String(entry.prescription_id) : '',
-      type: entry.type,
-      title: entry.title,
-      details: entry.details ?? '',
-      started_at: entry.started_at ?? '',
-      ended_at: entry.ended_at ?? '',
-      status: entry.status,
+        prescription_id: entry.prescription_id ? String(entry.prescription_id) : '',
+        visit_id: entry.visit_id ? String(entry.visit_id) : '',
+        type: entry.type,
+        title: entry.title,
+        details: entry.details ?? '',
+        started_at: toDateInputValue(entry.started_at),
+        ended_at: toDateInputValue(entry.ended_at),
+        status: entry.status,
         visibility: entry.visibility === 'patient_only' ? 'shared' : entry.visibility
       });
       setShowHistoryModal(true);
       setIsHistoryModalContextCollapsed(false);
       setIsHistoryModalDetailsCollapsed(false);
       setIsHistoryModalDatesCollapsed(false);
-      setIsHistoryModalLinkCollapsed(false);
     },
     [validFamilyMemberIds]
   );
@@ -749,6 +836,7 @@ useEffect(() => {
     setRehabForm({
       medical_history_entry_id: entry.medical_history_entry_id ? String(entry.medical_history_entry_id) : '',
       prescription_id: entry.prescription_id ? String(entry.prescription_id) : '',
+      visit_id: entry.visit_id ? String(entry.visit_id) : '',
       sessions_per_week: entry.sessions_per_week === null || entry.sessions_per_week === undefined ? '' : String(entry.sessions_per_week),
       duration_weeks: entry.duration_weeks === null || entry.duration_weeks === undefined ? '' : String(entry.duration_weeks),
       goals: entry.goals ?? '',
@@ -809,7 +897,8 @@ useEffect(() => {
         parsedFamilyMemberId && validFamilyMemberIds.has(parsedFamilyMemberId) ? parsedFamilyMemberId : null;
       const payload = {
         family_member_id: safeFamilyMemberId,
-        prescription_id: historyForm.prescription_id ? Number(historyForm.prescription_id) : null,
+        prescription_id: isVisitContext ? null : historyForm.prescription_id ? Number(historyForm.prescription_id) : null,
+        visit_id: historyForm.visit_id ? Number(historyForm.visit_id) : null,
         type: historyForm.type,
         title: historyForm.title.trim(),
         details: historyForm.details.trim() || null,
@@ -840,7 +929,9 @@ useEffect(() => {
 
       setShowHistoryModal(false);
       resetHistoryForm();
-      if (editingHistoryId) {
+      if (prefillVisitId && Number.isFinite(prefillVisitId)) {
+        navigateToVisitDetail(prefillVisitId);
+      } else if (editingHistoryId) {
         navigateToHistoryDetail(editingHistoryId);
       }
     } catch (err) {
@@ -859,8 +950,9 @@ useEffect(() => {
     setRehabError(null);
 
     const payload = {
-      medical_history_entry_id: rehabForm.medical_history_entry_id ? Number(rehabForm.medical_history_entry_id) : null,
-      prescription_id: rehabForm.prescription_id ? Number(rehabForm.prescription_id) : null,
+      medical_history_entry_id: rehabForm.visit_id ? null : (rehabForm.medical_history_entry_id ? Number(rehabForm.medical_history_entry_id) : null),
+      prescription_id: rehabForm.visit_id ? null : (rehabForm.prescription_id ? Number(rehabForm.prescription_id) : null),
+      visit_id: rehabForm.visit_id ? Number(rehabForm.visit_id) : null,
       sessions_per_week: rehabForm.sessions_per_week.trim() ? Number(rehabForm.sessions_per_week) : null,
       duration_weeks: rehabForm.duration_weeks.trim() ? Number(rehabForm.duration_weeks) : null,
       goals: rehabForm.goals.trim() || null,
@@ -953,6 +1045,11 @@ useEffect(() => {
                   </p>
                 </IonText>
               ) : null}
+              {patientProfileError ? (
+                <IonText color="warning">
+                  <p>{patientProfileError}</p>
+                </IonText>
+              ) : null}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div
                   style={{
@@ -1012,40 +1109,13 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <IonButton
-                    size="small"
-                    onClick={() => {
-                      const params = new URLSearchParams();
-                      params.set('patient', decodedPatientName);
-                      if (effectiveFamilyMemberId) {
-                        params.set('familyMemberId', String(effectiveFamilyMemberId));
-                      }
-                      if (familyMemberName) {
-                        params.set('familyMemberName', familyMemberName);
-                      }
-                      ionRouter.push(`/doctor/create-prescription?${params.toString()}`, 'forward', 'push');
-                    }}
-                  >
-                    ORDONNANCE +
-                  </IonButton>
-                  <IonButton
-                    size="small"
-                    fill="outline"
-                    onClick={() => {
-                      resetHistoryForm();
-                      setShowHistoryModal(true);
-                    }}
-                    disabled={!patientUserId}
-                  >
-                    HISTORIQUE +
-                  </IonButton>
-                </div>
-
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
                   <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <p style={{ margin: 0, fontWeight: 600 }}>Identite</p>
+                      <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <IonIcon icon={personOutline} />
+                        Identite
+                      </p>
                       <IonButton fill="clear" size="small" onClick={() => setIsIdentityCollapsed((prev) => !prev)}>
                         <IonIcon icon={isIdentityCollapsed ? chevronDownOutline : chevronUpOutline} />
                       </IonButton>
@@ -1114,7 +1184,10 @@ useEffect(() => {
                   </div>
                   <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <p style={{ margin: 0, fontWeight: 600 }}>Sante</p>
+                      <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <IonIcon icon={medicalOutline} />
+                        Sante
+                      </p>
                       <IonButton fill="clear" size="small" onClick={() => setIsHealthCollapsed((prev) => !prev)}>
                         <IonIcon icon={isHealthCollapsed ? chevronDownOutline : chevronUpOutline} />
                       </IonButton>
@@ -1133,7 +1206,33 @@ useEffect(() => {
 
                 <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <p style={{ margin: 0, fontWeight: 600 }}>Statistiques</p>
+                    <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <IonIcon icon={pulseOutline} />
+                      Suivi des signes vitaux
+                    </p>
+                    <IonButton fill="clear" size="small" onClick={() => setIsVitalsCollapsed((prev) => !prev)}>
+                      <IonIcon icon={isVitalsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                    </IonButton>
+                  </div>
+                  {!isVitalsCollapsed ? (
+                    <>
+                      <p><strong>Tension arterielle:</strong> N/D</p>
+                      <p><strong>Frequence cardiaque:</strong> N/D</p>
+                      <p><strong>Saturation O2:</strong> N/D</p>
+                      <p><strong>Temperature:</strong> N/D</p>
+                      <p style={{ marginBottom: 0, color: '#64748b', fontSize: '0.92rem' }}>
+                        Module en preparation.
+                      </p>
+                    </>
+                  ) : null}
+                </div>
+
+                <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <IonIcon icon={barChartOutline} />
+                      Statistiques
+                    </p>
                     <IonButton fill="clear" size="small" onClick={() => setIsStatsCollapsed((prev) => !prev)}>
                       <IonIcon icon={isStatsCollapsed ? chevronDownOutline : chevronUpOutline} />
                     </IonButton>
@@ -1158,7 +1257,10 @@ useEffect(() => {
           <IonCard className="surface-card">
             <IonCardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                <IonCardTitle>Membres de famille</IonCardTitle>
+                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={peopleOutline} />
+                  Membres de famille
+                </IonCardTitle>
                 <IonButton fill="clear" size="small" onClick={() => setIsFamilyCollapsed((prev) => !prev)}>
                   <IonIcon icon={isFamilyCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
@@ -1345,7 +1447,7 @@ useEffect(() => {
                               </div>
                             ) : null}
                             <p style={{ margin: 0 }}>
-                              <strong>Reference:</strong> VIS-{visit.id}
+                              <strong>Reference:</strong> {visit.visit_code ?? `VIS-${visit.id}`}
                             </p>
                           </div>
                         </IonLabel>
@@ -1367,15 +1469,6 @@ useEffect(() => {
                 <IonIcon icon={medicalOutline} /> Historique medical
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton
-                  size="small"
-                  onClick={() => {
-                    resetHistoryForm();
-                    setShowHistoryModal(true);
-                  }}
-                >
-                  Ajouter
-                </IonButton>
                 <IonButton fill="clear" size="small" onClick={() => setIsHistoryCollapsed((prev) => !prev)}>
                   <IonIcon icon={isHistoryCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
@@ -1405,7 +1498,7 @@ useEffect(() => {
                   >
                     <IonLabel>
                       <p style={{ marginBottom: 2, fontSize: '1.08rem', fontWeight: 800, color: '#0f172a' }}>
-                        Reference medicale: {entry.entry_code ?? `MH-${entry.id}`}
+                        Reference medicale: {getMedicalHistoryCode(entry)}
                       </p>
                       <p>Cree le: {formatDateTime(entry.created_at)}</p>
                       <div
@@ -1597,22 +1690,87 @@ useEffect(() => {
         ) : null}
 
         {showClinicalCards ? (
+        <IonCard className="surface-card">
+          <IonCardHeader>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <IonIcon icon={documentTextOutline} /> Ordonnances
+              </IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <IonButton fill="clear" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
+                  <IonIcon icon={isPrescriptionsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                </IonButton>
+              </div>
+            </div>
+          </IonCardHeader>
+          {!isPrescriptionsCollapsed ? (
+            <IonCardContent>
+            {patientPrescriptions.length === 0 ? (
+              <IonText color="medium">
+                <p>Aucune ordonnance pour ce patient.</p>
+              </IonText>
+            ) : (
+              <IonList>
+                {patientPrescriptions.map((prescription) => (
+                  <IonItem
+                    key={prescription.id}
+                    lines="full"
+                    button
+                    detail
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      if (effectiveFamilyMemberId) {
+                        params.set('familyMemberId', String(effectiveFamilyMemberId));
+                      }
+                      if (familyMemberName) {
+                        params.set('familyMemberName', familyMemberName);
+                      }
+                      const suffix = params.toString() ? `?${params.toString()}` : '';
+                      ionRouter.push(`/doctor/prescriptions/${prescription.id}${suffix}`, 'forward', 'push');
+                    }}
+                  >
+                    <IonLabel>
+                      <h3 style={{ marginBottom: '4px' }}>
+                        Reference: {getPrescriptionCode(prescription)}
+                      </h3>
+                      {historyCodesByPrescriptionId[prescription.id]?.length ? (
+                        <p>
+                          Historique lie: {historyCodesByPrescriptionId[prescription.id].join(', ')}
+                        </p>
+                      ) : null}
+                      <div className="status-row">
+                        <span>Statut:</span>
+                        <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
+                          {getPrescriptionStatusLabel(prescription.status)}
+                        </IonBadge>
+                      </div>
+                      <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
+                      <div style={{ marginTop: '6px' }}>
+                        <p style={{ margin: '0 0 4px 0' }}><strong>Notes par medicament:</strong></p>
+                        {prescription.medicine_requests.map((med) => (
+                          <p key={`note-${prescription.id}-${med.id}`} style={{ margin: '0 0 4px 0' }}>
+                            - {med.name} · Dose journaliere: {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
+                          </p>
+                        ))}
+                      </div>
+                    </IonLabel>
+                  </IonItem>
+                ))}
+              </IonList>
+            )}
+            </IonCardContent>
+          ) : null}
+        </IonCard>
+        ) : null}
+
+        {showClinicalCards ? (
           <IonCard className="surface-card">
             <IonCardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <IonIcon icon={pulseOutline} /> Reeducation
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton
-                  size="small"
-                  onClick={() => {
-                    resetRehabForm();
-                    setShowRehabModal(true);
-                  }}
-                >
-                  Ajouter
-                </IonButton>
                 <IonButton fill="clear" size="small" onClick={() => setIsRehabCollapsed((prev) => !prev)}>
                   <IonIcon icon={isRehabCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
@@ -1670,7 +1828,7 @@ useEffect(() => {
         </IonCard>
         ) : null}
 
-        {showClinicalCards ? (
+        {showLegacyPrescriptionsCard ? (
         <IonCard className="surface-card">
           <IonCardHeader>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
@@ -1678,22 +1836,6 @@ useEffect(() => {
                 <IonIcon icon={documentTextOutline} /> Ordonnances
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton
-                  size="small"
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    params.set('patient', decodedPatientName);
-                    if (effectiveFamilyMemberId) {
-                      params.set('familyMemberId', String(effectiveFamilyMemberId));
-                    }
-                    if (familyMemberName) {
-                      params.set('familyMemberName', familyMemberName);
-                    }
-                    ionRouter.push(`/doctor/create-prescription?${params.toString()}`, 'forward', 'push');
-                  }}
-                >
-                  Ajouter
-                </IonButton>
                 <IonButton fill="clear" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
                   <IonIcon icon={isPrescriptionsCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
@@ -1766,7 +1908,9 @@ useEffect(() => {
             const targetId = editingHistoryId ?? historyIdFromQuery ?? null;
             setShowHistoryModal(false);
             resetHistoryForm();
-            if (targetId) {
+            if (prefillVisitId && Number.isFinite(prefillVisitId)) {
+              navigateToVisitDetail(prefillVisitId);
+            } else if (targetId) {
               navigateToHistoryDetail(targetId);
             }
           }}
@@ -1780,10 +1924,7 @@ useEffect(() => {
               <IonButton
                 fill="clear"
                 color="medium"
-                onClick={() => {
-                  setShowHistoryModal(false);
-                  resetHistoryForm();
-                }}
+                onClick={closeHistoryModal}
               >
                 <IonIcon icon={closeOutline} />
               </IonButton>
@@ -1922,64 +2063,20 @@ useEffect(() => {
 
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <span>Liaison ordonnances</span>
-                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalLinkCollapsed((prev) => !prev)}>
-                    <IonIcon icon={isHistoryModalLinkCollapsed ? chevronDownOutline : chevronUpOutline} />
-                  </IonButton>
-                </IonCardTitle>
+                <IonCardTitle>Visite liee</IonCardTitle>
               </IonCardHeader>
-              {!isHistoryModalLinkCollapsed ? (
-                <IonCardContent>
-                  <IonItem lines="none">
-                    <IonLabel position="stacked">Ordonnance(s) liee(s) (optionnel)</IonLabel>
-                    <IonSelect
-                      value={historyForm.prescription_id}
-                      placeholder="Aucune"
-                      onIonChange={(e) => setHistoryForm((prev) => ({ ...prev, prescription_id: e.detail.value ?? '' }))}
-                    >
-                      <IonSelectOption value="">Aucune</IonSelectOption>
-                      {patientPrescriptions.map((prescription) => (
-                        <IonSelectOption key={prescription.id} value={String(prescription.id)}>
-                          {getPrescriptionCode(prescription)} · {formatDateHaiti(prescription.requested_at)}
-                        </IonSelectOption>
-                      ))}
-                    </IonSelect>
-                  </IonItem>
-                  {selectedPrescriptionForHistory ? (
-                    <IonCard className="surface-card" style={{ margin: '8px 0 0 0' }}>
-                      <IonCardHeader>
-                        <IonCardTitle style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <IonIcon icon={documentTextOutline} />
-                            Contexte ordonnance
-                          </span>
-                          <IonBadge className={getPrescriptionStatusClassName(selectedPrescriptionForHistory.status)}>
-                            {getPrescriptionStatusLabel(selectedPrescriptionForHistory.status)}
-                          </IonBadge>
-                        </IonCardTitle>
-                      </IonCardHeader>
-                      <IonCardContent>
-                        <p style={{ margin: 0 }}>
-                          <strong>{getPrescriptionCode(selectedPrescriptionForHistory)}</strong> ·{' '}
-                          {formatDateTime(selectedPrescriptionForHistory.requested_at)}
-                        </p>
-                        <p style={{ margin: '4px 0 0 0' }}>
-                          {selectedPrescriptionForHistory.medicine_requests.length} medicament(s)
-                        </p>
-                        <div style={{ marginTop: '6px', display: 'grid', gap: '4px' }}>
-                          {selectedPrescriptionForHistory.medicine_requests.map((med) => (
-                            <p key={`history-modal-rx-${selectedPrescriptionForHistory.id}-${med.id}`} style={{ margin: 0 }}>
-                              <strong>{med.name}</strong> · {med.form || 'N/D'} · {med.strength || 'N/D'} · Qt: {med.quantity ?? 1}
-                              {' · '}Dose/jour: {med.daily_dosage ?? 'N/D'} · Note: {(med.notes ?? '').trim() || 'Sans note'}
-                            </p>
-                          ))}
-                        </div>
-                      </IonCardContent>
-                    </IonCard>
-                  ) : null}
-                </IonCardContent>
-              ) : null}
+              <IonCardContent>
+                {historyForm.visit_id ? (
+                  <IonText color="medium">
+                    <p style={{ marginTop: 0, marginBottom: '8px' }}>{getVisitDisplayCode(historyForm.visit_id)}</p>
+                  </IonText>
+                ) : null}
+                {!historyForm.visit_id ? (
+                  <IonText color="medium">
+                    <p style={{ marginTop: 0, marginBottom: 0 }}>Aucune visite liee.</p>
+                  </IonText>
+                ) : null}
+              </IonCardContent>
             </IonCard>
 
             <div
@@ -1999,10 +2096,7 @@ useEffect(() => {
               <IonButton
                 expand="block"
                 color="dark"
-                onClick={() => {
-                  setShowHistoryModal(false);
-                  resetHistoryForm();
-                }}
+                onClick={closeHistoryModal}
               >
                 Annuler
               </IonButton>
@@ -2042,36 +2136,47 @@ useEffect(() => {
 
             <IonCard className="surface-card">
               <IonCardContent>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Historique medical lie (optionnel)</IonLabel>
-                  <IonSelect
-                    value={rehabForm.medical_history_entry_id}
-                    placeholder="Aucun"
-                    onIonChange={(e) => setRehabForm((prev) => ({ ...prev, medical_history_entry_id: e.detail.value ?? '' }))}
-                  >
-                    <IonSelectOption value="">Aucun</IonSelectOption>
-                    {scopedMedicalHistory.map((entry) => (
-                      <IonSelectOption key={entry.id} value={String(entry.id)}>
-                        {(entry.entry_code ?? `MH-${entry.id}`)} · {entry.title}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
-                <IonItem lines="none">
-                  <IonLabel position="stacked">Ordonnance(s) liee(s) (optionnel)</IonLabel>
-                  <IonSelect
-                    value={rehabForm.prescription_id}
-                    placeholder="Aucune"
-                    onIonChange={(e) => setRehabForm((prev) => ({ ...prev, prescription_id: e.detail.value ?? '' }))}
-                  >
-                    <IonSelectOption value="">Aucune</IonSelectOption>
-                    {patientPrescriptions.map((prescription) => (
-                      <IonSelectOption key={prescription.id} value={String(prescription.id)}>
-                        {getPrescriptionCode(prescription)} · {formatDateHaiti(prescription.requested_at)}
-                      </IonSelectOption>
-                    ))}
-                  </IonSelect>
-                </IonItem>
+                {rehabForm.visit_id ? (
+                  <IonItem lines="none">
+                    <IonLabel>
+                      <p style={{ marginTop: 0, marginBottom: '8px' }}>Visite liee: {getVisitDisplayCode(rehabForm.visit_id)}</p>
+                    </IonLabel>
+                  </IonItem>
+                ) : null}
+                {!rehabForm.visit_id ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Historique medical lie (optionnel)</IonLabel>
+                      <IonSelect
+                        value={rehabForm.medical_history_entry_id}
+                        placeholder="Aucun"
+                        onIonChange={(e) => setRehabForm((prev) => ({ ...prev, medical_history_entry_id: e.detail.value ?? '' }))}
+                      >
+                        <IonSelectOption value="">Aucun</IonSelectOption>
+                        {scopedMedicalHistory.map((entry) => (
+                          <IonSelectOption key={entry.id} value={String(entry.id)}>
+                            {getMedicalHistoryCode(entry)} · {entry.title}
+                          </IonSelectOption>
+                        ))}
+                      </IonSelect>
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Ordonnance(s) liee(s) (optionnel)</IonLabel>
+                      <IonSelect
+                        value={rehabForm.prescription_id}
+                        placeholder="Aucune"
+                        onIonChange={(e) => setRehabForm((prev) => ({ ...prev, prescription_id: e.detail.value ?? '' }))}
+                      >
+                        <IonSelectOption value="">Aucune</IonSelectOption>
+                        {patientPrescriptions.map((prescription) => (
+                          <IonSelectOption key={prescription.id} value={String(prescription.id)}>
+                            {getPrescriptionCode(prescription)} · {formatDateHaiti(prescription.requested_at)}
+                          </IonSelectOption>
+                        ))}
+                      </IonSelect>
+                    </IonItem>
+                  </>
+                ) : null}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <IonItem lines="none">
                     <IonLabel position="stacked">Seances / semaine</IonLabel>

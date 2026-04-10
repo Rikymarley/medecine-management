@@ -26,6 +26,7 @@ import { api, ApiMedicalHistoryEntry } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateHaiti, formatDateTime } from '../utils/time';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
+import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 
 const historyTypeLabel: Record<ApiMedicalHistoryEntry['type'], string> = {
@@ -179,7 +180,7 @@ const DoctorMedicalHistoryEntryPage: React.FC = () => {
                 </IonCardHeader>
                 <IonCardContent>
                   <p style={{ margin: '0 0 4px 0' }}>
-                    <strong>Code:</strong> {entry.entry_code ?? `MH-${entry.id}`}
+                    <strong>Code:</strong> {getMedicalHistoryCode(entry)}
                   </p>
                   <p style={{ margin: '0 0 4px 0' }}>
                     <strong>Titre:</strong> {entry.title}
@@ -208,11 +209,6 @@ const DoctorMedicalHistoryEntryPage: React.FC = () => {
                     <strong>Début:</strong> {entry.started_at ? formatDateHaiti(entry.started_at) : 'Non précisé'} · <strong>Fin:</strong>{' '}
                     {entry.ended_at ? formatDateHaiti(entry.ended_at) : 'Non précisé'}
                   </p>
-                  {entry.doctor_user_id ? (
-                    <p>
-                      <strong>Docteur ID:</strong> {entry.doctor_user_id}
-                    </p>
-                  ) : null}
                 </IonCardContent>
               </IonCard>
 

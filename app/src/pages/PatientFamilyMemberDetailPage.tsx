@@ -34,6 +34,7 @@ import { ApiFamilyMember, ApiMedicalHistoryEntry, ApiPrescription, api } from '.
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime } from '../utils/time';
+import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 
 type RouteParams = {
   memberId: string;
@@ -584,7 +585,7 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
                       >
                         <IonLabel>
                           <p style={{ marginBottom: 2, fontSize: '1.08rem', fontWeight: 800, color: '#0f172a' }}>
-                            Reference medicale: {entry.entry_code || `MH-${entry.id}`}
+                            Reference medicale: {getMedicalHistoryCode(entry)}
                           </p>
                           <h3>{entry.title}</h3>
                           <p>{entry.details || 'Sans detail'}</p>

@@ -43,7 +43,7 @@ import {
   timeOutline,
   trashOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiEmergencyContact } from '../services/api';
 import {
@@ -102,6 +102,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
   });
 
   const cacheKey = user ? `patient-emergency-contacts-${user.id}` : null;
+  const cssVars = (vars: Record<string, string>): CSSProperties => vars as CSSProperties;
 
   const toMutationPayload = (value: typeof form) => ({
     name: value.name.trim(),
@@ -130,7 +131,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
     notes: contact.notes
   });
 
-  const loadContacts = async () => {
+  const loadContacts = useCallback(async () => {
     if (cacheKey) {
       const cachedRaw = localStorage.getItem(cacheKey);
       if (cachedRaw) {
@@ -152,11 +153,11 @@ const PatientEmergencyContactsPage: React.FC = () => {
     if (cacheKey) {
       localStorage.setItem(cacheKey, JSON.stringify(data));
     }
-  };
+  }, [cacheKey, token]);
 
   useEffect(() => {
     loadContacts().catch(() => undefined);
-  }, [token]);
+  }, [loadContacts]);
 
   useEffect(() => {
     if (!cacheKey) {
@@ -190,7 +191,7 @@ const PatientEmergencyContactsPage: React.FC = () => {
       .catch(() => {
         setPendingOutboxCount(getPendingEmergencyContactMutationCount());
       });
-  }, [isOnline, token]);
+  }, [isOnline, loadContacts, token]);
 
   const filtered = useMemo(() => {
     return contacts.filter((contact) => {
@@ -462,20 +463,20 @@ const PatientEmergencyContactsPage: React.FC = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginTop: '18px' }}>
                         <IonButton
                           fill="clear"
-                          style={{ '--color': contact.is_favorite ? '#d97706' : '#a1a1aa' } as any}
+                          style={cssVars({ '--color': contact.is_favorite ? '#d97706' : '#a1a1aa' })}
                           onClick={() => toggleFavorite(contact).catch(() => undefined)}
                         >
                           <IonIcon icon={contact.is_favorite ? star : starOutline} style={{ fontSize: '20px' }} />
                         </IonButton>
-                        <IonButton fill="clear" style={{ '--color': '#0f766e' } as any} href={`tel:${contact.phone}`}>
+                        <IonButton fill="clear" style={cssVars({ '--color': '#0f766e' })} href={`tel:${contact.phone}`}>
                           <IonIcon icon={callOutline} style={{ fontSize: '20px' }} />
                         </IonButton>
-                        <IonButton fill="clear" style={{ '--color': '#0f766e' } as any} onClick={() => startEdit(contact)}>
+                        <IonButton fill="clear" style={cssVars({ '--color': '#0f766e' })} onClick={() => startEdit(contact)}>
                           <IonIcon icon={createOutline} style={{ fontSize: '20px' }} />
                         </IonButton>
                         <IonButton
                           fill="clear"
-                          style={{ '--color': '#dc2626' } as any}
+                          style={cssVars({ '--color': '#dc2626' })}
                           onClick={() => setDeleteTargetId(contact.id)}
                         >
                           <IonIcon icon={trashOutline} style={{ fontSize: '20px' }} />
@@ -497,17 +498,17 @@ const PatientEmergencyContactsPage: React.FC = () => {
                       ) : null}
                       <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                         {contact.priority ? (
-                          <IonBadge style={{ '--background': '#334155', '--color': '#fff', fontSize: '0.9rem', padding: '9px 18px' } as any}>
+                          <IonBadge style={{ ...cssVars({ '--background': '#334155', '--color': '#fff' }), fontSize: '0.9rem', padding: '9px 18px' }}>
                             Priorite {contact.priority}
                           </IonBadge>
                         ) : null}
                         {contact.is_24_7 ? (
-                          <IonBadge style={{ '--background': '#0f766e', '--color': '#fff', fontSize: '0.9rem', padding: '9px 18px' } as any}>
+                          <IonBadge style={{ ...cssVars({ '--background': '#0f766e', '--color': '#fff' }), fontSize: '0.9rem', padding: '9px 18px' }}>
                             24/7
                           </IonBadge>
                         ) : null}
                         {contact.is_favorite ? (
-                          <IonBadge style={{ '--background': '#d97706', '--color': '#111827', fontSize: '0.9rem', padding: '9px 18px' } as any}>
+                          <IonBadge style={{ ...cssVars({ '--background': '#d97706', '--color': '#111827' }), fontSize: '0.9rem', padding: '9px 18px' }}>
                             Favori
                           </IonBadge>
                         ) : null}

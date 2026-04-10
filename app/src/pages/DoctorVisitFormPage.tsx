@@ -48,8 +48,10 @@ const DoctorVisitFormPage: React.FC = () => {
   const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const patientUserIdFromQuery = search.get('patientUserId') ? Number(search.get('patientUserId')) : null;
   const familyMemberIdFromQuery = search.get('familyMemberId') ? Number(search.get('familyMemberId')) : null;
-  const familyMemberName = search.get('familyMemberName') ? decodeURIComponent(search.get('familyMemberName')) : null;
-  const patientName = search.get('patient') ? decodeURIComponent(search.get('patient')) : 'Patient';
+  const familyMemberNameParam = search.get('familyMemberName');
+  const familyMemberName = familyMemberNameParam ? decodeURIComponent(familyMemberNameParam) : null;
+  const patientNameParam = search.get('patient');
+  const patientName = patientNameParam ? decodeURIComponent(patientNameParam) : 'Patient';
 
   const [patientProfile, setPatientProfile] = useState<ApiDoctorPatientProfile | null>(null);
   const [saving, setSaving] = useState(false);
@@ -85,6 +87,23 @@ const DoctorVisitFormPage: React.FC = () => {
     }));
   }, []);
 
+  const contextBack = useMemo(() => {
+    const params = new URLSearchParams();
+    if (patientUserIdFromQuery) {
+      params.set('patientUserId', String(patientUserIdFromQuery));
+    }
+    if (familyMemberIdFromQuery) {
+      params.set('familyMemberId', String(familyMemberIdFromQuery));
+    }
+    if (familyMemberName) {
+      params.set('familyMemberName', familyMemberName);
+    }
+    if (patientName) {
+      params.set('patient', patientName);
+    }
+    return params.toString() ? `?${params.toString()}` : '';
+  }, [patientUserIdFromQuery, familyMemberIdFromQuery, familyMemberName, patientName]);
+
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || !token || !patientUserIdFromQuery) {
       return;
@@ -92,7 +111,7 @@ const DoctorVisitFormPage: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      const created = await api.createDoctorVisit(token, {
+      await api.createDoctorVisit(token, {
         patient_user_id: patientUserIdFromQuery,
         family_member_id: familyMemberIdFromQuery ?? null,
         visit_date: form.visit_date,
@@ -114,28 +133,11 @@ const DoctorVisitFormPage: React.FC = () => {
     token,
     patientUserIdFromQuery,
     familyMemberIdFromQuery,
-    familyMemberName,
     patientName,
+    contextBack,
     form,
     ionRouter
   ]);
-
-  const contextBack = useMemo(() => {
-    const params = new URLSearchParams();
-    if (patientUserIdFromQuery) {
-      params.set('patientUserId', String(patientUserIdFromQuery));
-    }
-    if (familyMemberIdFromQuery) {
-      params.set('familyMemberId', String(familyMemberIdFromQuery));
-    }
-    if (familyMemberName) {
-      params.set('familyMemberName', familyMemberName);
-    }
-    if (patientName) {
-      params.set('patient', patientName);
-    }
-    return params.toString() ? `?${params.toString()}` : '';
-  }, [patientUserIdFromQuery, familyMemberIdFromQuery, familyMemberName, patientName]);
 
   return (
     <IonPage>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PatientMedicinePurchase;
 use App\Models\Prescription;
+use App\Services\PrescriptionAccessEvaluator;
 use Illuminate\Http\Request;
 
 class PatientMedicinePurchaseController extends Controller
@@ -111,12 +112,6 @@ class PatientMedicinePurchaseController extends Controller
 
     private function canAccessAsPatient(Request $request, Prescription $prescription): bool
     {
-        $user = $request->user();
-
-        if ($prescription->patient_user_id !== null) {
-            return (int) $prescription->patient_user_id === (int) $user->id;
-        }
-
-        return $prescription->patient_name === $user->name;
+        return PrescriptionAccessEvaluator::canAccessAsPatient($request->user(), $prescription);
     }
 }

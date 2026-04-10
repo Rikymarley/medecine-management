@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FamilyMember;
 use App\Models\Prescription;
 use App\Models\User;
+use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -177,10 +178,7 @@ class FamilyMemberController extends Controller
         }
 
         $doctor = $request->user();
-        $hasLink = (int) ($patient->created_by_doctor_id ?? 0) === (int) $doctor->id || Prescription::query()
-            ->where('doctor_user_id', $doctor->id)
-            ->where('patient_user_id', $patient->id)
-            ->exists();
+        $hasLink = DoctorPatientAccessEvaluator::hasLink($doctor->id, $patient->id);
 
         if (!$hasLink) {
             return response()->json(['message' => 'Acces interdit.'], 403);

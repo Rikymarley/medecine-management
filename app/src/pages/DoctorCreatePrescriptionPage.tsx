@@ -19,9 +19,10 @@ import {
   IonText,
   IonTitle,
   IonToggle,
-  IonToolbar
+  IonToolbar,
+  useIonRouter
 } from '@ionic/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import {
@@ -169,6 +170,7 @@ const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
 
 const DoctorCreatePrescriptionPage: React.FC = () => {
   const location = useLocation();
+  const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [doctorPatients, setDoctorPatients] = useState<ApiDoctorPatient[]>([]);
@@ -182,6 +184,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const [patientGender, setPatientGender] = useState<'male' | 'female' | ''>('');
   const [patientNotes, setPatientNotes] = useState('');
   const [selectedPatientUserId, setSelectedPatientUserId] = useState<number | null>(null);
+  const [selectedVisitId, setSelectedVisitId] = useState<number | null>(null);
   const [familyMembers, setFamilyMembers] = useState<ApiFamilyMember[]>([]);
   const [familyMemberName, setFamilyMemberName] = useState('');
   const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<number | null>(null);
@@ -204,13 +207,24 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const prefilledPatient = params.get('patient');
+    const prefilledPatientUserIdRaw = params.get('patientUserId');
+    const prefilledPatientUserId = prefilledPatientUserIdRaw ? Number(prefilledPatientUserIdRaw) : null;
+    const prefilledVisitIdRaw = params.get('visitId');
+    const prefilledVisitId = prefilledVisitIdRaw ? Number(prefilledVisitIdRaw) : null;
     const prefilledFamilyMemberName = params.get('familyMemberName');
     const prefilledFamilyMemberIdRaw = params.get('familyMemberId');
     const prefilledFamilyMemberId = prefilledFamilyMemberIdRaw ? Number(prefilledFamilyMemberIdRaw) : null;
     if (prefilledPatient) {
       setPatientName(prefilledPatient);
       const matching = prescriptions.find((p) => p.patient_name === prefilledPatient && p.patient_user_id);
-      setSelectedPatientUserId(matching?.patient_user_id ?? null);
+      setSelectedPatientUserId(
+        Number.isFinite(prefilledPatientUserId ?? NaN)
+          ? Number(prefilledPatientUserId)
+          : matching?.patient_user_id ?? null
+      );
+      if (prefilledVisitId && Number.isFinite(prefilledVisitId)) {
+        setSelectedVisitId(prefilledVisitId);
+      }
       if (prefilledFamilyMemberName) {
         setFamilyMemberName(prefilledFamilyMemberName);
       }
@@ -220,7 +234,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
   }, [location.search, prescriptions]);
 
-  const loadPrescriptionsFromApi = async () => {
+  const loadPrescriptionsFromApi = useCallback(async () => {
     if (!token) {
       return;
     }
@@ -229,15 +243,15 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     if (cacheKey) {
       localStorage.setItem(cacheKey, JSON.stringify(data));
     }
-  };
+  }, [cacheKey, token]);
 
-  const loadDoctorPatientsFromApi = async () => {
+  const loadDoctorPatientsFromApi = useCallback(async () => {
     if (!token) {
       return;
     }
     const rows = await api.getDoctorPatients(token);
     setDoctorPatients(rows);
-  };
+  }, [token]);
 
   useEffect(() => {
     if (!cacheKey) {
@@ -260,7 +274,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
 
     loadPrescriptionsFromApi().catch(() => undefined);
     loadDoctorPatientsFromApi().catch(() => undefined);
-  }, [cacheKey, token]);
+  }, [cacheKey, loadDoctorPatientsFromApi, loadPrescriptionsFromApi]);
 
   const addMedicine = () => setMedicines((prev) => [...prev, emptyMedicine()]);
 
@@ -318,10 +332,12 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const medicineDebounceMap = medicineDebounceRef.current;
+    const patientDebounceTimer = patientDebounceRef.current;
     return () => {
-      Object.values(medicineDebounceRef.current).forEach((timer) => clearTimeout(timer));
-      if (patientDebounceRef.current) {
-        clearTimeout(patientDebounceRef.current);
+      Object.values(medicineDebounceMap).forEach((timer) => clearTimeout(timer));
+      if (patientDebounceTimer) {
+        clearTimeout(patientDebounceTimer);
       }
     };
   }, []);
@@ -415,12 +431,32 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         patient_phone: payload.patient_phone,
         patient_user_id: payload.patient_user_id,
         family_member_id: payload.family_member_id,
+        visit_id: selectedVisitId,
         medicine_requests: payload.medicine_requests
       });
       console.log('[CREATE PRESCRIPTION] success');
       setLatestPrescriptionId(created.id);
       await printPrescription(created.id);
       await loadPrescriptionsFromApi();
+
+      const searchParams = new URLSearchParams(location.search);
+      const visitIdRaw = searchParams.get('visitId');
+      const visitId = visitIdRaw ? Number(visitIdRaw) : null;
+      if (visitId && Number.isFinite(visitId)) {
+        const context = new URLSearchParams();
+        const patientUserIdRaw = searchParams.get('patientUserId');
+        const patientRaw = searchParams.get('patient');
+        const familyMemberIdRaw = searchParams.get('familyMemberId');
+        const familyMemberNameRaw = searchParams.get('familyMemberName');
+        if (patientUserIdRaw) context.set('patientUserId', patientUserIdRaw);
+        if (patientRaw) context.set('patient', patientRaw);
+        if (familyMemberIdRaw) context.set('familyMemberId', familyMemberIdRaw);
+        if (familyMemberNameRaw) context.set('familyMemberName', familyMemberNameRaw);
+        const suffix = context.toString() ? `?${context.toString()}` : '';
+        ionRouter.push(`/doctor/visits/${visitId}${suffix}`, 'back', 'pop');
+        return;
+      }
+
       setPatientName('');
       setPatientPhone('');
       setPatientNinu('');

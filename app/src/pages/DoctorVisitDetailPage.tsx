@@ -1,6 +1,7 @@
 import {
   IonBackButton,
   IonBadge,
+  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -24,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { api, ApiVisitDetail } from '../services/api';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
+import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 import { formatDateTime } from '../utils/time';
 import { useAuth } from '../state/AuthState';
 
@@ -37,7 +39,8 @@ const DoctorVisitDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const patientName = search.get('patient') ? decodeURIComponent(search.get('patient')) : null;
+  const patientParam = search.get('patient');
+  const patientName = patientParam ? decodeURIComponent(patientParam) : null;
 
   const contextParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -59,13 +62,26 @@ const DoctorVisitDetailPage: React.FC = () => {
       setLoading(false);
       return;
     }
+    const parsedVisitId = Number(visitId);
+    if (!Number.isFinite(parsedVisitId) || parsedVisitId <= 0) {
+      setVisit(null);
+      setError('Identifiant de visite invalide.');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getDoctorVisitById(token, Number(visitId));
-      setVisit(data);
+      const data = await api.getDoctorVisitById(token, parsedVisitId);
+      setVisit({
+        ...data,
+        prescriptions: Array.isArray(data.prescriptions) ? data.prescriptions : [],
+        medical_history_entries: Array.isArray(data.medical_history_entries) ? data.medical_history_entries : [],
+        rehab_entries: Array.isArray(data.rehab_entries) ? data.rehab_entries : [],
+      });
     } catch (err) {
-      setError((err as Error).message);
+      setVisit(null);
+      setError(err instanceof Error ? err.message : 'Impossible de charger la visite.');
     } finally {
       setLoading(false);
     }
@@ -95,6 +111,63 @@ const DoctorVisitDetailPage: React.FC = () => {
     ionRouter.push(`/doctor/medical-history/${historyId}${contextParams}`, 'forward', 'push');
   };
 
+  const goToCreatePrescriptionFromVisit = () => {
+    if (!visit) {
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('patient', visit.patient_name ?? patientName ?? 'Patient');
+    params.set('patientUserId', String(visit.patient_user_id));
+    params.set('visitId', String(visit.id));
+    if (visit.family_member_id) {
+      params.set('familyMemberId', String(visit.family_member_id));
+    }
+    if (visit.family_member_name) {
+      params.set('familyMemberName', visit.family_member_name);
+    }
+    ionRouter.push(`/doctor/create-prescription?${params.toString()}`, 'forward', 'push');
+  };
+
+  const goToCreateHistoryFromVisit = () => {
+    if (!visit) {
+      return;
+    }
+    const patientRouteName = encodeURIComponent(visit.patient_name ?? patientName ?? 'Patient');
+    const params = new URLSearchParams();
+    params.set('patientUserId', String(visit.patient_user_id));
+    params.set('visitId', String(visit.id));
+    params.set('openHistoryModal', '1');
+    if (visit.family_member_id) {
+      params.set('familyMemberId', String(visit.family_member_id));
+    }
+    if (visit.family_member_name) {
+      params.set('familyMemberName', visit.family_member_name);
+    }
+    ionRouter.push(`/doctor/patients/${patientRouteName}?${params.toString()}`, 'forward', 'push');
+  };
+
+  const goToCreateRehabFromVisit = () => {
+    if (!visit) {
+      return;
+    }
+    const patientRouteName = encodeURIComponent(visit.patient_name ?? patientName ?? 'Patient');
+    const params = new URLSearchParams();
+    params.set('patientUserId', String(visit.patient_user_id));
+    params.set('visitId', String(visit.id));
+    params.set('openRehabModal', '1');
+    if (visit.family_member_id) {
+      params.set('familyMemberId', String(visit.family_member_id));
+    }
+    if (visit.family_member_name) {
+      params.set('familyMemberName', visit.family_member_name);
+    }
+    ionRouter.push(`/doctor/patients/${patientRouteName}?${params.toString()}`, 'forward', 'push');
+  };
+
+  const prescriptions = visit?.prescriptions ?? [];
+  const historyEntries = visit?.medical_history_entries ?? [];
+  const rehabEntries = visit?.rehab_entries ?? [];
+
   return (
     <IonPage>
       <IonHeader>
@@ -102,7 +175,7 @@ const DoctorVisitDetailPage: React.FC = () => {
           <IonButtons slot="start">
             <IonBackButton defaultHref={`/doctor/patients${contextParams}`} />
           </IonButtons>
-          <IonTitle>Visite {visit ? `#${visit.id}` : ''}</IonTitle>
+          <IonTitle>Visite {visit ? `${visit.visit_code ?? `VIS-${visit.id}`}` : ''}</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent>
@@ -122,6 +195,9 @@ const DoctorVisitDetailPage: React.FC = () => {
               </IonCardHeader>
               <IonCardContent>
                 <p>
+                  <strong>Reference:</strong> {visit.visit_code ?? `VIS-${visit.id}`}
+                </p>
+                <p>
                   <strong>Date:</strong> {visit.visit_date ? formatDateTime(visit.visit_date) : 'N/D'}
                 </p>
                 <p>
@@ -131,7 +207,6 @@ const DoctorVisitDetailPage: React.FC = () => {
                   <IonBadge color={visit.status === 'open' ? 'warning' : visit.status === 'completed' ? 'success' : 'medium'}>
                     {visit.status}
                   </IonBadge>
-                  <IonText color="medium">Docteur #{visit.doctor_user_id}</IonText>
                 </div>
                 <p style={{ marginTop: '12px', fontSize: '0.85rem', color: 'var(--ion-color-medium)' }}>
                   Créée le {formatDateTime(visit.created_at)} · Mise à jour le {formatDateTime(visit.updated_at)}
@@ -154,9 +229,6 @@ const DoctorVisitDetailPage: React.FC = () => {
                     <strong>Membre:</strong> {visit.family_member_name}
                   </p>
                 ) : null}
-                <p>
-                  <strong>Patient ID:</strong> #{visit.patient_user_id}
-                </p>
               </IonCardContent>
             </IonCard>
 
@@ -197,11 +269,11 @@ const DoctorVisitDetailPage: React.FC = () => {
                 </IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                {visit.prescriptions.length === 0 ? (
+                {prescriptions.length === 0 ? (
                   <IonText color="medium">Aucune ordonnance liée.</IonText>
                 ) : (
                   <IonList>
-                    {visit.prescriptions.map((prescription) => (
+                    {prescriptions.map((prescription) => (
                       <IonItem
                         key={prescription.id}
                         button
@@ -211,7 +283,11 @@ const DoctorVisitDetailPage: React.FC = () => {
                       >
                         <IonLabel>
                           <h3 style={{ margin: 0 }}>{getPrescriptionCode(prescription)}</h3>
-                          <p style={{ margin: '4px 0 0 0' }}>{formatDateTime(prescription.requested_at ?? visit.visit_date)}</p>
+                          <p style={{ margin: '4px 0 0 0' }}>
+                            {prescription.requested_at || visit.visit_date
+                              ? formatDateTime(prescription.requested_at ?? visit.visit_date ?? '')
+                              : 'N/D'}
+                          </p>
                         </IonLabel>
                       </IonItem>
                     ))}
@@ -227,11 +303,11 @@ const DoctorVisitDetailPage: React.FC = () => {
                 </IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                {visit.medical_history_entries.length === 0 ? (
+                {historyEntries.length === 0 ? (
                   <IonText color="medium">Aucun historique lié.</IonText>
                 ) : (
                   <IonList>
-                    {visit.medical_history_entries.map((entry) => (
+                    {historyEntries.map((entry) => (
                       <IonItem
                         key={entry.id}
                         button
@@ -240,7 +316,7 @@ const DoctorVisitDetailPage: React.FC = () => {
                         onClick={() => navigateToHistory(entry.id)}
                       >
                         <IonLabel>
-                          <h3 style={{ margin: 0 }}>{entry.entry_code ?? `MH-${entry.id}`}</h3>
+                          <h3 style={{ margin: 0 }}>{getMedicalHistoryCode(entry)}</h3>
                           <p style={{ margin: '4px 0 0 0' }}>{entry.title}</p>
                         </IonLabel>
                       </IonItem>
@@ -250,16 +326,18 @@ const DoctorVisitDetailPage: React.FC = () => {
               </IonCardContent>
             </IonCard>
 
-            {visit.rehab_entries.length > 0 ? (
-              <IonCard className="surface-card">
-                <IonCardHeader>
-                  <IonCardTitle>
-                    <IonIcon icon={pulseOutline} /> Rééducations liées
-                  </IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle>
+                  <IonIcon icon={pulseOutline} /> Rééducations liées
+                </IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                {rehabEntries.length === 0 ? (
+                  <IonText color="medium">Aucune rééducation liée.</IonText>
+                ) : (
                   <IonList>
-                    {visit.rehab_entries.map((rehab) => (
+                    {rehabEntries.map((rehab) => (
                       <IonItem key={rehab.id} lines="full">
                         <IonLabel>
                           <h3 style={{ margin: 0 }}>{rehab.reference}</h3>
@@ -270,9 +348,26 @@ const DoctorVisitDetailPage: React.FC = () => {
                       </IonItem>
                     ))}
                   </IonList>
-                </IonCardContent>
-              </IonCard>
-            ) : null}
+                )}
+              </IonCardContent>
+            </IonCard>
+
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle>Actions</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent style={{ display: 'grid', gap: '8px' }}>
+                <IonButton expand="block" color="primary" onClick={goToCreatePrescriptionFromVisit}>
+                  Ordonnance +
+                </IonButton>
+                <IonButton expand="block" color="primary" onClick={goToCreateHistoryFromVisit}>
+                  Historique +
+                </IonButton>
+                <IonButton expand="block" color="primary" onClick={goToCreateRehabFromVisit}>
+                  Reeducation +
+                </IonButton>
+              </IonCardContent>
+            </IonCard>
           </>
         ) : (
           <IonText style={{ display: 'block', padding: '16px' }}>Visite introuvable.</IonText>

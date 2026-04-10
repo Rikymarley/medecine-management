@@ -16,7 +16,18 @@ import {
   IonToolbar,
   useIonRouter
 } from '@ionic/react';
-import { peopleOutline, medkitOutline, storefrontOutline, documentTextOutline } from 'ionicons/icons';
+import {
+  peopleOutline,
+  medkitOutline,
+  storefrontOutline,
+  beaker,
+  documentTextOutline,
+  businessOutline,
+  personCircleOutline,
+  chevronDownOutline,
+  chevronUpOutline,
+  createOutline
+} from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api } from '../services/api';
@@ -34,14 +45,18 @@ const AdminDashboard: React.FC = () => {
   const [savingRecoveryWhatsapp, setSavingRecoveryWhatsapp] = useState(false);
   const [recoveryWhatsapp, setRecoveryWhatsapp] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [profileCardExpanded, setProfileCardExpanded] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [contactExpanded, setContactExpanded] = useState(false);
+  const [passwordExpanded, setPasswordExpanded] = useState(false);
   const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
 
   useEffect(() => {
-    setRecoveryWhatsapp(maskHaitiPhone((user as any)?.recovery_whatsapp ?? (user?.whatsapp ?? '')));
+    setRecoveryWhatsapp(maskHaitiPhone(user?.recovery_whatsapp ?? user?.whatsapp ?? ''));
     if (!token) return;
     api.me(token)
       .then((me) => {
-        setRecoveryWhatsapp(maskHaitiPhone((me as any).recovery_whatsapp ?? me.whatsapp ?? ''));
+        setRecoveryWhatsapp(maskHaitiPhone(me.recovery_whatsapp ?? me.whatsapp ?? ''));
       })
       .catch(() => undefined);
   }, [token, user]);
@@ -99,52 +114,115 @@ const AdminDashboard: React.FC = () => {
         <InstallBanner />
         <IonCard className="hero-card">
           <IonCardHeader>
-            <IonCardTitle>Profil administrateur</IonCardTitle>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+              <IonCardTitle>Profil administrateur</IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {profileCardExpanded ? (
+                  <IonButton
+                    size="small"
+                    fill={editMode ? 'outline' : 'solid'}
+                    onClick={() => setEditMode((prev) => !prev)}
+                  >
+                    <IonIcon icon={createOutline} slot="start" />
+                    {editMode ? 'Lecture' : 'Modifier'}
+                  </IonButton>
+                ) : null}
+                <IonButton fill="clear" size="small" onClick={() => setProfileCardExpanded((prev) => !prev)}>
+                  <IonIcon icon={profileCardExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+            </div>
           </IonCardHeader>
-          <IonCardContent>
-            <p style={{ marginTop: 0, marginBottom: '8px' }}>
-              <strong>{user?.name ?? 'Administrateur'}</strong><br />
-              <span style={{ color: '#64748b' }}>{user?.email ?? ''}</span>
-            </p>
-            <IonItem>
-              <IonLabel position="stacked">WhatsApp de recuperation</IonLabel>
-              <IonInput
-                value={recoveryWhatsapp}
-                maxlength={14}
-                inputmode="tel"
-                placeholder="+509-xxxx-xxxx"
-                onIonInput={(e) => setRecoveryWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
-              />
-            </IonItem>
-            <IonButton expand="block" fill="outline" onClick={() => saveRecoveryWhatsapp().catch(() => undefined)} disabled={savingRecoveryWhatsapp}>
-              {savingRecoveryWhatsapp ? 'Mise a jour...' : 'Enregistrer WhatsApp de recuperation'}
-            </IonButton>
-            <IonItem>
-              <IonLabel position="stacked">Mot de passe actuel</IonLabel>
-              <IonInput type="password" value={currentPassword} onIonInput={(e) => setCurrentPassword(e.detail.value ?? '')} />
-            </IonItem>
-            <IonItem>
-              <IonLabel position="stacked">Nouveau mot de passe</IonLabel>
-              <IonInput type="password" value={newPassword} onIonInput={(e) => setNewPassword(e.detail.value ?? '')} />
-            </IonItem>
-            {newPassword ? (
-              <IonText color={passwordStrength.color}>
-                <p style={{ marginTop: 6 }}>Force: {passwordStrength.label}</p>
-              </IonText>
-            ) : null}
-            <IonItem>
-              <IonLabel position="stacked">Confirmer nouveau mot de passe</IonLabel>
-              <IonInput type="password" value={confirmNewPassword} onIonInput={(e) => setConfirmNewPassword(e.detail.value ?? '')} />
-            </IonItem>
-            {message ? (
-              <IonText color="medium">
-                <p>{message}</p>
-              </IonText>
-            ) : null}
-            <IonButton expand="block" onClick={() => savePassword().catch(() => undefined)} disabled={savingPassword}>
-              {savingPassword ? 'Mise a jour...' : 'Mettre a jour le mot de passe'}
-            </IonButton>
-          </IonCardContent>
+          {profileCardExpanded ? (
+            <IonCardContent>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                <div
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '50%',
+                    border: '1px solid #dbe7ef',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#f8fafc'
+                  }}
+                >
+                  <IonIcon icon={personCircleOutline} style={{ fontSize: '30px' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{user?.name ?? 'Administrateur'}</div>
+                  <div style={{ color: '#64748b', fontSize: '0.95rem' }}>{user?.email ?? ''}</div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setContactExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Coordonnees {contactExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {contactExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">WhatsApp de recuperation</IonLabel>
+                      <IonInput
+                        value={recoveryWhatsapp}
+                        maxlength={14}
+                        inputmode="tel"
+                        placeholder="+509-xxxx-xxxx"
+                        disabled={!editMode}
+                        onIonInput={(e) => setRecoveryWhatsapp(maskHaitiPhone(e.detail.value ?? ''))}
+                      />
+                    </IonItem>
+                    {editMode ? (
+                      <div style={{ padding: '0 12px 12px' }}>
+                        <IonButton expand="block" fill="outline" onClick={() => saveRecoveryWhatsapp().catch(() => undefined)} disabled={savingRecoveryWhatsapp}>
+                          {savingRecoveryWhatsapp ? 'Mise a jour...' : 'Enregistrer WhatsApp de recuperation'}
+                        </IonButton>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+
+              <div style={{ marginTop: '8px', border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+                <IonButton expand="block" fill="clear" color="dark" onClick={() => setPasswordExpanded((p) => !p)} style={{ margin: 0 }}>
+                  Reinitialiser mot de passe {passwordExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                </IonButton>
+                {passwordExpanded ? (
+                  <>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Mot de passe actuel</IonLabel>
+                      <IonInput type="password" value={currentPassword} onIonInput={(e) => setCurrentPassword(e.detail.value ?? '')} />
+                    </IonItem>
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Nouveau mot de passe</IonLabel>
+                      <IonInput type="password" value={newPassword} onIonInput={(e) => setNewPassword(e.detail.value ?? '')} />
+                    </IonItem>
+                    {newPassword ? (
+                      <IonText color={passwordStrength.color}>
+                        <p style={{ marginTop: 6, padding: '0 12px' }}>Force: {passwordStrength.label}</p>
+                      </IonText>
+                    ) : null}
+                    <IonItem lines="none">
+                      <IonLabel position="stacked">Confirmer nouveau mot de passe</IonLabel>
+                      <IonInput type="password" value={confirmNewPassword} onIonInput={(e) => setConfirmNewPassword(e.detail.value ?? '')} />
+                    </IonItem>
+                    <div style={{ padding: '0 12px 12px' }}>
+                      <IonButton expand="block" onClick={() => savePassword().catch(() => undefined)} disabled={savingPassword}>
+                        {savingPassword ? 'Mise a jour...' : 'Mettre a jour le mot de passe'}
+                      </IonButton>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              {message ? (
+                <IonText color="medium">
+                  <p>{message}</p>
+                </IonText>
+              ) : null}
+            </IonCardContent>
+          ) : null}
         </IonCard>
         <div className="dashboard-grid">
           <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/doctors', 'forward', 'push')}>
@@ -167,6 +245,26 @@ const AdminDashboard: React.FC = () => {
             </IonCardContent>
           </IonCard>
 
+          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/hopitaux', 'forward', 'push')}>
+            <IonCardContent>
+              <div className="quick-icon quick-icon-red">
+                <IonIcon icon={businessOutline} />
+              </div>
+              <h3>Hopitaux</h3>
+              <p className="muted-note">Suivre les etablissements hospitaliers.</p>
+            </IonCardContent>
+          </IonCard>
+
+          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/laboratoires', 'forward', 'push')}>
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={beaker} />
+              </div>
+              <h3>Laboratoires</h3>
+              <p className="muted-note">Suivre les laboratoires.</p>
+            </IonCardContent>
+          </IonCard>
+
           <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/patients', 'forward', 'push')}>
             <IonCardContent>
               <div className="quick-icon quick-icon-rose">
@@ -177,6 +275,26 @@ const AdminDashboard: React.FC = () => {
             </IonCardContent>
           </IonCard>
 
+          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/comptes-hopitaux', 'forward', 'push')}>
+            <IonCardContent>
+              <div className="quick-icon quick-icon-red">
+                <IonIcon icon={businessOutline} />
+              </div>
+              <h3>Comptes hopitaux</h3>
+              <p className="muted-note">Gerer les comptes utilisateurs hopitaux.</p>
+            </IonCardContent>
+          </IonCard>
+
+          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/comptes-laboratoires', 'forward', 'push')}>
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={beaker} />
+              </div>
+              <h3>Comptes laboratoires</h3>
+              <p className="muted-note">Gerer les comptes utilisateurs laboratoires.</p>
+            </IonCardContent>
+          </IonCard>
+
           <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/password-reset-logs', 'forward', 'push')}>
             <IonCardContent>
               <div className="quick-icon quick-icon-gold">
@@ -184,6 +302,16 @@ const AdminDashboard: React.FC = () => {
               </div>
               <h3>Logs reset</h3>
               <p className="muted-note">Voir les tentatives de reinitialisation mot de passe.</p>
+            </IonCardContent>
+          </IonCard>
+
+          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/comptes-secretaires', 'forward', 'push')}>
+            <IonCardContent>
+              <div className="quick-icon quick-icon-rose">
+                <IonIcon icon={personCircleOutline} />
+              </div>
+              <h3>Comptes secretaires</h3>
+              <p className="muted-note">Gerer les comptes utilisateurs secretaires.</p>
             </IonCardContent>
           </IonCard>
         </div>

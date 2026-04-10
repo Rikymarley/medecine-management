@@ -59,7 +59,7 @@ class AdminAccountController extends Controller
     public function users(Request $request)
     {
         $data = $request->validate([
-            'role' => ['nullable', 'in:doctor,pharmacy,patient'],
+            'role' => ['nullable', 'in:doctor,pharmacy,patient,hopital,laboratoire,secretaire'],
         ]);
 
         $query = User::query()
@@ -70,7 +70,7 @@ class AdminAccountController extends Controller
                 'blockedBy:id,name',
                 'pharmacy:id,name',
             ])
-            ->whereIn('role', ['doctor', 'pharmacy', 'patient'])
+            ->whereIn('role', ['doctor', 'pharmacy', 'patient', 'hopital', 'laboratoire', 'secretaire'])
             ->orderBy('name');
 
         if (!empty($data['role'])) {
@@ -134,7 +134,7 @@ class AdminAccountController extends Controller
 
     public function approveUser(Request $request, User $user)
     {
-        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient'], true)) {
+        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient', 'hopital', 'laboratoire', 'secretaire'], true)) {
             return response()->json(['message' => 'Role utilisateur non supporte.'], 422);
         }
 
@@ -161,7 +161,7 @@ class AdminAccountController extends Controller
 
     public function unapproveUser(Request $request, User $user)
     {
-        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient'], true)) {
+        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient', 'hopital', 'laboratoire', 'secretaire'], true)) {
             return response()->json(['message' => 'Role utilisateur non supporte.'], 422);
         }
 
@@ -187,7 +187,7 @@ class AdminAccountController extends Controller
 
     public function blockUser(Request $request, User $user)
     {
-        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient'], true)) {
+        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient', 'hopital', 'laboratoire', 'secretaire'], true)) {
             return response()->json(['message' => 'Role utilisateur non supporte.'], 422);
         }
 
@@ -212,7 +212,7 @@ class AdminAccountController extends Controller
 
     public function unblockUser(Request $request, User $user)
     {
-        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient'], true)) {
+        if (!in_array($user->role, ['doctor', 'pharmacy', 'patient', 'hopital', 'laboratoire', 'secretaire'], true)) {
             return response()->json(['message' => 'Role utilisateur non supporte.'], 422);
         }
 

@@ -23,6 +23,9 @@ import {
 } from '@ionic/react';
 import {
   alertCircleOutline,
+  calendarOutline,
+  beaker,
+  businessOutline,
   closeCircleOutline,
   checkmarkCircleOutline,
   chevronDownOutline,
@@ -35,11 +38,12 @@ import {
   imageOutline,
   storefrontOutline,
   starOutline,
-  shieldCheckmarkOutline
+  shieldCheckmarkOutline,
+  walkOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api } from '../services/api';
+import { api, ApiUser } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
 import { getPasswordStrength } from '../utils/passwordStrength';
@@ -108,6 +112,33 @@ const DoctorDashboard: React.FC = () => {
     [specialtyChoice, specialtyOther]
   );
   const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
+  const applyDoctorProfile = useCallback((profile: Partial<ApiUser> | null | undefined) => {
+    if (!profile) {
+      return;
+    }
+
+    setPhone(maskHaitiPhone(normalizeText(profile.phone)));
+    setAddress(normalizeText(profile.address));
+    setLatitude(normalizeText(profile.latitude));
+    setLongitude(normalizeText(profile.longitude));
+    const parsedSpecialty = parseDoctorSpecialty(normalizeText(profile.specialty), specialtyOptions);
+    setSpecialtyChoice(parsedSpecialty.selected);
+    setSpecialtyOther(parsedSpecialty.custom);
+    setCity(normalizeText(profile.city));
+    setDepartment(normalizeText(profile.department));
+    setLanguages(normalizeText(profile.languages));
+    setTeleconsultationAvailable(!!profile.teleconsultation_available);
+    setConsultationHours(normalizeText(profile.consultation_hours));
+    setLicenseNumber(normalizeText(profile.license_number));
+    setLicenseVerified(!!profile.license_verified);
+    setYearsExperience(normalizeText(profile.years_experience));
+    setConsultationFeeRange(normalizeText(profile.consultation_fee_range));
+    setWhatsapp(maskHaitiPhone(normalizeText(profile.whatsapp)));
+    setRecoveryWhatsapp(maskHaitiPhone(normalizeText(profile.recovery_whatsapp)));
+    setBio(normalizeText(profile.bio));
+    setProfilePhotoUrl(normalizeText(profile.profile_photo_url));
+    setProfileBannerUrl(normalizeText(profile.profile_banner_url));
+  }, [specialtyOptions]);
 
   useEffect(() => {
     api
@@ -128,74 +159,12 @@ const DoctorDashboard: React.FC = () => {
 
     api
       .me(token)
-      .then((me) => {
-        setPhone(maskHaitiPhone(normalizeText(me.phone)));
-        setAddress(normalizeText(me.address));
-        setLatitude(normalizeText(me.latitude));
-        setLongitude(normalizeText(me.longitude));
-        const parsedSpecialty = parseDoctorSpecialty(normalizeText(me.specialty), specialtyOptions);
-        setSpecialtyChoice(parsedSpecialty.selected);
-        setSpecialtyOther(parsedSpecialty.custom);
-        setCity(normalizeText(me.city));
-        setDepartment(normalizeText(me.department));
-        setLanguages(normalizeText(me.languages));
-        setTeleconsultationAvailable(!!me.teleconsultation_available);
-        setConsultationHours(normalizeText(me.consultation_hours));
-        setLicenseNumber(normalizeText(me.license_number));
-        setLicenseVerified(!!me.license_verified);
-        setYearsExperience(normalizeText(me.years_experience));
-        setConsultationFeeRange(normalizeText(me.consultation_fee_range));
-        setWhatsapp(maskHaitiPhone(normalizeText(me.whatsapp)));
-        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((me as any).recovery_whatsapp)));
-        setBio(normalizeText(me.bio));
-        setProfilePhotoUrl(normalizeText((me as any).profile_photo_url));
-        setProfileBannerUrl(normalizeText((me as any).profile_banner_url));
-      })
-      .catch(() => {
-        setPhone(maskHaitiPhone(normalizeText(user?.phone)));
-        setAddress(normalizeText(user?.address));
-        setLatitude(normalizeText(user?.latitude));
-        setLongitude(normalizeText(user?.longitude));
-        const parsedSpecialty = parseDoctorSpecialty(normalizeText(user?.specialty), specialtyOptions);
-        setSpecialtyChoice(parsedSpecialty.selected);
-        setSpecialtyOther(parsedSpecialty.custom);
-        setCity(normalizeText(user?.city));
-        setDepartment(normalizeText(user?.department));
-        setLanguages(normalizeText(user?.languages));
-        setTeleconsultationAvailable(!!user?.teleconsultation_available);
-        setConsultationHours(normalizeText(user?.consultation_hours));
-        setLicenseNumber(normalizeText(user?.license_number));
-        setLicenseVerified(!!user?.license_verified);
-        setYearsExperience(normalizeText(user?.years_experience));
-        setConsultationFeeRange(normalizeText(user?.consultation_fee_range));
-        setWhatsapp(maskHaitiPhone(normalizeText(user?.whatsapp)));
-        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((user as any)?.recovery_whatsapp)));
-        setBio(normalizeText(user?.bio));
-        setProfilePhotoUrl(normalizeText((user as any)?.profile_photo_url));
-        setProfileBannerUrl(normalizeText((user as any)?.profile_banner_url));
-      });
+      .then((me) => applyDoctorProfile(me))
+      .catch(() => applyDoctorProfile(user));
   }, [
+    applyDoctorProfile,
     token,
-    user?.address,
-    user?.bio,
-    user?.city,
-    user?.consultation_fee_range,
-    user?.consultation_hours,
-    user?.department,
-    user?.languages,
-    user?.latitude,
-    user?.license_number,
-    user?.license_verified,
-    user?.longitude,
-    user?.phone,
-    user?.specialty,
-    specialtyOptions,
-    user?.teleconsultation_available,
-    user?.whatsapp,
-    (user as any)?.recovery_whatsapp,
-    user?.years_experience,
-    (user as any)?.profile_photo_url,
-    (user as any)?.profile_banner_url
+    user
   ]);
 
   const completionMissingFields = useMemo(() => {
@@ -232,7 +201,6 @@ const DoctorDashboard: React.FC = () => {
     whatsapp,
     yearsExperience
   ]);
-  const profileIncomplete = completionMissingFields.length > 0;
   const profileCompletion = useMemo(() => {
     const total = 14;
     const done = total - completionMissingFields.length;
@@ -347,7 +315,7 @@ const DoctorDashboard: React.FC = () => {
       setUploadingPhoto(true);
       setMessage(null);
       const updated = await api.uploadMyDoctorProfilePhoto(token, file);
-      setProfilePhotoUrl(normalizeText((updated as any).profile_photo_url));
+      setProfilePhotoUrl(normalizeText(updated.profile_photo_url));
       setMessage('Photo de profil mise a jour.');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Echec upload photo.');
@@ -365,7 +333,7 @@ const DoctorDashboard: React.FC = () => {
       setUploadingBanner(true);
       setMessage(null);
       const updated = await api.uploadMyDoctorBanner(token, file);
-      setProfileBannerUrl(normalizeText((updated as any).profile_banner_url));
+      setProfileBannerUrl(normalizeText(updated.profile_banner_url));
       setMessage('Banniere mise a jour.');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Echec upload banniere.');
@@ -824,6 +792,26 @@ const DoctorDashboard: React.FC = () => {
             style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
             onClick={() => {
               if (!canUseDoctorApp) {
+                setMessage('Completez le profil a 100% pour acceder aux rendez-vous.');
+                return;
+              }
+              ionRouter.push('/doctor/mes-rendez-vous', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-blue">
+                <IonIcon icon={calendarOutline} />
+              </div>
+              <h3>Mes rendez-vous</h3>
+              <p className="muted-note">Suivre vos rendez-vous a venir.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button={canUseDoctorApp}
+            className="surface-card"
+            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+            onClick={() => {
+              if (!canUseDoctorApp) {
                 setMessage('Completez le profil a 100% pour acceder aux patients.');
                 return;
               }
@@ -836,6 +824,26 @@ const DoctorDashboard: React.FC = () => {
               </div>
               <h3>Patients</h3>
               <p className="muted-note">Voir la liste de vos patients.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button={canUseDoctorApp}
+            className="surface-card"
+            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+            onClick={() => {
+              if (!canUseDoctorApp) {
+                setMessage('Completez le profil a 100% pour acceder aux visites.');
+                return;
+              }
+              ionRouter.push('/doctor/mes-visites', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={walkOutline} />
+              </div>
+              <h3>Mes visites</h3>
+              <p className="muted-note">Voir votre suivi de consultations.</p>
             </IonCardContent>
           </IonCard>
           <IonCard
@@ -863,6 +871,22 @@ const DoctorDashboard: React.FC = () => {
             className="surface-card"
             style={{ margin: 0 }}
             onClick={() => {
+              ionRouter.push('/doctor/secretaires', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-rose">
+                <IonIcon icon={personCircleOutline} />
+              </div>
+              <h3>Secretaires</h3>
+              <p className="muted-note">Gerer les secretaires du cabinet.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => {
               ionRouter.push('/doctor/doctors', 'forward', 'push');
             }}
           >
@@ -870,7 +894,7 @@ const DoctorDashboard: React.FC = () => {
               <div className="quick-icon quick-icon-blue">
                 <IonIcon icon={medkitOutline} />
               </div>
-              <h3>Annuaire medecins</h3>
+              <h3>Medecins</h3>
               <p className="muted-note">Voir tous les medecins approuves.</p>
             </IonCardContent>
           </IonCard>
@@ -886,8 +910,40 @@ const DoctorDashboard: React.FC = () => {
               <div className="quick-icon quick-icon-green">
                 <IonIcon icon={storefrontOutline} />
               </div>
-              <h3>Annuaire pharmacies</h3>
+              <h3>Pharmacies</h3>
               <p className="muted-note">Voir les pharmacies disponibles.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => {
+              ionRouter.push('/doctor/laboratoires', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={beaker} />
+              </div>
+              <h3>Laboratoires</h3>
+              <p className="muted-note">Voir les laboratoires disponibles.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => {
+              ionRouter.push('/doctor/hopitaux', 'forward', 'push');
+            }}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-red">
+                <IonIcon icon={businessOutline} />
+              </div>
+              <h3>Hopitaux</h3>
+              <p className="muted-note">Voir les hopitaux disponibles.</p>
             </IonCardContent>
           </IonCard>
         </div>

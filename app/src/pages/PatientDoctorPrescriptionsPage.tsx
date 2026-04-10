@@ -28,7 +28,6 @@ import {
   locationOutline,
   logoWhatsapp,
   medicalOutline,
-  personCircleOutline,
   shieldCheckmarkOutline,
   timeOutline,
   videocamOutline

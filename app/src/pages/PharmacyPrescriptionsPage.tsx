@@ -19,7 +19,7 @@ import {
   IonToolbar
 } from '@ionic/react';
 import { chevronDownOutline, chevronUpOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy, ApiPharmacyResponse, ApiPrescription } from '../services/api';
 import {
@@ -61,7 +61,6 @@ const statusLabel = (status: ApiPharmacyResponse['status']) => {
   }
 };
 
-const ALL_PRESCRIPTION_STATUSES = ['sent_to_pharmacies', 'partially_available', 'available', 'expired'];
 type FilterKey = 'all' | 'sent_to_pharmacies' | 'partially_available' | 'available' | 'expired';
 
 const getStatusTimeDiffLabel = (requestedAt: string) => {
@@ -84,12 +83,16 @@ const PharmacyPrescriptionsPage: React.FC = () => {
 
   const cacheKey = user ? `pharmacy-prescriptions-cache-${user.id}` : null;
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       const [pharmacyData, prescriptionData, meData] = await Promise.all([
         api.getPharmacies(),
-        api.getPrescriptions(),
-        token ? api.getMyPharmacy(token).then((data) => data).catch(() => null) : Promise.resolve(null)
+        api.getPharmacyPrescriptions(token),
+        api.getMyPharmacy(token).then((data) => data).catch(() => null)
       ]);
 
       setPharmacies(pharmacyData);
@@ -128,11 +131,11 @@ const PharmacyPrescriptionsPage: React.FC = () => {
         localStorage.removeItem(cacheKey);
       }
     }
-  };
+  }, [cacheKey, token]);
 
   useEffect(() => {
     loadData().catch(() => undefined);
-  }, [token]);
+  }, [loadData]);
 
   useEffect(() => {
     if (!cacheKey) {
@@ -178,7 +181,7 @@ const PharmacyPrescriptionsPage: React.FC = () => {
       .catch(() => {
         setPendingOutboxCount(getPendingPharmacyResponseCount());
       });
-  }, [isOnline, token]);
+  }, [isOnline, loadData, token]);
 
   const pharmacy = myPharmacy ?? pharmacies.find((item) => item.id === user?.pharmacy_id) ?? null;
   const pharmacyHasGps = Boolean(String(pharmacy?.latitude ?? '').trim() && String(pharmacy?.longitude ?? '').trim());

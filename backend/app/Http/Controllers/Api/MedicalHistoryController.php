@@ -9,18 +9,25 @@ use App\Models\Prescription;
 use App\Models\RehabEntry;
 use App\Models\User;
 use App\Models\Visit;
+use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class MedicalHistoryController extends Controller
 {
-    private function generateEntryCode(): string
+    private function generateEntryCode(MedicalHistoryEntry $entry): string
     {
-        do {
-            $code = 'MH-' . strtoupper(Str::random(8));
-        } while (MedicalHistoryEntry::query()->where('entry_code', $code)->exists());
+        $date = optional($entry->created_at)->format('Ymd') ?? now()->format('Ymd');
+        return 'MH-' . $date . '-' . str_pad((string) $entry->id, 6, '0', STR_PAD_LEFT);
+    }
 
-        return $code;
+    private function ensureEntryCode(MedicalHistoryEntry $entry): void
+    {
+        if (!empty($entry->entry_code)) {
+            return;
+        }
+
+        $entry->update(['entry_code' => $this->generateEntryCode($entry)]);
+        $entry->refresh();
     }
 
     private function validatePayload(Request $request): array
@@ -72,19 +79,7 @@ class MedicalHistoryController extends Controller
 
     private function doctorHasPatientLink(int $doctorUserId, int $patientUserId): bool
     {
-        $ownsPatient = User::query()
-            ->where('id', $patientUserId)
-            ->where('role', 'patient')
-            ->where('created_by_doctor_id', $doctorUserId)
-            ->exists();
-        if ($ownsPatient) {
-            return true;
-        }
-
-        return Prescription::query()
-            ->where('doctor_user_id', $doctorUserId)
-            ->where('patient_user_id', $patientUserId)
-            ->exists();
+        return DoctorPatientAccessEvaluator::hasLink($doctorUserId, $patientUserId);
     }
 
     private function listBaseQuery(int $patientUserId)
@@ -168,7 +163,7 @@ class MedicalHistoryController extends Controller
                 ->sortByDesc(fn ($rehab) => optional($rehab->created_at)->getTimestamp() ?? strtotime((string) $rehab->created_at))
                 ->map(fn ($rehab) => [
                     'id' => $rehab->id,
-                    'reference' => 'REH-' . str_pad((string) $rehab->id, 6, '0', STR_PAD_LEFT),
+                    'reference' => $rehab->reference,
                     'doctor_user_id' => $rehab->doctor_user_id,
                     'created_at' => optional($rehab->created_at)->toIso8601String(),
                     'sessions_per_week' => $rehab->sessions_per_week,
@@ -278,10 +273,10 @@ class MedicalHistoryController extends Controller
 
         $entry = MedicalHistoryEntry::create([
             ...$data,
-            'entry_code' => $this->generateEntryCode(),
             'patient_user_id' => $patient->id,
             'doctor_user_id' => null,
         ])->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
+        $this->ensureEntryCode($entry);
         $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
         return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at'])), 201);
@@ -382,10 +377,10 @@ class MedicalHistoryController extends Controller
 
         $entry = MedicalHistoryEntry::create([
             ...$data,
-            'entry_code' => $this->generateEntryCode(),
             'patient_user_id' => $patient->id,
             'doctor_user_id' => $doctor->id,
         ])->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
+        $this->ensureEntryCode($entry);
         $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
         return response()->json($this->formatEntry($entry->fresh([

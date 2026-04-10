@@ -18,7 +18,7 @@ import {
   IonToolbar,
 } from '@ionic/react';
 import { callOutline, chevronDownOutline, chevronUpOutline, locateOutline, logoWhatsapp, medkitOutline } from 'ionicons/icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiUser } from '../services/api';
@@ -38,7 +38,7 @@ const AdminDoctorDetailPage: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [auditExpanded, setAuditExpanded] = useState(false);
 
-  const loadDoctor = async () => {
+  const loadDoctor = useCallback(async () => {
     if (!token) {
       setDoctor(null);
       setLoading(false);
@@ -56,11 +56,11 @@ const AdminDoctorDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [doctorId, token]);
 
   useEffect(() => {
     void loadDoctor();
-  }, [token, doctorId]);
+  }, [loadDoctor]);
 
   const runAction = async (action: () => Promise<unknown>) => {
     try {

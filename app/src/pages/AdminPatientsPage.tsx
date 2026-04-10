@@ -14,7 +14,7 @@ import {
   IonToolbar
 } from '@ionic/react';
 import { personOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useHistory } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiUser } from '../services/api';
@@ -27,7 +27,7 @@ const AdminPatientsPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!token) return;
     try {
       setError(null);
@@ -36,11 +36,11 @@ const AdminPatientsPage: React.FC = () => {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Echec de chargement.');
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     load().catch(() => undefined);
-  }, [token]);
+  }, [load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

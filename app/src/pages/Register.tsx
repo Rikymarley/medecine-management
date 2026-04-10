@@ -34,7 +34,7 @@ const Register: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [ninu, setNinu] = useState('');
-  const [role, setRole] = useState<'doctor' | 'pharmacy' | 'patient'>('patient');
+  const [role, setRole] = useState<'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire'>('patient');
   const [pharmacyName, setPharmacyName] = useState('');
   const [doctorPhone, setDoctorPhone] = useState('');
   const [doctorSpecialty, setDoctorSpecialty] = useState('');
@@ -125,6 +125,9 @@ const Register: React.FC = () => {
                 <IonSelectOption value="patient">Patient</IonSelectOption>
                 <IonSelectOption value="doctor">Medecin</IonSelectOption>
                 <IonSelectOption value="pharmacy">Pharmacie</IonSelectOption>
+                <IonSelectOption value="hopital">Hopital</IonSelectOption>
+                <IonSelectOption value="laboratoire">Laboratoire</IonSelectOption>
+                <IonSelectOption value="secretaire">Secretaire</IonSelectOption>
               </IonSelect>
             </IonItem>
             {role === 'pharmacy' ? (

@@ -124,9 +124,28 @@ class DoctorPatientController extends Controller
 
     public function index(Request $request)
     {
+        $doctorId = (int) $request->user()->id;
         $rows = User::query()
             ->where('role', 'patient')
-            ->where('created_by_doctor_id', $request->user()->id)
+            ->where(function ($query) use ($doctorId) {
+                $query
+                    ->where('created_by_doctor_id', $doctorId)
+                    ->orWhereExists(function ($subQuery) use ($doctorId) {
+                        $subQuery
+                            ->selectRaw('1')
+                            ->from('prescriptions')
+                            ->whereColumn('prescriptions.patient_user_id', 'users.id')
+                            ->where('prescriptions.doctor_user_id', $doctorId);
+                    })
+                    ->orWhereExists(function ($subQuery) use ($doctorId) {
+                        $subQuery
+                            ->selectRaw('1')
+                            ->from('doctor_patient_access_requests')
+                            ->whereColumn('doctor_patient_access_requests.patient_user_id', 'users.id')
+                            ->where('doctor_patient_access_requests.doctor_user_id', $doctorId)
+                            ->where('doctor_patient_access_requests.status', 'approved');
+                    });
+            })
             ->orderBy('name')
             ->get(['id', 'created_by_doctor_id', 'name', 'phone', 'ninu', 'date_of_birth', 'address', 'age', 'gender', 'emergency_notes', 'created_at', 'updated_at']);
 

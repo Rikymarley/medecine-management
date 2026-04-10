@@ -114,12 +114,7 @@ class PharmacyController extends Controller
             'logo_url' => ['nullable', 'url', 'max:2048'],
             'storefront_image_url' => ['nullable', 'url', 'max:2048'],
             'notes_for_patients' => ['nullable', 'string', 'max:500'],
-            'recovery_whatsapp' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
         ]);
-
-        $hasRecoveryWhatsapp = array_key_exists('recovery_whatsapp', $data);
-        $recoveryWhatsapp = $data['recovery_whatsapp'] ?? null;
-        unset($data['recovery_whatsapp']);
 
         if (
             array_key_exists('open_now', $data) ||
@@ -207,7 +202,12 @@ class PharmacyController extends Controller
             'logo_url' => ['nullable', 'url', 'max:2048'],
             'storefront_image_url' => ['nullable', 'url', 'max:2048'],
             'notes_for_patients' => ['nullable', 'string', 'max:500'],
+            'recovery_whatsapp' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
         ]);
+
+        $hasRecoveryWhatsapp = array_key_exists('recovery_whatsapp', $data);
+        $recoveryWhatsapp = $data['recovery_whatsapp'] ?? null;
+        unset($data['recovery_whatsapp']);
 
         if (
             array_key_exists('open_now', $data) ||

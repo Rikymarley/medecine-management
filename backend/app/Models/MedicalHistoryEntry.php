@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class MedicalHistoryEntry extends Model
 {
+    protected $appends = [
+        'history_code',
+    ];
+
     protected $fillable = [
         'entry_code',
         'patient_user_id',
@@ -65,5 +69,12 @@ class MedicalHistoryEntry extends Model
     public function visit()
     {
         return $this->belongsTo(Visit::class);
+    }
+
+    public function getHistoryCodeAttribute(): string
+    {
+        $date = optional($this->created_at)->format('Ymd') ?? now()->format('Ymd');
+
+        return 'MH-' . $date . '-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);
     }
 }

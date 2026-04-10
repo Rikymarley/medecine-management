@@ -23,7 +23,7 @@ import {
   IonToolbar
 } from '@ionic/react';
 import { callOutline, logoWhatsapp, medkitOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiFamilyMember, ApiPatientMedicinePurchase, ApiPharmacy, ApiPrescription } from '../services/api';
@@ -73,7 +73,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
   const isCompleted = prescription?.status === 'completed';
 
-  const persistPrescriptionInCache = (updated: ApiPrescription) => {
+  const persistPrescriptionInCache = useCallback((updated: ApiPrescription) => {
     if (!cacheKey) {
       return;
     }
@@ -92,7 +92,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
     } catch {
       localStorage.removeItem(cacheKey);
     }
-  };
+  }, [cacheKey]);
 
   const togglePharmacy = (pharmacyId: number) => {
     setExpandedPharmacies((prev) => ({
@@ -284,7 +284,7 @@ const PatientPrescriptionDetailPage: React.FC = () => {
       .catch(() => {
         setPendingOutboxCount(getPendingPatientPurchaseCount() + getPendingPatientPrescriptionStatusCount());
       });
-  }, [id, isOnline, token]);
+  }, [id, isOnline, persistPrescriptionInCache, token]);
 
   const setPurchased = (pharmacyId: number, medicineId: number, value: boolean, quantity?: number) => {
     if (isCompleted) {

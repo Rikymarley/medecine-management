@@ -213,7 +213,7 @@ const PatientFamilyMembersPage: React.FC = () => {
         setPendingOutboxCount(getPendingFamilyMemberMutationCount());
         setPendingStateById(getPendingFamilyMemberMutationStateById());
       });
-  }, [isOnline, token]);
+  }, [isOnline, load, token]);
 
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })),
@@ -418,26 +418,6 @@ const PatientFamilyMembersPage: React.FC = () => {
     }
   };
 
-  const startEdit = (member: ApiFamilyMember) => {
-    setEditingId(member.id);
-    setForm({
-      name: member.name,
-      date_of_birth: member.date_of_birth ? member.date_of_birth.slice(0, 10) : '',
-      gender: member.gender,
-      relationship: member.relationship,
-      weight_kg: member.weight_kg === null ? '' : String(member.weight_kg),
-      height_cm: member.height_cm === null ? '' : String(member.height_cm),
-      surgical_history: member.surgical_history ?? '',
-      vaccination_up_to_date: member.vaccination_up_to_date ?? null,
-      allergies: member.allergies ?? '',
-      chronic_diseases: member.chronic_diseases ?? '',
-      blood_type: member.blood_type,
-      emergency_notes: member.emergency_notes ?? '',
-      primary_caregiver: member.primary_caregiver
-    });
-    setShowAdd(true);
-  };
-
   return (
     <IonPage>
       <IonHeader>
@@ -486,10 +466,10 @@ const PatientFamilyMembersPage: React.FC = () => {
               <IonList>
                 {pagedMembers.map((member) => (
                   <IonItem key={member.id} lines="full" button detail onClick={() => ionRouter.push(`/patient/family-members/${member.id}`, 'forward', 'push')}>
-                    {(member as any).photo_url || (member as any).profile_photo_url ? (
+                    {member.photo_url ? (
                       <img
                         slot="start"
-                        src={((member as any).photo_url || (member as any).profile_photo_url) as string}
+                        src={member.photo_url}
                         alt={member.name}
                         style={{
                           width: '34px',
@@ -565,10 +545,10 @@ const PatientFamilyMembersPage: React.FC = () => {
                         detail
                         onClick={() => ionRouter.push(`/patient/family-members/${member.id}`, 'forward', 'push')}
                       >
-                        {(member as any).photo_url || (member as any).profile_photo_url ? (
+                        {member.photo_url ? (
                           <img
                             slot="start"
-                            src={((member as any).photo_url || (member as any).profile_photo_url) as string}
+                            src={member.photo_url}
                             alt={member.name}
                             style={{
                               width: '34px',
@@ -669,7 +649,7 @@ const PatientFamilyMembersPage: React.FC = () => {
                   </IonItem>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0 4px 8px' }}>
                     <IonBadge color="medium">Age: {computedFormAge ?? 'N/D'}</IonBadge>
-                    <IonText color="medium" style={{ fontSize: '0.85rem' as any }}>Calcule automatiquement</IonText>
+                    <IonText color="medium" style={{ fontSize: '0.85rem' }}>Calcule automatiquement</IonText>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px' }}>
                     <IonItem lines="none">

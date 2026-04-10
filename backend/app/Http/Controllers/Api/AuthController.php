@@ -261,7 +261,7 @@ class AuthController extends Controller
             'surgical_history' => ['nullable', 'string', 'max:5000'],
             'vaccination_up_to_date' => ['nullable', 'boolean'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', 'in:doctor,pharmacy,patient'],
+            'role' => ['required', 'in:doctor,pharmacy,patient,hopital,laboratoire,secretaire'],
             'pharmacy_name' => ['nullable', 'required_if:role,pharmacy', 'string', 'max:255']
         ]);
 
@@ -280,7 +280,7 @@ class AuthController extends Controller
         $data['pharmacy_id'] = $pharmacyId;
         $data['account_status'] = 'active';
         $data['created_by_doctor_id'] = null;
-        $data['verification_status'] = in_array($data['role'], ['doctor', 'pharmacy'], true)
+        $data['verification_status'] = in_array($data['role'], ['doctor', 'pharmacy', 'hopital', 'laboratoire', 'secretaire'], true)
             ? 'pending'
             : 'approved';
         $data['verified_at'] = $data['verification_status'] === 'approved' ? now() : null;

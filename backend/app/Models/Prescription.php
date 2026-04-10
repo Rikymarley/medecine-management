@@ -7,6 +7,10 @@ use Illuminate\Support\Carbon;
 
 class Prescription extends Model
 {
+    protected $appends = [
+        'prescription_code',
+    ];
+
     protected $fillable = [
         'doctor_user_id',
         'patient_user_id',
@@ -164,5 +168,12 @@ class Prescription extends Model
         }
 
         $this->changeStatus($targetStatus, null, 'auto_response_refresh');
+    }
+
+    public function getPrescriptionCodeAttribute(): string
+    {
+        $date = optional($this->requested_at ?? $this->created_at)->format('Ymd') ?? now()->format('Ymd');
+
+        return 'RX-' . $date . '-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);
     }
 }

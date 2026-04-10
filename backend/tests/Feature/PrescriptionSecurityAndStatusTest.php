@@ -450,4 +450,82 @@ class PrescriptionSecurityAndStatusTest extends TestCase
             'message' => 'GPS requis: veuillez renseigner latitude et longitude de la pharmacie avant de confirmer une disponibilite.',
         ]);
     }
+
+    public function test_prescriptions_index_is_protected_for_pharmacy_role(): void
+    {
+        $this->getJson('/api/prescriptions')->assertStatus(401);
+
+        $patient = User::factory()->create([
+            'role' => 'patient',
+            'verification_status' => 'approved',
+        ]);
+        Sanctum::actingAs($patient);
+
+        $this->getJson('/api/prescriptions')->assertStatus(403);
+    }
+
+    public function test_prescription_show_is_protected_for_pharmacy_role(): void
+    {
+        $doctor = User::factory()->create([
+            'role' => 'doctor',
+            'verification_status' => 'approved',
+            'license_verified' => true,
+        ]);
+        $patient = User::factory()->create([
+            'role' => 'patient',
+            'verification_status' => 'approved',
+        ]);
+
+        $prescription = Prescription::create([
+            'doctor_user_id' => $doctor->id,
+            'patient_user_id' => $patient->id,
+            'doctor_name' => $doctor->name,
+            'patient_name' => $patient->name,
+            'status' => 'sent_to_pharmacies',
+        ]);
+
+        $this->getJson("/api/prescriptions/{$prescription->id}")->assertStatus(401);
+
+        Sanctum::actingAs($patient);
+        $this->getJson("/api/prescriptions/{$prescription->id}")->assertStatus(403);
+    }
+
+    public function test_patient_cannot_access_prescription_by_name_only(): void
+    {
+        $sharedName = 'Patient Meme Nom';
+
+        $doctor = User::factory()->create([
+            'role' => 'doctor',
+            'verification_status' => 'approved',
+            'license_verified' => true,
+            'latitude' => '19.7590',
+            'longitude' => '-72.1981',
+        ]);
+        $realOwner = User::factory()->create([
+            'role' => 'patient',
+            'name' => $sharedName,
+            'verification_status' => 'approved',
+        ]);
+        $otherPatient = User::factory()->create([
+            'role' => 'patient',
+            'name' => $sharedName,
+            'verification_status' => 'approved',
+        ]);
+
+        $prescription = Prescription::create([
+            'doctor_user_id' => $doctor->id,
+            'patient_user_id' => null,
+            'doctor_name' => $doctor->name,
+            'patient_name' => $sharedName,
+            'status' => 'sent_to_pharmacies',
+        ]);
+
+        Sanctum::actingAs($otherPatient);
+        $this->patchJson("/api/patient/prescriptions/{$prescription->id}/complete")
+            ->assertStatus(403);
+
+        $this->getJson('/api/patient/prescriptions')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $prescription->id]);
+    }
 }

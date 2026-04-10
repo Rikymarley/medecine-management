@@ -20,7 +20,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, medkitOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -32,17 +32,17 @@ const PharmacyDoctorsDirectoryPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'tele'>('all');
 
-  const loadDoctors = async () => {
+  const loadDoctors = useCallback(async () => {
     if (!token) {
       await api.getDoctorsDirectory().then(setDoctors).catch(() => undefined);
       return;
     }
     await api.getDoctorsDirectoryForPharmacy(token).then(setDoctors).catch(() => undefined);
-  };
+  }, [token]);
 
   useEffect(() => {
     loadDoctors().catch(() => undefined);
-  }, [token]);
+  }, [loadDoctors]);
 
   useIonViewWillEnter(() => {
     loadDoctors().catch(() => undefined);

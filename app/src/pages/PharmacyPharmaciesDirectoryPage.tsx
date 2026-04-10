@@ -20,7 +20,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, storefrontOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -34,7 +34,7 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
     'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'
   >('all');
 
-  const loadPharmacies = async () => {
+  const loadPharmacies = useCallback(async () => {
     if (authLoading) {
       return;
     }
@@ -43,10 +43,10 @@ const PharmacyPharmaciesDirectoryPage: React.FC = () => {
       return;
     }
     await api.getPharmaciesForPharmacy(token).then(setPharmacies).catch(() => undefined);
-  };
+  }, [authLoading, token]);
   useEffect(() => {
     loadPharmacies().catch(() => undefined);
-  }, [token, authLoading]);
+  }, [loadPharmacies]);
   useIonViewWillEnter(() => {
     loadPharmacies().catch(() => undefined);
   });

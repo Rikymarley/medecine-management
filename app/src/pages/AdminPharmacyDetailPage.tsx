@@ -18,7 +18,7 @@ import {
   IonToolbar,
 } from '@ionic/react';
 import { businessOutline, callOutline, chevronDownOutline, chevronUpOutline, locateOutline } from 'ionicons/icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
@@ -38,7 +38,7 @@ const AdminPharmacyDetailPage: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [auditExpanded, setAuditExpanded] = useState(false);
 
-  const loadPharmacy = async () => {
+  const loadPharmacy = useCallback(async () => {
     if (!token) {
       setPharmacy(null);
       setLoading(false);
@@ -55,11 +55,11 @@ const AdminPharmacyDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pharmacyId, token]);
 
   useEffect(() => {
     void loadPharmacy();
-  }, [token, pharmacyId]);
+  }, [loadPharmacy]);
 
   const runAction = async (action: () => Promise<unknown>) => {
     try {

@@ -1,51 +1,8 @@
 import { Redirect, Route } from 'react-router-dom';
-import { IonApp, IonRouterOutlet, setupIonicReact } from '@ionic/react';
+import { IonApp, IonContent, IonPage, IonRouterOutlet, IonSpinner, setupIonicReact } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ClaimAccountPage from './pages/ClaimAccountPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import RecoveryApprovalPage from './pages/RecoveryApprovalPage';
-import PasswordRecoveryRequestPage from './pages/PasswordRecoveryRequestPage';
-import DoctorDashboard from './pages/DoctorDashboard';
-import DoctorCreatePrescriptionPage from './pages/DoctorCreatePrescriptionPage';
-import DoctorPrescriptionDetailPage from './pages/DoctorPrescriptionDetailPage';
-import DoctorPatientPrescriptionsPage from './pages/DoctorPatientPrescriptionsPage';
-import DoctorVisitFormPage from './pages/DoctorVisitFormPage';
-import PharmacyDashboard from './pages/PharmacyDashboard';
-import PharmacyPrescriptionsPage from './pages/PharmacyPrescriptionsPage';
-import PatientDashboard from './pages/PatientDashboard';
-import DoctorPatientsPage from './pages/DoctorPatientsPage';
-import DoctorPrescriptionsPage from './pages/DoctorPrescriptionsPage';
-import DoctorDoctorsDirectoryPage from './pages/DoctorDoctorsDirectoryPage';
-import DoctorDoctorDetailPage from './pages/DoctorDoctorDetailPage';
-import DoctorPharmaciesDirectoryPage from './pages/DoctorPharmaciesDirectoryPage';
-import DoctorPharmacyDetailPage from './pages/DoctorPharmacyDetailPage';
-import DoctorMedicalHistoryEntryPage from './pages/DoctorMedicalHistoryEntryPage';
-import DoctorVisitDetailPage from './pages/DoctorVisitDetailPage';
-import PharmacyDoctorsDirectoryPage from './pages/PharmacyDoctorsDirectoryPage';
-import PharmacyDoctorDetailPage from './pages/PharmacyDoctorDetailPage';
-import PharmacyPharmaciesDirectoryPage from './pages/PharmacyPharmaciesDirectoryPage';
-import PharmacyPharmacyDetailPage from './pages/PharmacyPharmacyDetailPage';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminDoctorsPage from './pages/AdminDoctorsPage';
-import AdminDoctorDetailPage from './pages/AdminDoctorDetailPage';
-import AdminPharmaciesPage from './pages/AdminPharmaciesPage';
-import AdminPharmacyDetailPage from './pages/AdminPharmacyDetailPage';
-import AdminPatientsPage from './pages/AdminPatientsPage';
-import AdminPatientDetailPage from './pages/AdminPatientDetailPage';
-import AdminPasswordResetLogsPage from './pages/AdminPasswordResetLogsPage';
-import PatientDoctorsPage from './pages/PatientDoctorsPage';
-import PatientPharmaciesPage from './pages/PatientPharmaciesPage';
-import PatientPharmacyDetailPage from './pages/PatientPharmacyDetailPage';
-import PatientDoctorPrescriptionsPage from './pages/PatientDoctorPrescriptionsPage';
-import PatientPrescriptionsPage from './pages/PatientPrescriptionsPage';
-import PatientPrescriptionDetailPage from './pages/PatientPrescriptionDetailPage';
-import PatientEmergencyContactsPage from './pages/PatientEmergencyContactsPage';
-import PatientFamilyMembersPage from './pages/PatientFamilyMembersPage';
-import PatientFamilyMemberDetailPage from './pages/PatientFamilyMemberDetailPage';
-import PatientMedicalHistoryPage from './pages/PatientMedicalHistoryPage';
-import VerificationPending from './pages/VerificationPending';
+import { lazy, Suspense, useEffect } from 'react';
+import { beaker, businessOutline, personCircleOutline } from 'ionicons/icons';
 import { AuthProvider, useAuth } from './state/AuthState';
 
 /* Core CSS required for Ionic components to work properly */
@@ -80,9 +37,74 @@ import './theme/variables.css';
 
 setupIonicReact();
 
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ClaimAccountPage = lazy(() => import('./pages/ClaimAccountPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const RecoveryApprovalPage = lazy(() => import('./pages/RecoveryApprovalPage'));
+const PasswordRecoveryRequestPage = lazy(() => import('./pages/PasswordRecoveryRequestPage'));
+const DoctorDashboard = lazy(() => import('./pages/DoctorDashboard'));
+const DoctorCreatePrescriptionPage = lazy(() => import('./pages/DoctorCreatePrescriptionPage'));
+const DoctorPrescriptionDetailPage = lazy(() => import('./pages/DoctorPrescriptionDetailPage'));
+const DoctorPatientPrescriptionsPage = lazy(() => import('./pages/DoctorPatientPrescriptionsPage'));
+const DoctorVisitFormPage = lazy(() => import('./pages/DoctorVisitFormPage'));
+const DoctorMyVisitsPage = lazy(() => import('./pages/DoctorMyVisitsPage'));
+const DoctorMyAppointmentsPage = lazy(() => import('./pages/DoctorMyAppointmentsPage'));
+const PharmacyDashboard = lazy(() => import('./pages/PharmacyDashboard'));
+const PharmacyPrescriptionsPage = lazy(() => import('./pages/PharmacyPrescriptionsPage'));
+const PatientDashboard = lazy(() => import('./pages/PatientDashboard'));
+const DoctorPatientsPage = lazy(() => import('./pages/DoctorPatientsPage'));
+const DoctorPrescriptionsPage = lazy(() => import('./pages/DoctorPrescriptionsPage'));
+const DoctorDoctorsDirectoryPage = lazy(() => import('./pages/DoctorDoctorsDirectoryPage'));
+const DoctorDoctorDetailPage = lazy(() => import('./pages/DoctorDoctorDetailPage'));
+const DoctorSecretariesPage = lazy(() => import('./pages/DoctorSecretariesPage'));
+const DoctorLaboratoriesDirectoryPage = lazy(() => import('./pages/DoctorLaboratoriesDirectoryPage'));
+const DoctorHospitalsDirectoryPage = lazy(() => import('./pages/DoctorHospitalsDirectoryPage'));
+const DoctorPharmaciesDirectoryPage = lazy(() => import('./pages/DoctorPharmaciesDirectoryPage'));
+const DoctorPharmacyDetailPage = lazy(() => import('./pages/DoctorPharmacyDetailPage'));
+const DoctorMedicalHistoryEntryPage = lazy(() => import('./pages/DoctorMedicalHistoryEntryPage'));
+const DoctorVisitDetailPage = lazy(() => import('./pages/DoctorVisitDetailPage'));
+const PharmacyDoctorsDirectoryPage = lazy(() => import('./pages/PharmacyDoctorsDirectoryPage'));
+const PharmacyDoctorDetailPage = lazy(() => import('./pages/PharmacyDoctorDetailPage'));
+const PharmacyLaboratoriesDirectoryPage = lazy(() => import('./pages/PharmacyLaboratoriesDirectoryPage'));
+const PharmacyHospitalsDirectoryPage = lazy(() => import('./pages/PharmacyHospitalsDirectoryPage'));
+const PharmacyPharmaciesDirectoryPage = lazy(() => import('./pages/PharmacyPharmaciesDirectoryPage'));
+const PharmacyPharmacyDetailPage = lazy(() => import('./pages/PharmacyPharmacyDetailPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminDoctorsPage = lazy(() => import('./pages/AdminDoctorsPage'));
+const AdminDoctorDetailPage = lazy(() => import('./pages/AdminDoctorDetailPage'));
+const AdminHospitalsPage = lazy(() => import('./pages/AdminHospitalsPage'));
+const AdminLaboratoriesPage = lazy(() => import('./pages/AdminLaboratoriesPage'));
+const AdminPharmaciesPage = lazy(() => import('./pages/AdminPharmaciesPage'));
+const AdminPharmacyDetailPage = lazy(() => import('./pages/AdminPharmacyDetailPage'));
+const AdminPatientsPage = lazy(() => import('./pages/AdminPatientsPage'));
+const AdminPatientDetailPage = lazy(() => import('./pages/AdminPatientDetailPage'));
+const AdminPasswordResetLogsPage = lazy(() => import('./pages/AdminPasswordResetLogsPage'));
+const AdminRoleAccountsPage = lazy(() => import('./pages/AdminRoleAccountsPage'));
+const PatientDoctorsPage = lazy(() => import('./pages/PatientDoctorsPage'));
+const PatientHospitalsPage = lazy(() => import('./pages/PatientHospitalsPage'));
+const PatientLaboratoriesPage = lazy(() => import('./pages/PatientLaboratoriesPage'));
+const PatientPharmaciesPage = lazy(() => import('./pages/PatientPharmaciesPage'));
+const PatientPharmacyDetailPage = lazy(() => import('./pages/PatientPharmacyDetailPage'));
+const PatientDoctorPrescriptionsPage = lazy(() => import('./pages/PatientDoctorPrescriptionsPage'));
+const PatientMedicationsPage = lazy(() => import('./pages/PatientMedicationsPage'));
+const PatientVisitsPage = lazy(() => import('./pages/PatientVisitsPage'));
+const PatientAppointmentsPage = lazy(() => import('./pages/PatientAppointmentsPage'));
+const PatientPrescriptionsPage = lazy(() => import('./pages/PatientPrescriptionsPage'));
+const PatientPrescriptionDetailPage = lazy(() => import('./pages/PatientPrescriptionDetailPage'));
+const PatientEmergencyContactsPage = lazy(() => import('./pages/PatientEmergencyContactsPage'));
+const PatientFamilyMembersPage = lazy(() => import('./pages/PatientFamilyMembersPage'));
+const PatientFamilyMemberDetailPage = lazy(() => import('./pages/PatientFamilyMemberDetailPage'));
+const PatientMedicalHistoryPage = lazy(() => import('./pages/PatientMedicalHistoryPage'));
+const PatientAccessRequestsPage = lazy(() => import('./pages/PatientAccessRequestsPage'));
+const VerificationPending = lazy(() => import('./pages/VerificationPending'));
+const HospitalDashboard = lazy(() => import('./pages/HospitalDashboard'));
+const LaboratoryDashboard = lazy(() => import('./pages/LaboratoryDashboard'));
+const SecretaryDashboard = lazy(() => import('./pages/SecretaryDashboard'));
+
 const isBlockedPendingUser = (
   user: ReturnType<typeof useAuth>['user']
-) => !!user && ['doctor', 'pharmacy'].includes(user.role) && user.verification_status !== 'approved';
+) => !!user && ['doctor', 'pharmacy', 'hopital', 'laboratoire', 'secretaire'].includes(user.role) && user.verification_status !== 'approved';
 
 const RoleRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -123,14 +145,113 @@ const RequireAuth: React.FC<{ children: React.ReactElement }> = ({ children }) =
   return children;
 };
 
+const RoutePreloader: React.FC = () => {
+  useEffect(() => {
+    const preload = () => {
+      void Promise.allSettled([
+        import('./pages/DoctorDashboard'),
+        import('./pages/DoctorCreatePrescriptionPage'),
+        import('./pages/DoctorPatientsPage'),
+        import('./pages/DoctorPatientPrescriptionsPage'),
+        import('./pages/DoctorVisitFormPage'),
+        import('./pages/DoctorMyVisitsPage'),
+        import('./pages/DoctorMyAppointmentsPage'),
+        import('./pages/DoctorVisitDetailPage'),
+        import('./pages/DoctorPrescriptionsPage'),
+        import('./pages/DoctorPrescriptionDetailPage'),
+        import('./pages/DoctorDoctorsDirectoryPage'),
+        import('./pages/DoctorDoctorDetailPage'),
+        import('./pages/DoctorLaboratoriesDirectoryPage'),
+        import('./pages/DoctorHospitalsDirectoryPage'),
+        import('./pages/DoctorPharmaciesDirectoryPage'),
+        import('./pages/DoctorPharmacyDetailPage'),
+        import('./pages/DoctorMedicalHistoryEntryPage'),
+        import('./pages/DoctorSecretariesPage'),
+        import('./pages/PharmacyDashboard'),
+        import('./pages/PatientPrescriptionsPage'),
+        import('./pages/PharmacyPrescriptionsPage'),
+        import('./pages/PharmacyDoctorsDirectoryPage'),
+        import('./pages/PharmacyDoctorDetailPage'),
+        import('./pages/PharmacyLaboratoriesDirectoryPage'),
+        import('./pages/PharmacyHospitalsDirectoryPage'),
+        import('./pages/PharmacyPharmaciesDirectoryPage'),
+        import('./pages/PharmacyPharmacyDetailPage'),
+        import('./pages/PatientDashboard'),
+        import('./pages/PatientDoctorsPage'),
+        import('./pages/PatientHospitalsPage'),
+        import('./pages/PatientLaboratoriesPage'),
+        import('./pages/PatientPharmaciesPage'),
+        import('./pages/PatientPharmacyDetailPage'),
+        import('./pages/PatientDoctorPrescriptionsPage'),
+        import('./pages/PatientMedicationsPage'),
+        import('./pages/PatientVisitsPage'),
+        import('./pages/PatientAppointmentsPage'),
+        import('./pages/PatientPrescriptionDetailPage'),
+        import('./pages/PatientEmergencyContactsPage'),
+        import('./pages/PatientFamilyMembersPage'),
+        import('./pages/PatientFamilyMemberDetailPage'),
+        import('./pages/PatientMedicalHistoryPage'),
+        import('./pages/PatientAccessRequestsPage'),
+        import('./pages/AdminDashboard'),
+        import('./pages/AdminDoctorsPage'),
+        import('./pages/AdminDoctorDetailPage'),
+        import('./pages/AdminHospitalsPage'),
+        import('./pages/AdminLaboratoriesPage'),
+        import('./pages/AdminPharmaciesPage'),
+        import('./pages/AdminPharmacyDetailPage'),
+        import('./pages/AdminPatientsPage'),
+        import('./pages/AdminPatientDetailPage'),
+        import('./pages/AdminPasswordResetLogsPage'),
+        import('./pages/AdminRoleAccountsPage'),
+        import('./pages/HospitalDashboard'),
+        import('./pages/LaboratoryDashboard'),
+        import('./pages/SecretaryDashboard'),
+      ]);
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as Window & { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(preload);
+      return;
+    }
+
+    const timeout = globalThis.setTimeout(preload, 300);
+    return () => globalThis.clearTimeout(timeout);
+  }, []);
+
+  return null;
+};
+
 const App: React.FC = () => (
   <IonApp>
     <AuthProvider>
       <IonReactRouter>
-        <IonRouterOutlet>
-          <Route exact path="/login">
-            <Login />
-          </Route>
+        <RoutePreloader />
+        <Suspense
+          fallback={(
+            <IonPage>
+              <IonContent
+                style={{
+                  '--background': 'var(--ion-background-color)',
+                }}
+              >
+                <div
+                  style={{
+                    minHeight: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <IonSpinner name="crescent" />
+                </div>
+              </IonContent>
+            </IonPage>
+          )}
+        >
+          <IonRouterOutlet animated={false}>
+            <Route exact path="/login">
+              <Login />
+            </Route>
           <Route exact path="/register">
             <Register />
           </Route>
@@ -176,7 +297,17 @@ const App: React.FC = () => (
               <DoctorVisitFormPage />
             </RequireRole>
           </Route>
-          <Route exact path="/doctor/visits/:visitId(\\d+)">
+          <Route exact path="/doctor/mes-visites">
+            <RequireRole role="doctor">
+              <DoctorMyVisitsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/mes-rendez-vous">
+            <RequireRole role="doctor">
+              <DoctorMyAppointmentsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/visits/:visitId">
             <RequireRole role="doctor">
               <DoctorVisitDetailPage />
             </RequireRole>
@@ -201,9 +332,24 @@ const App: React.FC = () => (
               <DoctorDoctorDetailPage />
             </RequireRole>
           </Route>
+          <Route exact path="/doctor/secretaires">
+            <RequireRole role="doctor">
+              <DoctorSecretariesPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/doctor/pharmacies">
             <RequireRole role="doctor">
               <DoctorPharmaciesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/laboratoires">
+            <RequireRole role="doctor">
+              <DoctorLaboratoriesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/hopitaux">
+            <RequireRole role="doctor">
+              <DoctorHospitalsDirectoryPage />
             </RequireRole>
           </Route>
           <Route exact path="/doctor/pharmacies/:pharmacyId">
@@ -241,6 +387,16 @@ const App: React.FC = () => (
               <PharmacyPharmaciesDirectoryPage />
             </RequireRole>
           </Route>
+          <Route exact path="/pharmacy/laboratoires">
+            <RequireRole role="pharmacy">
+              <PharmacyLaboratoriesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/pharmacy/hopitaux">
+            <RequireRole role="pharmacy">
+              <PharmacyHospitalsDirectoryPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/pharmacy/pharmacies/:pharmacyId">
             <RequireRole role="pharmacy">
               <PharmacyPharmacyDetailPage />
@@ -266,6 +422,16 @@ const App: React.FC = () => (
               <AdminPharmaciesPage />
             </RequireRole>
           </Route>
+          <Route exact path="/admin/hopitaux">
+            <RequireRole role="admin">
+              <AdminHospitalsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/laboratoires">
+            <RequireRole role="admin">
+              <AdminLaboratoriesPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/admin/pharmacies/:pharmacyId">
             <RequireRole role="admin">
               <AdminPharmacyDetailPage />
@@ -286,6 +452,21 @@ const App: React.FC = () => (
               <AdminPasswordResetLogsPage />
             </RequireRole>
           </Route>
+          <Route exact path="/admin/comptes-hopitaux">
+            <RequireRole role="admin">
+              <AdminRoleAccountsPage role="hopital" title="Comptes hopitaux" icon={businessOutline} />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/comptes-laboratoires">
+            <RequireRole role="admin">
+              <AdminRoleAccountsPage role="laboratoire" title="Comptes laboratoires" icon={beaker} />
+            </RequireRole>
+          </Route>
+          <Route exact path="/admin/comptes-secretaires">
+            <RequireRole role="admin">
+              <AdminRoleAccountsPage role="secretaire" title="Comptes secretaires" icon={personCircleOutline} />
+            </RequireRole>
+          </Route>
           <Route exact path="/patient">
             <RequireRole role="patient">
               <PatientDashboard />
@@ -301,6 +482,16 @@ const App: React.FC = () => (
               <PatientPharmaciesPage />
             </RequireRole>
           </Route>
+          <Route exact path="/patient/laboratoires">
+            <RequireRole role="patient">
+              <PatientLaboratoriesPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/hopitaux">
+            <RequireRole role="patient">
+              <PatientHospitalsPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/patient/pharmacies/:pharmacyId">
             <RequireRole role="patient">
               <PatientPharmacyDetailPage />
@@ -314,6 +505,21 @@ const App: React.FC = () => (
           <Route exact path="/patient/prescriptions">
             <RequireRole role="patient">
               <PatientPrescriptionsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/medicaments">
+            <RequireRole role="patient">
+              <PatientMedicationsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/visites">
+            <RequireRole role="patient">
+              <PatientVisitsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/patient/rendez-vous">
+            <RequireRole role="patient">
+              <PatientAppointmentsPage />
             </RequireRole>
           </Route>
           <Route exact path="/patient/prescriptions/:id">
@@ -341,10 +547,31 @@ const App: React.FC = () => (
               <PatientMedicalHistoryPage />
             </RequireRole>
           </Route>
-          <Route exact path="/">
-            <RoleRedirect />
+          <Route exact path="/patient/access-requests">
+            <RequireRole role="patient">
+              <PatientAccessRequestsPage />
+            </RequireRole>
           </Route>
-        </IonRouterOutlet>
+          <Route exact path="/hopital">
+            <RequireRole role="hopital">
+              <HospitalDashboard />
+            </RequireRole>
+          </Route>
+          <Route exact path="/laboratoire">
+            <RequireRole role="laboratoire">
+              <LaboratoryDashboard />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire">
+            <RequireRole role="secretaire">
+              <SecretaryDashboard />
+            </RequireRole>
+          </Route>
+            <Route exact path="/">
+              <RoleRedirect />
+            </Route>
+          </IonRouterOutlet>
+        </Suspense>
       </IonReactRouter>
     </AuthProvider>
   </IonApp>

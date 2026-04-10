@@ -21,22 +21,29 @@ import {
   useIonRouter
 } from '@ionic/react';
 import {
+  addCircleOutline,
+  alarmOutline,
+  beaker,
+  businessOutline,
+  calendarOutline,
   callOutline,
   chevronDownOutline,
   chevronUpOutline,
   createOutline,
   documentAttachOutline,
   documentTextOutline,
+  folderOutline,
   medkitOutline,
   peopleOutline,
   personCircleOutline,
   pulseOutline,
+  walkOutline,
   shieldCheckmarkOutline,
   storefrontOutline
 } from 'ionicons/icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api } from '../services/api';
+import { api, ApiUser } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
 import { getPasswordStrength } from '../utils/passwordStrength';
@@ -84,12 +91,42 @@ const PatientDashboard: React.FC = () => {
   const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
 
-  const normalizeText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
-  const normalizeDate = (value: unknown) => {
+  const normalizeText = useCallback((value: unknown) => (value === null || value === undefined ? '' : String(value)), []);
+  const normalizeDate = useCallback((value: unknown) => {
     const raw = normalizeText(value).trim();
     if (!raw) return '';
     return raw.includes('T') ? raw.split('T')[0] : raw;
-  };
+  }, [normalizeText]);
+
+  const applyProfile = useCallback((profile: Partial<ApiUser> | null | undefined) => {
+    if (!profile) {
+      return;
+    }
+    setName(normalizeText(profile.name));
+    setPhone(maskHaitiPhone(normalizeText(profile.phone)));
+    setNinu(normalizeText(profile.ninu));
+    setWhatsapp(maskHaitiPhone(normalizeText(profile.whatsapp)));
+    setRecoveryWhatsapp(maskHaitiPhone(normalizeText(profile.recovery_whatsapp)));
+    setAddress(normalizeText(profile.address));
+    setDateOfBirth(normalizeDate(profile.date_of_birth));
+    setGender((profile.gender as '' | 'male' | 'female' | null) ?? '');
+    setAllergies(normalizeText(profile.allergies));
+    setChronicDiseases(normalizeText(profile.chronic_diseases));
+    setBloodType((profile.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
+    setEmergencyNotes(normalizeText(profile.emergency_notes));
+    setWeightKg(profile.weight_kg === null || profile.weight_kg === undefined ? '' : String(profile.weight_kg));
+    setHeightCm(profile.height_cm === null || profile.height_cm === undefined ? '' : String(profile.height_cm));
+    setSurgicalHistory(normalizeText(profile.surgical_history));
+    setVaccinationUpToDate(
+      profile.vaccination_up_to_date === null || profile.vaccination_up_to_date === undefined
+        ? ''
+        : profile.vaccination_up_to_date
+        ? 'yes'
+        : 'no'
+    );
+    setProfilePhotoUrl(normalizeText(profile.profile_photo_url));
+    setIdDocumentUrl(normalizeText(profile.id_document_url));
+  }, [normalizeDate, normalizeText]);
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -120,61 +157,15 @@ const PatientDashboard: React.FC = () => {
         if (profileCacheKey) {
           localStorage.setItem(profileCacheKey, JSON.stringify(me));
         }
-        setName(normalizeText(me.name));
-        setPhone(maskHaitiPhone(normalizeText(me.phone)));
-        setNinu(normalizeText(me.ninu));
-        setWhatsapp(maskHaitiPhone(normalizeText(me.whatsapp)));
-        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((me as any).recovery_whatsapp)));
-        setAddress(normalizeText(me.address));
-        setDateOfBirth(normalizeDate(me.date_of_birth));
-        setGender((me.gender as '' | 'male' | 'female' | null) ?? '');
-        setAllergies(normalizeText(me.allergies));
-        setChronicDiseases(normalizeText(me.chronic_diseases));
-        setBloodType((me.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
-        setEmergencyNotes(normalizeText(me.emergency_notes));
-        setWeightKg(me.weight_kg === null || me.weight_kg === undefined ? '' : String(me.weight_kg));
-        setHeightCm(me.height_cm === null || me.height_cm === undefined ? '' : String(me.height_cm));
-        setSurgicalHistory(normalizeText(me.surgical_history));
-        setVaccinationUpToDate(
-          me.vaccination_up_to_date === null || me.vaccination_up_to_date === undefined
-            ? ''
-            : me.vaccination_up_to_date
-            ? 'yes'
-            : 'no'
-        );
-        setProfilePhotoUrl(normalizeText((me as any).profile_photo_url));
-        setIdDocumentUrl(normalizeText((me as any).id_document_url));
+        applyProfile(me);
       })
       .catch(() => {
         if (profileCacheKey) {
           const cached = localStorage.getItem(profileCacheKey);
           if (cached) {
             try {
-              const me = JSON.parse(cached) as typeof user;
-              setName(normalizeText(me?.name));
-              setPhone(maskHaitiPhone(normalizeText(me?.phone)));
-              setNinu(normalizeText((me as any)?.ninu));
-              setWhatsapp(maskHaitiPhone(normalizeText((me as any)?.whatsapp)));
-              setRecoveryWhatsapp(maskHaitiPhone(normalizeText((me as any)?.recovery_whatsapp)));
-              setAddress(normalizeText((me as any)?.address));
-              setDateOfBirth(normalizeDate((me as any)?.date_of_birth));
-              setGender(((me as any)?.gender as '' | 'male' | 'female' | null) ?? '');
-              setAllergies(normalizeText((me as any)?.allergies));
-              setChronicDiseases(normalizeText((me as any)?.chronic_diseases));
-              setBloodType(((me as any)?.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
-              setEmergencyNotes(normalizeText((me as any)?.emergency_notes));
-              setWeightKg((me as any)?.weight_kg === null || (me as any)?.weight_kg === undefined ? '' : String((me as any)?.weight_kg));
-              setHeightCm((me as any)?.height_cm === null || (me as any)?.height_cm === undefined ? '' : String((me as any)?.height_cm));
-              setSurgicalHistory(normalizeText((me as any)?.surgical_history));
-              setVaccinationUpToDate(
-                (me as any)?.vaccination_up_to_date === null || (me as any)?.vaccination_up_to_date === undefined
-                  ? ''
-                  : (me as any)?.vaccination_up_to_date
-                  ? 'yes'
-                  : 'no'
-              );
-              setProfilePhotoUrl(normalizeText((me as any)?.profile_photo_url));
-              setIdDocumentUrl(normalizeText((me as any)?.id_document_url));
+              const me = JSON.parse(cached) as ApiUser;
+              applyProfile(me);
               setMessage('Hors ligne: profil local charge.');
               return;
             } catch {
@@ -182,34 +173,13 @@ const PatientDashboard: React.FC = () => {
             }
           }
         }
-        setName(normalizeText(user?.name));
-        setPhone(maskHaitiPhone(normalizeText(user?.phone)));
-        setNinu(normalizeText(user?.ninu));
-        setWhatsapp(maskHaitiPhone(normalizeText(user?.whatsapp)));
-        setRecoveryWhatsapp(maskHaitiPhone(normalizeText((user as any)?.recovery_whatsapp)));
-        setAddress(normalizeText(user?.address));
-        setDateOfBirth(normalizeDate(user?.date_of_birth));
-        setGender((user?.gender as '' | 'male' | 'female' | null) ?? '');
-        setAllergies(normalizeText(user?.allergies));
-        setChronicDiseases(normalizeText(user?.chronic_diseases));
-        setBloodType((user?.blood_type as '' | 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-' | null) ?? '');
-        setEmergencyNotes(normalizeText(user?.emergency_notes));
-        setWeightKg(user?.weight_kg === null || user?.weight_kg === undefined ? '' : String(user?.weight_kg));
-        setHeightCm(user?.height_cm === null || user?.height_cm === undefined ? '' : String(user?.height_cm));
-        setSurgicalHistory(normalizeText(user?.surgical_history));
-        setVaccinationUpToDate(
-          user?.vaccination_up_to_date === null || user?.vaccination_up_to_date === undefined
-            ? ''
-            : user?.vaccination_up_to_date
-            ? 'yes'
-            : 'no'
-        );
-        setProfilePhotoUrl(normalizeText((user as any)?.profile_photo_url));
-        setIdDocumentUrl(normalizeText((user as any)?.id_document_url));
+        applyProfile(user);
       });
   }, [
+    applyProfile,
     profileCacheKey,
     token,
+    user,
     user?.address,
     user?.allergies,
     user?.blood_type,
@@ -225,8 +195,9 @@ const PatientDashboard: React.FC = () => {
     user?.vaccination_up_to_date,
     user?.weight_kg,
     user?.whatsapp,
-    (user as any)?.recovery_whatsapp,
-    (user as any)?.profile_photo_url
+    user?.recovery_whatsapp,
+    user?.profile_photo_url,
+    user?.id_document_url
   ]);
 
   const profileMissingFields = useMemo(() => {
@@ -323,7 +294,7 @@ const PatientDashboard: React.FC = () => {
     setMessage(null);
     try {
       const updated = await api.uploadMyPatientProfilePhoto(token, file);
-      setProfilePhotoUrl(normalizeText((updated as any).profile_photo_url));
+      setProfilePhotoUrl(normalizeText(updated.profile_photo_url));
       if (profileCacheKey) {
         localStorage.setItem(profileCacheKey, JSON.stringify(updated));
       }
@@ -348,7 +319,7 @@ const PatientDashboard: React.FC = () => {
     setMessage(null);
     try {
       const updated = await api.uploadMyPatientIdDocument(token, file);
-      setIdDocumentUrl(normalizeText((updated as any).id_document_url));
+      setIdDocumentUrl(normalizeText(updated.id_document_url));
       if (profileCacheKey) {
         localStorage.setItem(profileCacheKey, JSON.stringify(updated));
       }
@@ -373,7 +344,7 @@ const PatientDashboard: React.FC = () => {
     setMessage(null);
     try {
       const updated = await api.removeMyPatientIdDocument(token);
-      setIdDocumentUrl(normalizeText((updated as any).id_document_url));
+      setIdDocumentUrl(normalizeText(updated.id_document_url));
       if (profileCacheKey) {
         localStorage.setItem(profileCacheKey, JSON.stringify(updated));
       }
@@ -864,7 +835,7 @@ const PatientDashboard: React.FC = () => {
             onClick={() => ionRouter.push('/patient/doctors', 'forward', 'push')}
           >
             <IonCardContent>
-              <div className="quick-icon quick-icon-green">
+              <div className="quick-icon quick-icon-blue">
                 <IonIcon icon={medkitOutline} />
               </div>
               <h3>Medecins</h3>
@@ -875,14 +846,56 @@ const PatientDashboard: React.FC = () => {
             button
             className="surface-card"
             style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/access-requests', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-gold">
+                <IonIcon icon={shieldCheckmarkOutline} />
+              </div>
+              <h3>Demandes d'acces</h3>
+              <p className="muted-note">Approuver ou refuser l'acces medecin.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
             onClick={() => ionRouter.push('/patient/pharmacies', 'forward', 'push')}
           >
             <IonCardContent>
-              <div className="quick-icon quick-icon-blue">
+              <div className="quick-icon quick-icon-green">
                 <IonIcon icon={storefrontOutline} />
               </div>
               <h3>Pharmacies</h3>
               <p className="muted-note">Voir les pharmacies proches.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/laboratoires', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={beaker} />
+              </div>
+              <h3>Laboratoires</h3>
+              <p className="muted-note">Voir les laboratoires disponibles.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/hopitaux', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-red">
+                <IonIcon icon={businessOutline} />
+              </div>
+              <h3>Hopitaux</h3>
+              <p className="muted-note">Voir les hopitaux disponibles.</p>
             </IonCardContent>
           </IonCard>
           <IonCard
@@ -903,10 +916,24 @@ const PatientDashboard: React.FC = () => {
             button
             className="surface-card"
             style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/medicaments', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-green">
+                <IonIcon icon={addCircleOutline} />
+              </div>
+              <h3>Mes medicaments</h3>
+              <p className="muted-note">Suivre vos medicaments.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
             onClick={() => ionRouter.push('/patient/emergency-contacts', 'forward', 'push')}
           >
             <IonCardContent>
-              <div className="quick-icon quick-icon-blue">
+              <div className="quick-icon quick-icon-red">
                 <IonIcon icon={callOutline} />
               </div>
               <h3>Urgence</h3>
@@ -920,11 +947,67 @@ const PatientDashboard: React.FC = () => {
             onClick={() => ionRouter.push('/patient/medical-history', 'forward', 'push')}
           >
             <IonCardContent>
-              <div className="quick-icon quick-icon-gold">
-                <IonIcon icon={pulseOutline} />
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={folderOutline} />
               </div>
               <h3>Historique</h3>
               <p className="muted-note">Gerer votre historique medical.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => setMessage('Module rappel medicament bientot disponible.')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-gold">
+                <IonIcon icon={alarmOutline} />
+              </div>
+              <h3>Rappel medicament</h3>
+              <p className="muted-note">Programmer vos rappels de prise.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => setMessage('Module Signes vitaux bientot disponible.')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-red">
+                <IonIcon icon={pulseOutline} />
+              </div>
+              <h3>Signes vitaux</h3>
+              <p className="muted-note">Suivre vos signes vitaux.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/visites', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-purple">
+                <IonIcon icon={walkOutline} />
+              </div>
+              <h3>Mes visites</h3>
+              <p className="muted-note">Voir l'historique de vos visites medicales.</p>
+            </IonCardContent>
+          </IonCard>
+          <IonCard
+            button
+            className="surface-card"
+            style={{ margin: 0 }}
+            onClick={() => ionRouter.push('/patient/rendez-vous', 'forward', 'push')}
+          >
+            <IonCardContent>
+              <div className="quick-icon quick-icon-blue">
+                <IonIcon icon={calendarOutline} />
+              </div>
+              <h3>Mes rendez-vous</h3>
+              <p className="muted-note">Suivre vos rendez-vous a venir.</p>
             </IonCardContent>
           </IonCard>
           <IonCard

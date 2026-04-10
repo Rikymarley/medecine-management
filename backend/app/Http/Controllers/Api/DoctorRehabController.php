@@ -7,25 +7,15 @@ use App\Models\MedicalHistoryEntry;
 use App\Models\Prescription;
 use App\Models\RehabEntry;
 use App\Models\User;
+use App\Models\Visit;
+use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Http\Request;
 
 class DoctorRehabController extends Controller
 {
     private function doctorHasPatientLink(int $doctorUserId, int $patientUserId): bool
     {
-        $ownsPatient = User::query()
-            ->where('id', $patientUserId)
-            ->where('role', 'patient')
-            ->where('created_by_doctor_id', $doctorUserId)
-            ->exists();
-        if ($ownsPatient) {
-            return true;
-        }
-
-        return Prescription::query()
-            ->where('doctor_user_id', $doctorUserId)
-            ->where('patient_user_id', $patientUserId)
-            ->exists();
+        return DoctorPatientAccessEvaluator::hasLink($doctorUserId, $patientUserId);
     }
 
     private function validatePayload(Request $request): array
@@ -33,6 +23,7 @@ class DoctorRehabController extends Controller
         return $request->validate([
             'medical_history_entry_id' => ['nullable', 'integer', 'exists:medical_history_entries,id'],
             'prescription_id' => ['nullable', 'integer', 'exists:prescriptions,id'],
+            'visit_id' => ['nullable', 'integer', 'exists:visits,id'],
             'sessions_per_week' => ['nullable', 'integer', 'min:1', 'max:14'],
             'duration_weeks' => ['nullable', 'integer', 'min:1', 'max:104'],
             'goals' => ['nullable', 'string', 'max:2000'],
@@ -78,10 +69,24 @@ class DoctorRehabController extends Controller
             ->exists();
     }
 
+    private function ensureVisitLinkForDoctor(?int $visitId, int $doctorId, int $patientId): bool
+    {
+        if (!$visitId) {
+            return true;
+        }
+
+        return Visit::query()
+            ->where('id', $visitId)
+            ->where('doctor_user_id', $doctorId)
+            ->where('patient_user_id', $patientId)
+            ->exists();
+    }
+
     private function formatRow(RehabEntry $entry): array
     {
         return [
             ...$entry->toArray(),
+            'reference' => $entry->reference,
             'doctor_name' => $entry->doctor?->name,
             'prescription_print_code' => $entry->prescription?->print_code,
             'prescription_requested_at' => optional($entry->prescription?->requested_at)->toIso8601String(),
@@ -126,6 +131,9 @@ class DoctorRehabController extends Controller
         if (!$this->ensureMedicalHistoryLinkForDoctor($data['medical_history_entry_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Historique medical invalide pour ce patient.'], 422);
         }
+        if (!$this->ensureVisitLinkForDoctor($data['visit_id'] ?? null, $doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
+        }
 
         $row = RehabEntry::create([
             ...$data,
@@ -156,6 +164,9 @@ class DoctorRehabController extends Controller
         }
         if (!$this->ensureMedicalHistoryLinkForDoctor($data['medical_history_entry_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Historique medical invalide pour ce patient.'], 422);
+        }
+        if (!$this->ensureVisitLinkForDoctor($data['visit_id'] ?? null, $doctor->id, $patient->id)) {
+            return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
 
         $entry->update($data);

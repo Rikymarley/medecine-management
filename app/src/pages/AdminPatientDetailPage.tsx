@@ -18,7 +18,7 @@ import {
   IonToolbar,
 } from '@ionic/react';
 import { chevronDownOutline, chevronUpOutline, documentTextOutline, personOutline } from 'ionicons/icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiUser } from '../services/api';
@@ -41,7 +41,7 @@ const AdminPatientDetailPage: React.FC = () => {
   const [isAuditCollapsed, setIsAuditCollapsed] = useState(false);
   const isIdDocumentImage = !!patient?.id_document_url && /\.(jpg|jpeg|png|webp)$/i.test(patient.id_document_url);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!token) return;
     try {
       setError(null);
@@ -53,11 +53,11 @@ const AdminPatientDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, token]);
 
   useEffect(() => {
     load().catch(() => undefined);
-  }, [token, patientId]);
+  }, [load]);
 
   const runAction = async (fn: () => Promise<unknown>) => {
     try {

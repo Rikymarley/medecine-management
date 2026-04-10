@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class RehabEntry extends Model
 {
     protected $fillable = [
+        'reference',
         'patient_user_id',
         'doctor_user_id',
         'medical_history_entry_id',
@@ -31,6 +32,20 @@ class RehabEntry extends Model
         'pain_score' => 'integer',
         'follow_up_date' => 'date',
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (RehabEntry $entry): void {
+            if (!empty($entry->reference)) {
+                return;
+            }
+
+            $date = optional($entry->created_at)->format('Ymd') ?? now()->format('Ymd');
+            $entry->forceFill([
+                'reference' => 'REH-' . $date . '-' . str_pad((string) $entry->id, 6, '0', STR_PAD_LEFT),
+            ])->saveQuietly();
+        });
+    }
 
     public function doctor()
     {

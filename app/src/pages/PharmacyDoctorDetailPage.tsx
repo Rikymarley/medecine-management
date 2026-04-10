@@ -1,7 +1,6 @@
 import {
   IonBackButton,
   IonBadge,
-  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,

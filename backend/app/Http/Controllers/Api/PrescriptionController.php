@@ -7,6 +7,9 @@ use App\Models\FamilyMember;
 use App\Models\PharmacyResponse;
 use App\Models\Prescription;
 use App\Models\User;
+use App\Models\Visit;
+use App\Services\DoctorPatientAccessEvaluator;
+use App\Services\PrescriptionAccessEvaluator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -70,13 +73,10 @@ class PrescriptionController extends Controller
         return $missing;
     }
 
-    private function generatePrintCode(): string
+    private function generatePrintCode(Prescription $prescription): string
     {
-        do {
-            $code = strtoupper(Str::random(10));
-        } while (Prescription::query()->where('print_code', $code)->exists());
-
-        return $code;
+        $date = optional($prescription->requested_at ?? $prescription->created_at)->format('Ymd') ?? now()->format('Ymd');
+        return 'RX-' . $date . '-' . str_pad((string) $prescription->id, 6, '0', STR_PAD_LEFT);
     }
 
     private function ensurePrintArtifacts(Prescription $prescription): void
@@ -86,7 +86,7 @@ class PrescriptionController extends Controller
             $updates['qr_token'] = Str::random(64);
         }
         if (empty($prescription->print_code)) {
-            $updates['print_code'] = $this->generatePrintCode();
+            $updates['print_code'] = $this->generatePrintCode($prescription);
         }
 
         if (!empty($updates)) {
@@ -331,15 +331,7 @@ class PrescriptionController extends Controller
                 }
             });
         } else {
-            $query->where(function ($where) use ($patient) {
-                $where
-                    ->where('patient_user_id', $patient->id)
-                    ->orWhere(function ($fallback) use ($patient) {
-                        $fallback
-                            ->whereNull('patient_user_id')
-                            ->where('patient_name', $patient->name);
-                    });
-            });
+            $query->where('patient_user_id', $patient->id);
         }
 
         $prescriptions = $query->get();
@@ -366,6 +358,7 @@ class PrescriptionController extends Controller
             'patient_phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'patient_user_id' => ['required', 'integer', 'exists:users,id'],
             'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
+            'visit_id' => ['nullable', 'integer', 'exists:visits,id'],
             'medicine_requests' => ['required', 'array', 'min:1'],
             'medicine_requests.*.name' => ['required', 'string', 'max:255'],
             'medicine_requests.*.strength' => ['nullable', 'string', 'max:50'],
@@ -407,6 +400,20 @@ class PrescriptionController extends Controller
             }
         }
 
+        if (!empty($data['visit_id'])) {
+            $visitValid = Visit::query()
+                ->where('id', $data['visit_id'])
+                ->where('patient_user_id', $patientUser->id)
+                ->where('doctor_user_id', $request->user()->id)
+                ->exists();
+
+            if (!$visitValid) {
+                return response()->json([
+                    'message' => 'Visite invalide pour ce patient.'
+                ], 422);
+            }
+        }
+
         $doctor = $request->user();
         $missingFields = $this->missingDoctorProfileFields($doctor);
         if (!empty($missingFields)) {
@@ -426,10 +433,12 @@ class PrescriptionController extends Controller
             'doctor_name' => $doctor->name,
             'source' => $patientUser ? 'app' : 'paper',
             'family_member_id' => $data['family_member_id'] ?? null,
+            'visit_id' => $data['visit_id'] ?? null,
             'status' => 'sent_to_pharmacies',
-            'print_code' => $this->generatePrintCode(),
+            'print_code' => null,
             'qr_token' => Str::random(64),
         ]);
+        $this->ensurePrintArtifacts($prescription);
         $prescription->statusLogs()->create([
             'old_status' => null,
             'new_status' => 'sent_to_pharmacies',
@@ -455,8 +464,12 @@ class PrescriptionController extends Controller
         );
     }
 
-    public function show(Prescription $prescription)
+    public function show(Request $request, Prescription $prescription)
     {
+        if (!PrescriptionAccessEvaluator::canAccessAsPharmacy($request->user(), $prescription)) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
         $prescription->load($this->baseRelations());
         $prescription->refreshStatusFromResponses($this->expireHours());
 
@@ -611,10 +624,7 @@ class PrescriptionController extends Controller
         }
 
         $doctor = $request->user();
-        $hasLink = (int) ($patient->created_by_doctor_id ?? 0) === (int) $doctor->id || Prescription::query()
-            ->where('doctor_user_id', $doctor->id)
-            ->where('patient_user_id', $patient->id)
-            ->exists();
+        $hasLink = DoctorPatientAccessEvaluator::hasLink($doctor->id, $patient->id);
 
         if (!$hasLink) {
             return response()->json(['message' => 'Acces interdit.'], 403);
@@ -713,12 +723,6 @@ class PrescriptionController extends Controller
 
     private function canAccessAsPatient(Request $request, Prescription $prescription): bool
     {
-        $user = $request->user();
-
-        if ($prescription->patient_user_id !== null) {
-            return (int) $prescription->patient_user_id === (int) $user->id;
-        }
-
-        return $prescription->patient_name === $user->name;
+        return PrescriptionAccessEvaluator::canAccessAsPatient($request->user(), $prescription);
     }
 }

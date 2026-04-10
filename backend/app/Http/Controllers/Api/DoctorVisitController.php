@@ -9,10 +9,18 @@ use App\Models\Prescription;
 use App\Models\RehabEntry;
 use App\Models\User;
 use App\Models\Visit;
+use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Http\Request;
 
 class DoctorVisitController extends Controller
 {
+    private function visitReference(Visit $visit): string
+    {
+        $date = optional($visit->visit_date ?? $visit->created_at)->format('Ymd') ?? now()->format('Ymd');
+
+        return 'VIS-' . $date . '-' . str_pad((string) $visit->id, 6, '0', STR_PAD_LEFT);
+    }
+
     private function ensureFamilyMemberBelongsToPatient(?int $familyMemberId, int $patientUserId): bool
     {
         if (!$familyMemberId) {
@@ -27,18 +35,14 @@ class DoctorVisitController extends Controller
 
     private function doctorHasPatientLink(int $doctorUserId, int $patientUserId): bool
     {
-        $patient = User::query()
-            ->where('id', $patientUserId)
-            ->where('role', 'patient')
-            ->exists();
-
-        return $patient;
+        return DoctorPatientAccessEvaluator::hasLink($doctorUserId, $patientUserId);
     }
 
     private function formatVisit(Visit $visit): array
     {
         return [
             'id' => $visit->id,
+            'visit_code' => $this->visitReference($visit),
             'patient_user_id' => $visit->patient_user_id,
             'family_member_id' => $visit->family_member_id,
             'doctor_user_id' => $visit->doctor_user_id,
@@ -95,7 +99,7 @@ class DoctorVisitController extends Controller
 
         $detail['rehab_entries'] = $visit->rehabEntries->map(fn (RehabEntry $rehab) => [
             'id' => $rehab->id,
-            'reference' => 'REH-' . str_pad((string) $rehab->id, 6, '0', STR_PAD_LEFT),
+            'reference' => $rehab->reference,
             'sessions_per_week' => $rehab->sessions_per_week,
             'duration_weeks' => $rehab->duration_weeks,
             'goals' => $rehab->goals,

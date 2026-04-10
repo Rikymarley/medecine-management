@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, ApiUser } from '../services/api';
 
 type AuthState = {
@@ -20,7 +20,7 @@ type AuthContextValue = AuthState & {
     longitude?: number | null;
     password: string;
     password_confirmation: string;
-    role: 'doctor' | 'pharmacy' | 'patient';
+    role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
     pharmacy_name?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     longitude?: number | null;
     password: string;
     password_confirmation: string;
-    role: 'doctor' | 'pharmacy' | 'patient';
+    role: 'doctor' | 'pharmacy' | 'patient' | 'hopital' | 'laboratoire' | 'secretaire';
     pharmacy_name?: string;
   }) => {
     const response = await api.register(payload);
@@ -87,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(USER_KEY, JSON.stringify(response.user));
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (token) {
       await api.logout(token).catch(() => undefined);
     }
@@ -95,16 +95,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-  };
+  }, [token]);
 
   const value = useMemo(
     () => ({ token, user, loading, login, register, logout }),
-    [token, user, loading]
+    [loading, logout, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

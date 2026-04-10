@@ -144,6 +144,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAppState = (): AppStateContextValue => {
   const context = useContext(AppStateContext);
   if (!context) {
@@ -152,6 +153,7 @@ export const useAppState = (): AppStateContextValue => {
   return context;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const statusLabel = (status: AvailabilityStatus) => {
   switch (status) {
     case 'available':

@@ -14,7 +14,6 @@ import {
   IonInput,
   IonItem,
   IonLabel,
-  IonList,
   IonModal,
   IonPage,
   IonSelect,
@@ -25,11 +24,12 @@ import {
   IonToolbar
 } from '@ionic/react';
 import { addOutline, closeOutline, createOutline, medicalOutline, trashOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiMedicalHistoryEntry, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateHaiti, formatDateTime } from '../utils/time';
+import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 
 const typeLabel: Record<ApiMedicalHistoryEntry['type'], string> = {
   condition: 'Condition',
@@ -94,7 +94,7 @@ const PatientMedicalHistoryPage: React.FC = () => {
     visibility: 'shared'
   });
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!token) {
       return;
     }
@@ -106,11 +106,11 @@ const PatientMedicalHistoryPage: React.FC = () => {
 
     setEntries(history);
     setPrescriptions(rx);
-  };
+  }, [token]);
 
   useEffect(() => {
     load().catch(() => undefined);
-  }, [token]);
+  }, [load]);
 
   const sortedEntries = useMemo(
     () =>
@@ -123,14 +123,6 @@ const PatientMedicalHistoryPage: React.FC = () => {
   );
 
   const filteredEntries = sortedEntries;
-  const prescriptionById = useMemo(() => {
-    const map: Record<number, ApiPrescription> = {};
-    prescriptions.forEach((rx) => {
-      map[rx.id] = rx;
-    });
-    return map;
-  }, [prescriptions]);
-
   const totalPages = Math.max(1, Math.ceil(filteredEntries.length / pageSize));
   const pagedEntries = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -265,7 +257,7 @@ const PatientMedicalHistoryPage: React.FC = () => {
                   >
                     <IonCardContent>
                       <p style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0f172a' }}>
-                        Reference medicale: {entry.entry_code ?? `MH-${entry.id}`}
+                        Reference medicale: {getMedicalHistoryCode(entry)}
                       </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                         <h3 style={{ margin: '6px 0 2px 0' }}>{entry.title}</h3>

@@ -20,7 +20,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import { chevronForwardOutline, medkitOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory } from '../services/api';
 import { useAuth } from '../state/AuthState';
@@ -32,17 +32,17 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'tele'>('all');
 
-  const loadDoctors = async () => {
+  const loadDoctors = useCallback(async () => {
     if (!token) {
       await api.getDoctorsDirectory().then(setDoctors).catch(() => undefined);
       return;
     }
     await api.getDoctorsDirectoryForDoctor(token).then(setDoctors).catch(() => undefined);
-  };
+  }, [token]);
 
   useEffect(() => {
     loadDoctors().catch(() => undefined);
-  }, [token]);
+  }, [loadDoctors]);
 
   useIonViewWillEnter(() => {
     loadDoctors().catch(() => undefined);
@@ -50,7 +50,9 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
 
   const filtered = useMemo(() => {
     const accountStatusOf = (doctor: ApiDoctorDirectory): 'approved' | 'pending' | 'rejected' => {
-      const status = (doctor.account_verification_status ?? (doctor as any).verification_status ?? null) as
+      const status = (doctor.account_verification_status ??
+        (doctor as ApiDoctorDirectory & { verification_status?: 'approved' | 'pending' | 'rejected' }).verification_status ??
+        null) as
         | 'approved'
         | 'pending'
         | 'rejected'
@@ -134,7 +136,9 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
                 {filtered.map((doctor) => (
                   (() => {
                     const accountStatus =
-                      ((doctor.account_verification_status ?? (doctor as any).verification_status ?? 'approved') as
+                      ((doctor.account_verification_status ??
+                        (doctor as ApiDoctorDirectory & { verification_status?: 'approved' | 'pending' | 'rejected' }).verification_status ??
+                        'approved') as
                         | 'approved'
                         | 'pending'
                         | 'rejected');
