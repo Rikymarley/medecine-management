@@ -275,26 +275,6 @@ const AdminDashboard: React.FC = () => {
             </IonCardContent>
           </IonCard>
 
-          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/comptes-hopitaux', 'forward', 'push')}>
-            <IonCardContent>
-              <div className="quick-icon quick-icon-red">
-                <IonIcon icon={businessOutline} />
-              </div>
-              <h3>Comptes hopitaux</h3>
-              <p className="muted-note">Gerer les comptes utilisateurs hopitaux.</p>
-            </IonCardContent>
-          </IonCard>
-
-          <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/comptes-laboratoires', 'forward', 'push')}>
-            <IonCardContent>
-              <div className="quick-icon quick-icon-purple">
-                <IonIcon icon={beaker} />
-              </div>
-              <h3>Comptes laboratoires</h3>
-              <p className="muted-note">Gerer les comptes utilisateurs laboratoires.</p>
-            </IonCardContent>
-          </IonCard>
-
           <IonCard button className="surface-card" onClick={() => ionRouter.push('/admin/password-reset-logs', 'forward', 'push')}>
             <IonCardContent>
               <div className="quick-icon quick-icon-gold">

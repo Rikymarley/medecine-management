@@ -33,6 +33,8 @@ import {
   documentAttachOutline,
   documentTextOutline,
   folderOutline,
+  gitNetworkOutline,
+  heartOutline,
   medkitOutline,
   peopleOutline,
   personCircleOutline,
@@ -88,6 +90,9 @@ const PatientDashboard: React.FC = () => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [cabinetItems, setCabinetItems] = useState<ApiPatientMedicineCabinetItem[]>([]);
+  const [healthMoreExpanded, setHealthMoreExpanded] = useState(false);
+  const [networkMoreExpanded, setNetworkMoreExpanded] = useState(false);
+  const [accountMoreExpanded, setAccountMoreExpanded] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
@@ -887,204 +892,202 @@ const PatientDashboard: React.FC = () => {
           </IonCardContent> : null}
         </IonCard>
 
-        <div className="dashboard-grid">
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/doctors', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-blue">
-                <IonIcon icon={medkitOutline} />
-              </div>
-              <h3>Medecins</h3>
-              <p className="muted-note">Voir la liste de vos medecins.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/access-requests', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-gold">
-                <IonIcon icon={shieldCheckmarkOutline} />
-              </div>
-              <h3>Demandes d'acces</h3>
-              <p className="muted-note">Approuver ou refuser l'acces medecin.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/pharmacies', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-green">
-                <IonIcon icon={storefrontOutline} />
-              </div>
-              <h3>Pharmacies</h3>
-              <p className="muted-note">Voir les pharmacies proches.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/laboratoires', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-purple">
-                <IonIcon icon={beaker} />
-              </div>
-              <h3>Laboratoires</h3>
-              <p className="muted-note">Voir les laboratoires disponibles.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/hopitaux', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-red">
-                <IonIcon icon={businessOutline} />
-              </div>
-              <h3>Hopitaux</h3>
-              <p className="muted-note">Voir les hopitaux disponibles.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/prescriptions', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-gold">
-                <IonIcon icon={documentTextOutline} />
-              </div>
-              <h3>Ordonnances</h3>
-              <p className="muted-note">Voir toutes vos ordonnances.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/medicaments', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-green">
-                <IonIcon icon={addCircleOutline} />
-              </div>
-              <h3>Mes medicaments</h3>
-              <p className="muted-note">Suivre vos medicaments.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/emergency-contacts', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-red">
-                <IonIcon icon={callOutline} />
-              </div>
-              <h3>Urgence</h3>
-              <p className="muted-note">Gerer vos contacts d'urgence.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/medical-history', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-purple">
-                <IonIcon icon={folderOutline} />
-              </div>
-              <h3>Historique</h3>
-              <p className="muted-note">Gerer votre historique medical.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/medication-reminders', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-gold">
-                <IonIcon icon={alarmOutline} />
-              </div>
-              <h3>Rappel medicament</h3>
-              <p className="muted-note">Voir tous vos rappels medicaments.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/signes-vitaux', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-red">
-                <IonIcon icon={pulseOutline} />
-              </div>
-              <h3>Signes vitaux</h3>
-              <p className="muted-note">Suivre vos signes vitaux.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/visites', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-purple">
-                <IonIcon icon={walkOutline} />
-              </div>
-              <h3>Mes visites</h3>
-              <p className="muted-note">Voir l'historique de vos visites medicales.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/rendez-vous', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-blue">
-                <IonIcon icon={calendarOutline} />
-              </div>
-              <h3>Mes rendez-vous</h3>
-              <p className="muted-note">Suivre vos rendez-vous a venir.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => ionRouter.push('/patient/family-members', 'forward', 'push')}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-rose">
-                <IonIcon icon={peopleOutline} />
-              </div>
-              <h3>Famille</h3>
-              <p className="muted-note">Ajouter et gerer vos proches.</p>
-            </IonCardContent>
-          </IonCard>
-        </div>
+        <IonCard className="surface-card">
+          <IonCardHeader>
+            <IonCardTitle>Actions rapides</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            <div className="dashboard-grid">
+              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/medicaments', 'forward', 'push')}>
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-green">
+                    <IonIcon icon={addCircleOutline} />
+                  </div>
+                  <h3>Mes medicaments</h3>
+                  <p className="muted-note">Suivre vos medicaments.</p>
+                </IonCardContent>
+              </IonCard>
+              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/medication-reminders', 'forward', 'push')}>
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-gold">
+                    <IonIcon icon={alarmOutline} />
+                  </div>
+                  <h3>Rappel medicament</h3>
+                  <p className="muted-note">Voir tous vos rappels medicaments.</p>
+                </IonCardContent>
+              </IonCard>
+              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/rendez-vous', 'forward', 'push')}>
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-blue">
+                    <IonIcon icon={calendarOutline} />
+                  </div>
+                  <h3>Mes rendez-vous</h3>
+                  <p className="muted-note">Suivre vos rendez-vous a venir.</p>
+                </IonCardContent>
+              </IonCard>
+              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/emergency-contacts', 'forward', 'push')}>
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-red">
+                    <IonIcon icon={callOutline} />
+                  </div>
+                  <h3>Urgence</h3>
+                  <p className="muted-note">Gerer vos contacts d'urgence.</p>
+                </IonCardContent>
+              </IonCard>
+            </div>
+          </IonCardContent>
+        </IonCard>
+
+        <IonCard className="surface-card">
+          <IonCardHeader>
+            <IonCardTitle>Plus</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setHealthMoreExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                <IonIcon icon={heartOutline} slot="start" />
+                Sante
+                {healthMoreExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {healthMoreExpanded ? (
+                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/signes-vitaux', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-red">
+                        <IonIcon icon={pulseOutline} />
+                      </div>
+                      <h3>Signes vitaux</h3>
+                      <p className="muted-note">Suivre vos mesures essentielles.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/medical-history', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-purple">
+                        <IonIcon icon={folderOutline} />
+                      </div>
+                      <h3>Historique</h3>
+                      <p className="muted-note">Consulter votre dossier medical.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/visites', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-purple">
+                        <IonIcon icon={walkOutline} />
+                      </div>
+                      <h3>Mes visites</h3>
+                      <p className="muted-note">Revoir les visites passees.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/prescriptions', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-gold">
+                        <IonIcon icon={documentTextOutline} />
+                      </div>
+                      <h3>Ordonnances</h3>
+                      <p className="muted-note">Acceder a vos prescriptions.</p>
+                    </IonCardContent>
+                  </IonCard>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setNetworkMoreExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                <IonIcon icon={gitNetworkOutline} slot="start" />
+                Reseau
+                {networkMoreExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {networkMoreExpanded ? (
+                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/doctors', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-blue">
+                        <IonIcon icon={medkitOutline} />
+                      </div>
+                      <h3>Medecins</h3>
+                      <p className="muted-note">Voir vos praticiens.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/pharmacies', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-green">
+                        <IonIcon icon={storefrontOutline} />
+                      </div>
+                      <h3>Pharmacies</h3>
+                      <p className="muted-note">Trouver une pharmacie proche.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/hopitaux', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-red">
+                        <IonIcon icon={businessOutline} />
+                      </div>
+                      <h3>Hopitaux</h3>
+                      <p className="muted-note">Consulter les hopitaux.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/laboratoires', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-purple">
+                        <IonIcon icon={beaker} />
+                      </div>
+                      <h3>Laboratoires</h3>
+                      <p className="muted-note">Explorer les laboratoires.</p>
+                    </IonCardContent>
+                  </IonCard>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setAccountMoreExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                <IonIcon icon={personCircleOutline} slot="start" />
+                Compte
+                {accountMoreExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {accountMoreExpanded ? (
+                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/family-members', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-rose">
+                        <IonIcon icon={peopleOutline} />
+                      </div>
+                      <h3>Famille</h3>
+                      <p className="muted-note">Gerer vos proches.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/patient/access-requests', 'forward', 'push')}>
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-gold">
+                        <IonIcon icon={shieldCheckmarkOutline} />
+                      </div>
+                      <h3>Demandes d&apos;acces</h3>
+                      <p className="muted-note">Controler les acces medecins.</p>
+                    </IonCardContent>
+                  </IonCard>
+                </div>
+              ) : null}
+            </div>
+          </IonCardContent>
+        </IonCard>
       </IonContent>
     </IonPage>
   );

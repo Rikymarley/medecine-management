@@ -88,6 +88,8 @@ const DoctorDashboard: React.FC = () => {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [networkExpanded, setNetworkExpanded] = useState(false);
+  const [accountExpanded, setAccountExpanded] = useState(false);
   const [contactExpanded, setContactExpanded] = useState(false);
   const [professionalExpanded, setProfessionalExpanded] = useState(false);
   const [verificationExpanded, setVerificationExpanded] = useState(false);
@@ -785,168 +787,251 @@ const DoctorDashboard: React.FC = () => {
           </IonCardContent> : null}
         </IonCard>
 
-        <div className="dashboard-grid dashboard-grid-fab">
-          <IonCard
-            button={canUseDoctorApp}
-            className="surface-card"
-            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
-            onClick={() => {
-              if (!canUseDoctorApp) {
-                setMessage('Completez le profil a 100% pour acceder aux rendez-vous.');
-                return;
-              }
-              ionRouter.push('/doctor/mes-rendez-vous', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-blue">
-                <IonIcon icon={calendarOutline} />
-              </div>
-              <h3>Mes rendez-vous</h3>
-              <p className="muted-note">Suivre vos rendez-vous a venir.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button={canUseDoctorApp}
-            className="surface-card"
-            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
-            onClick={() => {
-              if (!canUseDoctorApp) {
-                setMessage('Completez le profil a 100% pour acceder aux patients.');
-                return;
-              }
-              ionRouter.push('/doctor/patients', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-rose">
-                <IonIcon icon={peopleOutline} />
-              </div>
-              <h3>Patients</h3>
-              <p className="muted-note">Voir la liste de vos patients.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button={canUseDoctorApp}
-            className="surface-card"
-            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
-            onClick={() => {
-              if (!canUseDoctorApp) {
-                setMessage('Completez le profil a 100% pour acceder aux visites.');
-                return;
-              }
-              ionRouter.push('/doctor/mes-visites', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-purple">
-                <IonIcon icon={walkOutline} />
-              </div>
-              <h3>Mes visites</h3>
-              <p className="muted-note">Voir votre suivi de consultations.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button={canUseDoctorApp}
-            className="surface-card"
-            style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
-            onClick={() => {
-              if (!canUseDoctorApp) {
-                setMessage('Completez le profil a 100% pour acceder aux ordonnances.');
-                return;
-              }
-              ionRouter.push('/doctor/prescriptions', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-gold">
-                <IonIcon icon={documentTextOutline} />
-              </div>
-              <h3>Ordonnances</h3>
-              <p className="muted-note">Voir toutes vos ordonnances.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => {
-              ionRouter.push('/doctor/secretaires', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-rose">
-                <IonIcon icon={personCircleOutline} />
-              </div>
-              <h3>Secretaires</h3>
-              <p className="muted-note">Gerer les secretaires du cabinet.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => {
-              ionRouter.push('/doctor/doctors', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-blue">
-                <IonIcon icon={medkitOutline} />
-              </div>
-              <h3>Medecins</h3>
-              <p className="muted-note">Voir tous les medecins approuves.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => {
-              ionRouter.push('/doctor/pharmacies', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-green">
-                <IonIcon icon={storefrontOutline} />
-              </div>
-              <h3>Pharmacies</h3>
-              <p className="muted-note">Voir les pharmacies disponibles.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => {
-              ionRouter.push('/doctor/laboratoires', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-purple">
-                <IonIcon icon={beaker} />
-              </div>
-              <h3>Laboratoires</h3>
-              <p className="muted-note">Voir les laboratoires disponibles.</p>
-            </IonCardContent>
-          </IonCard>
-          <IonCard
-            button
-            className="surface-card"
-            style={{ margin: 0 }}
-            onClick={() => {
-              ionRouter.push('/doctor/hopitaux', 'forward', 'push');
-            }}
-          >
-            <IonCardContent>
-              <div className="quick-icon quick-icon-red">
-                <IonIcon icon={businessOutline} />
-              </div>
-              <h3>Hopitaux</h3>
-              <p className="muted-note">Voir les hopitaux disponibles.</p>
-            </IonCardContent>
-          </IonCard>
-        </div>
+        <IonCard className="surface-card">
+          <IonCardHeader>
+            <IonCardTitle>Activite clinique</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            <div className="dashboard-grid">
+              <IonCard
+                button={canUseDoctorApp}
+                className="surface-card"
+                style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+                onClick={() => {
+                  if (!canUseDoctorApp) {
+                    setMessage('Completez le profil a 100% pour acceder aux rendez-vous.');
+                    return;
+                  }
+                  ionRouter.push('/doctor/mes-rendez-vous', 'forward', 'push');
+                }}
+              >
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-blue">
+                    <IonIcon icon={calendarOutline} />
+                  </div>
+                  <h3>Mes rendez-vous</h3>
+                  <p className="muted-note">Suivre vos rendez-vous a venir.</p>
+                </IonCardContent>
+              </IonCard>
+              <IonCard
+                button={canUseDoctorApp}
+                className="surface-card"
+                style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+                onClick={() => {
+                  if (!canUseDoctorApp) {
+                    setMessage('Completez le profil a 100% pour acceder aux patients.');
+                    return;
+                  }
+                  ionRouter.push('/doctor/patients', 'forward', 'push');
+                }}
+              >
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-rose">
+                    <IonIcon icon={peopleOutline} />
+                  </div>
+                  <h3>Patients</h3>
+                  <p className="muted-note">Voir la liste de vos patients.</p>
+                </IonCardContent>
+              </IonCard>
+              <IonCard
+                button={canUseDoctorApp}
+                className="surface-card"
+                style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+                onClick={() => {
+                  if (!canUseDoctorApp) {
+                    setMessage('Completez le profil a 100% pour acceder aux visites.');
+                    return;
+                  }
+                  ionRouter.push('/doctor/mes-visites', 'forward', 'push');
+                }}
+              >
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-purple">
+                    <IonIcon icon={walkOutline} />
+                  </div>
+                  <h3>Mes visites</h3>
+                  <p className="muted-note">Voir votre suivi de consultations.</p>
+                </IonCardContent>
+              </IonCard>
+              <IonCard
+                button={canUseDoctorApp}
+                className="surface-card"
+                style={{ margin: 0, opacity: canUseDoctorApp ? 1 : 0.65 }}
+                onClick={() => {
+                  if (!canUseDoctorApp) {
+                    setMessage('Completez le profil a 100% pour acceder aux ordonnances.');
+                    return;
+                  }
+                  ionRouter.push('/doctor/prescriptions', 'forward', 'push');
+                }}
+              >
+                <IonCardContent>
+                  <div className="quick-icon quick-icon-gold">
+                    <IonIcon icon={documentTextOutline} />
+                  </div>
+                  <h3>Ordonnances</h3>
+                  <p className="muted-note">Voir toutes vos ordonnances.</p>
+                </IonCardContent>
+              </IonCard>
+            </div>
+          </IonCardContent>
+        </IonCard>
+
+        <IonCard className="surface-card">
+          <IonCardHeader>
+            <IonCardTitle>Reseau & compte</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setNetworkExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                <IonIcon icon={medkitOutline} slot="start" />
+                Reseau professionnel
+                {networkExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {networkExpanded ? (
+                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      ionRouter.push('/doctor/secretaires', 'forward', 'push');
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-rose">
+                        <IonIcon icon={personCircleOutline} />
+                      </div>
+                      <h3>Secretaires</h3>
+                      <p className="muted-note">Gerer les secretaires du cabinet.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      ionRouter.push('/doctor/doctors', 'forward', 'push');
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-blue">
+                        <IonIcon icon={medkitOutline} />
+                      </div>
+                      <h3>Medecins</h3>
+                      <p className="muted-note">Voir tous les medecins approuves.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      ionRouter.push('/doctor/pharmacies', 'forward', 'push');
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-green">
+                        <IonIcon icon={storefrontOutline} />
+                      </div>
+                      <h3>Pharmacies</h3>
+                      <p className="muted-note">Voir les pharmacies disponibles.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      ionRouter.push('/doctor/laboratoires', 'forward', 'push');
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-purple">
+                        <IonIcon icon={beaker} />
+                      </div>
+                      <h3>Laboratoires</h3>
+                      <p className="muted-note">Voir les laboratoires disponibles.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      ionRouter.push('/doctor/hopitaux', 'forward', 'push');
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-red">
+                        <IonIcon icon={businessOutline} />
+                      </div>
+                      <h3>Hopitaux</h3>
+                      <p className="muted-note">Voir les hopitaux disponibles.</p>
+                    </IonCardContent>
+                  </IonCard>
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
+              <IonButton
+                expand="block"
+                fill="clear"
+                color="dark"
+                onClick={() => setAccountExpanded((prev) => !prev)}
+                style={{ margin: 0 }}
+              >
+                <IonIcon icon={shieldCheckmarkOutline} slot="start" />
+                Compte
+                {accountExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+              </IonButton>
+              {accountExpanded ? (
+                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      setProfileCardExpanded(true);
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-blue">
+                        <IonIcon icon={personCircleOutline} />
+                      </div>
+                      <h3>Mon profil</h3>
+                      <p className="muted-note">Completer et mettre a jour vos informations.</p>
+                    </IonCardContent>
+                  </IonCard>
+                  <IonCard
+                    button
+                    className="surface-card"
+                    style={{ margin: 0 }}
+                    onClick={() => {
+                      setProfileCardExpanded(true);
+                      setPasswordExpanded(true);
+                    }}
+                  >
+                    <IonCardContent>
+                      <div className="quick-icon quick-icon-gold">
+                        <IonIcon icon={shieldCheckmarkOutline} />
+                      </div>
+                      <h3>Securite</h3>
+                      <p className="muted-note">Modifier votre mot de passe et vos acces.</p>
+                    </IonCardContent>
+                  </IonCard>
+                </div>
+              ) : null}
+            </div>
+          </IonCardContent>
+        </IonCard>
 
       </IonContent>
     </IonPage>
