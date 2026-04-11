@@ -1138,6 +1138,15 @@ const PharmacyDashboard: React.FC = () => {
         )}
 
         <div className="dashboard-grid" style={{ marginTop: '8px' }}>
+          <IonCard className="surface-card" style={{ margin: 0, opacity: 0.85 }}>
+            <IonCardContent>
+              <div className="quick-icon quick-icon-blue">
+                <IonIcon icon={storefrontOutline} />
+              </div>
+              <h3>POS</h3>
+              <p className="muted-note">Bientot</p>
+            </IonCardContent>
+          </IonCard>
           <IonCard
             button
             className="surface-card"

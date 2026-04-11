@@ -814,6 +814,30 @@ class AuthController extends Controller
         return response()->json($patient->fresh());
     }
 
+    public function updateSecretaryProfile(Request $request)
+    {
+        $secretary = $request->user();
+
+        if ($secretary->role !== 'secretaire') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
+            'whatsapp' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
+            'recovery_whatsapp' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:120'],
+            'department' => ['nullable', 'string', 'max:120'],
+            'bio' => ['nullable', 'string', 'max:3000'],
+        ]);
+
+        $secretary->update($data);
+
+        return response()->json($secretary->fresh());
+    }
+
     public function uploadDoctorProfilePhoto(Request $request)
     {
         $doctor = $request->user();
@@ -842,6 +866,16 @@ class AuthController extends Controller
         }
 
         return response()->json($this->uploadUserImage($request, $patient, 'profile_photo', 'profile_photo_url', 'patients/photos'));
+    }
+
+    public function uploadSecretaryProfilePhoto(Request $request)
+    {
+        $secretary = $request->user();
+        if ($secretary->role !== 'secretaire') {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        return response()->json($this->uploadUserImage($request, $secretary, 'profile_photo', 'profile_photo_url', 'secretaries/photos'));
     }
 
     public function uploadPatientIdDocument(Request $request)

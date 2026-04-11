@@ -111,6 +111,7 @@ const VerificationPending = lazy(() => import('./pages/VerificationPending'));
 const HospitalDashboard = lazy(() => import('./pages/HospitalDashboard'));
 const LaboratoryDashboard = lazy(() => import('./pages/LaboratoryDashboard'));
 const SecretaryDashboard = lazy(() => import('./pages/SecretaryDashboard'));
+const SecretaryAccessRequestsPage = lazy(() => import('./pages/SecretaryAccessRequestsPage'));
 
 const isBlockedPendingUser = (
   user: ReturnType<typeof useAuth>['user']
@@ -226,6 +227,7 @@ const RoutePreloader: React.FC = () => {
         import('./pages/HospitalDashboard'),
         import('./pages/LaboratoryDashboard'),
         import('./pages/SecretaryDashboard'),
+        import('./pages/SecretaryAccessRequestsPage'),
       ]);
     };
 
@@ -655,6 +657,11 @@ const App: React.FC = () => (
           <Route exact path="/secretaire">
             <RequireRole role="secretaire">
               <SecretaryDashboard />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/access-requests">
+            <RequireRole role="secretaire">
+              <SecretaryAccessRequestsPage />
             </RequireRole>
           </Route>
             <Route exact path="/">

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\MedicineController;
 use App\Http\Controllers\Api\LicenseVerificationController;
 use App\Http\Controllers\Api\DoctorSpecialtyController;
 use App\Http\Controllers\Api\DoctorPatientAccessRequestController;
+use App\Http\Controllers\Api\DoctorSecretaryAccessRequestController;
 use App\Http\Controllers\Api\DoctorRehabController;
 use App\Http\Controllers\Api\DoctorVisitController;
 use App\Http\Controllers\Api\UserVerificationController;
@@ -95,6 +96,14 @@ Route::get('/doctor/patients/{patient}/access-status', [DoctorPatientAccessReque
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::post('/doctor/patients/{patient}/access-requests', [DoctorPatientAccessRequestController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/secretaires/search', [DoctorSecretaryAccessRequestController::class, 'search'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/secretaires/access-requests', [DoctorSecretaryAccessRequestController::class, 'doctorIndex'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/secretaires/{secretary}/access-status', [DoctorSecretaryAccessRequestController::class, 'status'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::post('/doctor/secretaires/{secretary}/access-requests', [DoctorSecretaryAccessRequestController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 
 Route::get('/patient/access-requests', [DoctorPatientAccessRequestController::class, 'patientIndex'])
     ->middleware(['auth:sanctum', 'role:patient']);
@@ -106,6 +115,10 @@ Route::delete('/patient/access-requests/doctors/{doctor}/block', [DoctorPatientA
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
 Route::patch('/patient/access-requests/{accessRequest}', [DoctorPatientAccessRequestController::class, 'respond'])
     ->middleware(['auth:sanctum', 'role:patient']);
+Route::get('/secretaire/access-requests', [DoctorSecretaryAccessRequestController::class, 'secretaryIndex'])
+    ->middleware(['auth:sanctum', 'role:secretaire']);
+Route::patch('/secretaire/access-requests/{accessRequest}', [DoctorSecretaryAccessRequestController::class, 'respond'])
+    ->middleware(['auth:sanctum', 'role:secretaire']);
 Route::get('/patient/prescriptions', [PrescriptionController::class, 'mineForPatient'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/prescriptions', [PrescriptionController::class, 'store'])
@@ -215,8 +228,12 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware(['role:doctor', 'verified', 'throttle:20,1']);
     Route::patch('/patient/me', [AuthController::class, 'updatePatientProfile'])
         ->middleware(['role:patient', 'throttle:30,1']);
+    Route::patch('/secretaire/me', [AuthController::class, 'updateSecretaryProfile'])
+        ->middleware(['role:secretaire', 'throttle:30,1']);
     Route::post('/patient/me/profile-photo', [AuthController::class, 'uploadPatientProfilePhoto'])
         ->middleware(['role:patient', 'throttle:20,1']);
+    Route::post('/secretaire/me/profile-photo', [AuthController::class, 'uploadSecretaryProfilePhoto'])
+        ->middleware(['role:secretaire', 'throttle:20,1']);
     Route::post('/patient/me/id-document', [AuthController::class, 'uploadPatientIdDocument'])
         ->middleware(['role:patient', 'throttle:20,1']);
     Route::delete('/patient/me/id-document', [AuthController::class, 'removePatientIdDocument'])

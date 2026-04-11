@@ -472,6 +472,35 @@ export type ApiDoctorPatientAccessRequest = {
   whatsapp_url?: string | null;
 };
 
+export type ApiSecretaryLookup = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  account_status: string | null;
+  verification_status: string | null;
+};
+
+export type ApiDoctorSecretaryAccessStatus = {
+  has_link: boolean;
+  has_pending_request: boolean;
+};
+
+export type ApiDoctorSecretaryAccessRequest = {
+  id: number;
+  doctor_id: number;
+  doctor_name: string | null;
+  secretary_id: number;
+  secretary_name: string | null;
+  status: 'pending' | 'approved' | 'denied';
+  message: string | null;
+  response_message: string | null;
+  responded_at: string | null;
+  created_at: string;
+  whatsapp_url?: string | null;
+};
+
 export type ApiPrescriptionPrintData = {
   prescription_id: number;
   print_code: string;
@@ -942,6 +971,24 @@ export const api = {
       token,
       body: JSON.stringify(payload)
     }),
+  updateSecretaryProfile: (
+    token: string,
+    payload: Partial<{
+      name: string;
+      phone: string | null;
+      whatsapp: string | null;
+      recovery_whatsapp: string | null;
+      address: string | null;
+      city: string | null;
+      department: string | null;
+      bio: string | null;
+    }>
+  ) =>
+    request<ApiUser>('/secretaire/me', {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
   logout: (token: string) => request<{ message: string }>('/auth/logout', { method: 'POST', token }),
   changePassword: (
     token: string,
@@ -1035,6 +1082,11 @@ export const api = {
     const formData = new FormData();
     formData.append('profile_photo', file);
     return requestFormData<ApiUser>('/patient/me/profile-photo', formData, token);
+  },
+  uploadMySecretaryProfilePhoto: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('profile_photo', file);
+    return requestFormData<ApiUser>('/secretaire/me/profile-photo', formData, token);
   },
   uploadMyPatientIdDocument: (token: string, file: File) => {
     const formData = new FormData();
@@ -1753,6 +1805,36 @@ export const api = {
         token
       }
     ),
+  searchDoctorSecretaries: (token: string, query?: string) => {
+    const search = new URLSearchParams();
+    if (query?.trim()) {
+      search.set('query', query.trim());
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiSecretaryLookup[]>(`/doctor/secretaires/search${suffix}`, { token });
+  },
+  getDoctorSecretaryAccessStatus: (token: string, secretaryUserId: number) =>
+    request<ApiDoctorSecretaryAccessStatus>(`/doctor/secretaires/${secretaryUserId}/access-status`, { token }),
+  createDoctorSecretaryAccessRequest: (token: string, secretaryUserId: number, payload?: { message?: string | null }) =>
+    request<ApiDoctorSecretaryAccessRequest>(`/doctor/secretaires/${secretaryUserId}/access-requests`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload ?? {})
+    }),
+  getDoctorSecretaryAccessRequests: (token: string) =>
+    request<ApiDoctorSecretaryAccessRequest[]>('/doctor/secretaires/access-requests', { token }),
+  getSecretaryAccessRequests: (token: string) =>
+    request<ApiDoctorSecretaryAccessRequest[]>('/secretaire/access-requests', { token }),
+  respondSecretaryAccessRequest: (
+    token: string,
+    accessRequestId: number,
+    payload: { status: 'approved' | 'denied'; response_message?: string | null }
+  ) =>
+    request<ApiDoctorSecretaryAccessRequest>(`/secretaire/access-requests/${accessRequestId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
   createDoctorPatientMedicalHistory: (
     token: string,
     patientUserId: number,

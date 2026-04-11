@@ -1,114 +1,199 @@
 import {
   IonBackButton,
+  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
-  IonCardHeader,
-  IonCardTitle,
   IonContent,
-  IonFab,
-  IonFabButton,
-  IonFooter,
   IonHeader,
   IonIcon,
-  IonInput,
   IonItem,
   IonLabel,
   IonList,
-  IonModal,
   IonPage,
+  IonSearchbar,
+  IonSpinner,
   IonText,
-  IonTextarea,
   IonTitle,
   IonToolbar,
-  useIonToast,
+  useIonViewWillEnter,
 } from '@ionic/react';
-import { add, personCircleOutline } from 'ionicons/icons';
-import { useEffect, useMemo, useState } from 'react';
+import { personOutline } from 'ionicons/icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import InstallBanner from '../components/InstallBanner';
+import {
+  api,
+  type ApiDoctorSecretaryAccessRequest,
+  type ApiSecretaryLookup,
+} from '../services/api';
 import { useAuth } from '../state/AuthState';
-import { maskHaitiPhone } from '../utils/phoneMask';
 
-type SecretaryItem = {
-  id: number;
-  name: string;
-  phone: string;
-  whatsapp: string;
-  email: string;
-  notes: string;
-  created_at: string;
+const statusLabel = (status: ApiDoctorSecretaryAccessRequest['status']) => {
+  if (status === 'pending') return 'En attente';
+  if (status === 'approved') return 'Approuvee';
+  if (status === 'denied') return 'Refusee';
+  return status;
+};
+
+const statusColor = (status: ApiDoctorSecretaryAccessRequest['status']) => {
+  if (status === 'pending') return 'warning';
+  if (status === 'approved') return 'success';
+  if (status === 'denied') return 'danger';
+  return 'medium';
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return 'N/D';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/D';
+  return date.toLocaleString('fr-HT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 const DoctorSecretariesPage: React.FC = () => {
-  const { user } = useAuth();
-  const [presentToast] = useIonToast();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [items, setItems] = useState<SecretaryItem[]>([]);
-  const [form, setForm] = useState({
-    name: '',
-    phone: '',
-    whatsapp: '',
-    email: '',
-    notes: '',
-  });
+  const LOAD_TTL_MS = 30_000;
+  const { token } = useAuth();
+  const [query, setQuery] = useState('');
+  const [directory, setDirectory] = useState<ApiSecretaryLookup[]>([]);
+  const [requests, setRequests] = useState<ApiDoctorSecretaryAccessRequest[]>([]);
+  const [searchingDirectory, setSearchingDirectory] = useState(false);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRequestsLoadAtRef = useRef(0);
 
-  const storageKey = useMemo(
-    () => `doctor-secretaries-${user?.id ?? 'anonymous'}`,
-    [user?.id]
-  );
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) {
-        setItems([]);
-        return;
-      }
-      const parsed = JSON.parse(raw) as SecretaryItem[];
-      setItems(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setItems([]);
-    }
-  }, [storageKey]);
-
-  const resetForm = () => {
-    setForm({
-      name: '',
-      phone: '',
-      whatsapp: '',
-      email: '',
-      notes: '',
-    });
-  };
-
-  const saveSecretary = async () => {
-    if (!form.name.trim()) {
-      presentToast({ message: 'Nom requis.', duration: 1800, color: 'warning' });
+  const loadRequests = useCallback(async (force = false) => {
+    if (!force && Date.now() - lastRequestsLoadAtRef.current < LOAD_TTL_MS) {
       return;
     }
-    setSaving(true);
-    const next: SecretaryItem = {
-      id: Date.now(),
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      whatsapp: form.whatsapp.trim(),
-      email: form.email.trim(),
-      notes: form.notes.trim(),
-      created_at: new Date().toISOString(),
+    if (!token) return;
+    setLoadingRequests(true);
+    try {
+      const rows = await api.getDoctorSecretaryAccessRequests(token);
+      setRequests(rows);
+      lastRequestsLoadAtRef.current = Date.now();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Impossible de charger les demandes.');
+    } finally {
+      setLoadingRequests(false);
+    }
+  }, [LOAD_TTL_MS, token]);
+
+  const searchDirectory = useCallback(async (value: string) => {
+    if (!token || value.trim().length < 2) {
+      setDirectory([]);
+      setSearchingDirectory(false);
+      return;
+    }
+    setSearchingDirectory(true);
+    try {
+      const rows = await api.searchDoctorSecretaries(token, value);
+      setDirectory(rows);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Impossible de charger la liste des secretaires.');
+      setDirectory([]);
+    } finally {
+      setSearchingDirectory(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadRequests(true);
+  }, [loadRequests]);
+
+  useIonViewWillEnter(() => {
+    void loadRequests(false);
+  });
+
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    if (query.trim().length < 2) {
+      setDirectory([]);
+      setSearchingDirectory(false);
+      return;
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      void searchDirectory(query);
+    }, 250);
+  }, [query, searchDirectory]);
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
     };
-    const updated = [next, ...items];
-    setItems(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
-    setSaving(false);
-    setIsModalOpen(false);
-    resetForm();
-    presentToast({ message: 'Secretaire ajoutee.', duration: 1800, color: 'success' });
+  }, []);
+
+  const latestRequestBySecretaryId = useMemo(() => {
+    const latest = new Map<number, ApiDoctorSecretaryAccessRequest>();
+    requests.forEach((row) => {
+      if (!latest.has(row.secretary_id)) {
+        latest.set(row.secretary_id, row);
+      }
+    });
+    return latest;
+  }, [requests]);
+
+  const pendingCount = useMemo(
+    () => requests.filter((row) => row.status === 'pending').length,
+    [requests]
+  );
+
+  const requestAccess = async (secretary: ApiSecretaryLookup) => {
+    if (!token) return;
+    setActionKey(`request:${secretary.id}`);
+    setMessage(null);
+    try {
+      const created = await api.createDoctorSecretaryAccessRequest(token, secretary.id);
+      setRequests((prev) => {
+        const alreadyExists = prev.some((row) => row.id === created.id);
+        if (alreadyExists) {
+          return prev.map((row) => (row.id === created.id ? created : row));
+        }
+        return [created, ...prev];
+      });
+      if (created.whatsapp_url) {
+        window.open(created.whatsapp_url, '_blank', 'noopener,noreferrer');
+        setMessage('Demande envoyee. Vous pouvez aussi notifier la secretaire via WhatsApp.');
+      } else {
+        setMessage('Demande envoyee.');
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Envoi impossible.');
+    } finally {
+      setActionKey(null);
+    }
   };
+
+  const secretaryEntries = useMemo(
+    () =>
+      requests
+        .map((row) => ({
+          id: row.secretary_id,
+          name: row.secretary_name ?? 'Secretaire non precisee',
+          status: row.status,
+          created_at: row.created_at,
+          responded_at: row.responded_at,
+          response_message: row.response_message
+        }))
+        .filter((entry, index, self) => self.findIndex((candidate) => candidate.id === entry.id) === index)
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })),
+    [requests]
+  );
 
   return (
     <IonPage>
-      <IonHeader translucent>
+      <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
             <IonBackButton defaultHref="/doctor" />
@@ -116,45 +201,115 @@ const DoctorSecretariesPage: React.FC = () => {
           <IonTitle>Secretaires</IonTitle>
         </IonToolbar>
       </IonHeader>
-      <IonContent fullscreen>
-        <IonHeader collapse="condense">
-          <IonToolbar>
-            <IonTitle size="large">Secretaires</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-
+      <IonContent className="ion-padding app-content">
+        <InstallBanner />
         <IonCard className="surface-card">
-          <IonCardHeader>
-            <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <IonIcon icon={personCircleOutline} />
-              Cabinet
-            </IonCardTitle>
-          </IonCardHeader>
           <IonCardContent>
-            <p style={{ margin: 0 }}>
-              {items.length} secretaire{items.length > 1 ? 's' : ''} enregistree{items.length > 1 ? 's' : ''}.
-            </p>
-          </IonCardContent>
-        </IonCard>
+            <IonSearchbar
+              value={query}
+              placeholder="Rechercher une secretaire dans la base (nom, email, telephone)"
+              onIonInput={(event) => setQuery(event.detail.value ?? '')}
+            />
+            {searchingDirectory ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 10px' }}>
+                <IonSpinner name="crescent" />
+              </div>
+            ) : null}
+            {message ? (
+              <IonText color="medium">
+                <p>{message}</p>
+              </IonText>
+            ) : null}
+            {query.trim().length >= 2 ? (
+              directory.length === 0 ? (
+                <IonText color="medium">
+                  <p>Aucune secretaire trouvee dans la base pour cette recherche.</p>
+                </IonText>
+              ) : (
+                <IonList inset>
+                  {directory.map((row) => {
+                    const latestRequest = latestRequestBySecretaryId.get(row.id);
+                    const hasApproved = latestRequest?.status === 'approved';
+                    const hasPending = latestRequest?.status === 'pending';
 
-        <IonCard className="surface-card">
-          <IonCardHeader>
-            <IonCardTitle>Liste</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            {items.length === 0 ? (
+                    return (
+                      <IonItem key={`db-${row.id}`} lines="full">
+                        <div
+                          slot="start"
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '50%',
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: '#dbeafe',
+                            color: '#1e40af'
+                          }}
+                        >
+                          <IonIcon icon={personOutline} />
+                        </div>
+                        <IonLabel>
+                          <h3>{row.name}</h3>
+                          <p>
+                            {row.phone ? `Tel: ${row.phone}` : 'Tel: non renseigne'}
+                            {row.email ? ` · Email: ${row.email}` : ''}
+                          </p>
+                        </IonLabel>
+                        {hasApproved ? (
+                          <IonBadge color="success">Acces approuve</IonBadge>
+                        ) : (
+                          <IonButton
+                            size="small"
+                            disabled={actionKey === `request:${row.id}`}
+                            onClick={() => {
+                              void requestAccess(row);
+                            }}
+                          >
+                            {hasPending ? 'Renvoyer demande' : 'Demander acces'}
+                          </IonButton>
+                        )}
+                      </IonItem>
+                    );
+                  })}
+                </IonList>
+              )
+            ) : null}
+
+            {loadingRequests ? (
+              <IonText color="medium">
+                <p>Chargement...</p>
+              </IonText>
+            ) : secretaryEntries.length === 0 ? (
               <IonText color="medium">
                 <p>Aucune secretaire pour le moment.</p>
               </IonText>
             ) : (
               <IonList>
-                {items.map((secretary) => (
-                  <IonItem key={secretary.id} lines="full">
+                {secretaryEntries.map((entry) => (
+                  <IonItem key={`secretary-${entry.id}`} lines="full">
+                    <div
+                      slot="start"
+                      style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        display: 'grid',
+                        placeItems: 'center',
+                        background: '#dbeafe',
+                        color: '#1e40af'
+                      }}
+                    >
+                      <IonIcon icon={personOutline} />
+                    </div>
                     <IonLabel>
-                      <h3 style={{ marginBottom: '4px' }}>{secretary.name}</h3>
-                      <p>{secretary.phone || 'Telephone: N/D'}</p>
-                      {secretary.whatsapp ? <p>WhatsApp: {secretary.whatsapp}</p> : null}
-                      {secretary.email ? <p>Email: {secretary.email}</p> : null}
+                      <h3>{entry.name}</h3>
+                      <p>
+                        <strong>Statut:</strong>{' '}
+                        <IonText color={statusColor(entry.status)}>{statusLabel(entry.status)}</IonText>
+                      </p>
+                      <p><strong>Envoyee le:</strong> {formatDateTime(entry.created_at)}</p>
+                      {entry.responded_at ? <p><strong>Traitee le:</strong> {formatDateTime(entry.responded_at)}</p> : null}
+                      {entry.response_message ? <p><strong>Reponse:</strong> {entry.response_message}</p> : null}
                     </IonLabel>
                   </IonItem>
                 ))}
@@ -162,87 +317,6 @@ const DoctorSecretariesPage: React.FC = () => {
             )}
           </IonCardContent>
         </IonCard>
-
-        <IonFab vertical="bottom" horizontal="end" slot="fixed">
-          <IonFabButton color="primary" onClick={() => setIsModalOpen(true)}>
-            <IonIcon icon={add} />
-          </IonFabButton>
-        </IonFab>
-
-        <IonModal isOpen={isModalOpen} onDidDismiss={() => setIsModalOpen(false)}>
-          <IonHeader>
-            <IonToolbar>
-              <IonTitle>Ajouter une secretaire</IonTitle>
-              <IonButtons slot="end">
-                <IonButton onClick={() => setIsModalOpen(false)}>Fermer</IonButton>
-              </IonButtons>
-            </IonToolbar>
-          </IonHeader>
-          <IonContent>
-            <IonList>
-              <IonItem>
-                <IonLabel position="stacked">Nom</IonLabel>
-                <IonInput
-                  value={form.name}
-                  placeholder="Ex: Marie Pierre"
-                  onIonInput={(e) => setForm((prev) => ({ ...prev, name: e.detail.value ?? '' }))}
-                />
-              </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Telephone</IonLabel>
-                <IonInput
-                  value={form.phone}
-                  placeholder="+509-xxxx-xxxx"
-                  inputMode="tel"
-                  onIonInput={(e) =>
-                    setForm((prev) => ({ ...prev, phone: maskHaitiPhone(e.detail.value ?? '') }))
-                  }
-                />
-              </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">WhatsApp</IonLabel>
-                <IonInput
-                  value={form.whatsapp}
-                  placeholder="+509-xxxx-xxxx"
-                  inputMode="tel"
-                  onIonInput={(e) =>
-                    setForm((prev) => ({ ...prev, whatsapp: maskHaitiPhone(e.detail.value ?? '') }))
-                  }
-                />
-              </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Email</IonLabel>
-                <IonInput
-                  type="email"
-                  value={form.email}
-                  placeholder="email@cabinet.ht"
-                  onIonInput={(e) => setForm((prev) => ({ ...prev, email: e.detail.value ?? '' }))}
-                />
-              </IonItem>
-              <IonItem>
-                <IonLabel position="stacked">Notes</IonLabel>
-                <IonTextarea
-                  autoGrow
-                  value={form.notes}
-                  placeholder="Informations supplementaires"
-                  onIonInput={(e) => setForm((prev) => ({ ...prev, notes: e.detail.value ?? '' }))}
-                />
-              </IonItem>
-            </IonList>
-          </IonContent>
-          <IonFooter>
-            <IonToolbar>
-              <IonButton
-                expand="block"
-                style={{ margin: '8px 12px' }}
-                disabled={saving}
-                onClick={() => saveSecretary().catch(() => undefined)}
-              >
-                {saving ? 'Enregistrement...' : 'Enregistrer'}
-              </IonButton>
-            </IonToolbar>
-          </IonFooter>
-        </IonModal>
       </IonContent>
     </IonPage>
   );
