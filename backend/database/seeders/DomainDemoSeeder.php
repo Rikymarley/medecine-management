@@ -78,7 +78,6 @@ class DomainDemoSeeder extends Seeder
                 'license_verified' => true,
                 'license_verified_at' => now(),
                 'license_verification_notes' => 'Verification association medecins.',
-                'can_verify_accounts' => true,
             ]
         );
 
@@ -229,7 +228,6 @@ class DomainDemoSeeder extends Seeder
                     'license_verified_at' => null,
                     'license_verified_by_doctor_id' => null,
                     'license_verification_notes' => null,
-                    'can_verify_accounts' => false,
                     'account_status' => 'active',
                 ]
             );

@@ -18,8 +18,8 @@ class CurrentStateSeeder extends Seeder
         $payload = json_decode((string) file_get_contents($snapshotPath), true, 512, JSON_THROW_ON_ERROR);
 
         $insertOrder = [
-            'users',
             'pharmacies',
+            'users',
             'family_members',
             'visits',
             'prescriptions',
@@ -79,8 +79,42 @@ class CurrentStateSeeder extends Seeder
                     continue;
                 }
 
+                if ($table === 'users') {
+                    $selfReferencingUserColumns = array_values(array_intersect(
+                        [
+                            'verified_by',
+                            'blocked_by',
+                            'delegated_by',
+                            'created_by_doctor_id',
+                            'principal_patient_id',
+                        ],
+                        array_keys($allowedColumns)
+                    ));
+
+                    $deferredUserUpdates = [];
+                    foreach ($rows as &$row) {
+                        $updatePayload = [];
+                        foreach ($selfReferencingUserColumns as $column) {
+                            if (array_key_exists($column, $row)) {
+                                $updatePayload[$column] = $row[$column];
+                                unset($row[$column]);
+                            }
+                        }
+                        if (!empty($updatePayload) && isset($row['id'])) {
+                            $deferredUserUpdates[(int) $row['id']] = $updatePayload;
+                        }
+                    }
+                    unset($row);
+                }
+
                 foreach (array_chunk($rows, 200) as $chunk) {
                     DB::table($table)->insert($chunk);
+                }
+
+                if ($table === 'users' && !empty($deferredUserUpdates)) {
+                    foreach ($deferredUserUpdates as $userId => $payload) {
+                        DB::table('users')->where('id', $userId)->update($payload);
+                    }
                 }
             }
         } finally {
