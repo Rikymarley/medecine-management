@@ -1,0 +1,71 @@
+services:
+  - type: web
+    name: medecine-backend
+    runtime: docker
+    rootDir: backend
+    plan: free
+    envVars:
+      - key: APP_NAME
+        value: MedecineManagement
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        fromService:
+          type: web
+          name: medecine-backend
+          property: url
+      - key: APP_KEY
+        sync: false
+      - key: LOG_CHANNEL
+        value: stack
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: medecine-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: medecine-db
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: medecine-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: medecine-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: medecine-db
+          property: password
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+
+  - type: static
+    name: medecine-frontend
+    rootDir: app
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: medecine-backend
+          property: url
+
+databases:
+  - name: medecine-db
+    plan: free
+    databaseName: medecine
+    user: medecine_user
