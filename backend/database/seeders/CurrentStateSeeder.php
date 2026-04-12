@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CurrentStateSeeder extends Seeder
 {
@@ -57,7 +58,23 @@ class CurrentStateSeeder extends Seeder
             }
 
             foreach ($insertOrder as $table) {
+                if (!Schema::hasTable($table)) {
+                    continue;
+                }
+
                 $rows = $payload[$table] ?? [];
+                if (empty($rows)) {
+                    continue;
+                }
+
+                $allowedColumns = array_flip(Schema::getColumnListing($table));
+                $rows = array_values(array_filter(array_map(
+                    static function (array $row) use ($allowedColumns): array {
+                        return array_intersect_key($row, $allowedColumns);
+                    },
+                    $rows
+                ), static fn (array $row): bool => !empty($row)));
+
                 if (empty($rows)) {
                     continue;
                 }
