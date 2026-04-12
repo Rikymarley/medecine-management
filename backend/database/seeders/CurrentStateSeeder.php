@@ -37,6 +37,73 @@ class CurrentStateSeeder extends Seeder
         ];
 
         $deleteOrder = array_reverse($insertOrder);
+        $fkDependencies = [
+            'users' => [
+                'pharmacy_id' => 'pharmacies',
+            ],
+            'family_members' => [
+                'patient_user_id' => 'users',
+            ],
+            'visits' => [
+                'patient_user_id' => 'users',
+                'doctor_user_id' => 'users',
+                'family_member_id' => 'family_members',
+            ],
+            'prescriptions' => [
+                'doctor_user_id' => 'users',
+                'patient_user_id' => 'users',
+                'family_member_id' => 'family_members',
+                'visit_id' => 'visits',
+            ],
+            'medical_history_entries' => [
+                'patient_user_id' => 'users',
+                'doctor_user_id' => 'users',
+                'family_member_id' => 'family_members',
+                'prescription_id' => 'prescriptions',
+                'visit_id' => 'visits',
+            ],
+            'rehab_entries' => [
+                'patient_user_id' => 'users',
+                'doctor_user_id' => 'users',
+                'prescription_id' => 'prescriptions',
+                'medical_history_entry_id' => 'medical_history_entries',
+                'visit_id' => 'visits',
+            ],
+            'medicine_requests' => [
+                'prescription_id' => 'prescriptions',
+            ],
+            'pharmacy_responses' => [
+                'pharmacy_id' => 'pharmacies',
+                'prescription_id' => 'prescriptions',
+                'medicine_request_id' => 'medicine_requests',
+            ],
+            'patient_medicine_purchases' => [
+                'patient_user_id' => 'users',
+                'prescription_id' => 'prescriptions',
+                'medicine_request_id' => 'medicine_requests',
+                'pharmacy_id' => 'pharmacies',
+            ],
+            'prescription_status_logs' => [
+                'prescription_id' => 'prescriptions',
+                'changed_by_user_id' => 'users',
+            ],
+            'doctor_patient_access_requests' => [
+                'patient_user_id' => 'users',
+                'doctor_user_id' => 'users',
+            ],
+            'medical_history_prescriptions' => [
+                'medical_history_entry_id' => 'medical_history_entries',
+                'prescription_id' => 'prescriptions',
+            ],
+            'emergency_contacts' => [
+                'patient_user_id' => 'users',
+            ],
+            'doctor_specialties' => [
+                'created_by_user_id' => 'users',
+                'approved_by_user_id' => 'users',
+            ],
+        ];
+        $parentIdCache = [];
 
         $driver = DB::getDriverName();
         $isPostgres = $driver === 'pgsql';
@@ -106,6 +173,32 @@ class CurrentStateSeeder extends Seeder
                         }
                     }
                     unset($row);
+                }
+
+                if (isset($fkDependencies[$table])) {
+                    $rows = array_values(array_filter($rows, function (array $row) use ($fkDependencies, $table, &$parentIdCache): bool {
+                        foreach ($fkDependencies[$table] as $fkColumn => $parentTable) {
+                            if (!array_key_exists($fkColumn, $row) || $row[$fkColumn] === null) {
+                                continue;
+                            }
+
+                            if (!isset($parentIdCache[$parentTable])) {
+                                $parentIdCache[$parentTable] = array_flip(
+                                    array_map('intval', DB::table($parentTable)->pluck('id')->all())
+                                );
+                            }
+
+                            $fkValue = (int) $row[$fkColumn];
+                            if (!isset($parentIdCache[$parentTable][$fkValue])) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }));
+                }
+
+                if (empty($rows)) {
+                    continue;
                 }
 
                 foreach (array_chunk($rows, 200) as $chunk) {
