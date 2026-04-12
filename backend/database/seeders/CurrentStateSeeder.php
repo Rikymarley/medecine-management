@@ -82,6 +82,7 @@ class CurrentStateSeeder extends Seeder
                 if ($table === 'users') {
                     $selfReferencingUserColumns = array_values(array_intersect(
                         [
+                            'pharmacy_id',
                             'verified_by',
                             'blocked_by',
                             'delegated_by',
@@ -112,8 +113,8 @@ class CurrentStateSeeder extends Seeder
                 }
 
                 if ($table === 'users' && !empty($deferredUserUpdates)) {
-                    foreach ($deferredUserUpdates as $userId => $payload) {
-                        DB::table('users')->where('id', $userId)->update($payload);
+                    foreach ($deferredUserUpdates as $userId => $updateValues) {
+                        DB::table('users')->where('id', $userId)->update($updateValues);
                     }
                 }
             }
