@@ -37,15 +37,23 @@ class CurrentStateSeeder extends Seeder
 
         $deleteOrder = array_reverse($insertOrder);
 
-        if (DB::getDriverName() === 'sqlite') {
+        $driver = DB::getDriverName();
+        $isPostgres = $driver === 'pgsql';
+
+        if ($driver === 'sqlite') {
             DB::statement('PRAGMA foreign_keys = OFF');
-        } else {
+        } elseif (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement('SET FOREIGN_KEY_CHECKS=0');
         }
 
         try {
-            foreach ($deleteOrder as $table) {
-                DB::table($table)->delete();
+            if ($isPostgres) {
+                $quotedTables = array_map(static fn (string $table): string => sprintf('"%s"', $table), $deleteOrder);
+                DB::statement('TRUNCATE TABLE '.implode(', ', $quotedTables).' RESTART IDENTITY CASCADE');
+            } else {
+                foreach ($deleteOrder as $table) {
+                    DB::table($table)->delete();
+                }
             }
 
             foreach ($insertOrder as $table) {
@@ -59,12 +67,11 @@ class CurrentStateSeeder extends Seeder
                 }
             }
         } finally {
-            if (DB::getDriverName() === 'sqlite') {
+            if ($driver === 'sqlite') {
                 DB::statement('PRAGMA foreign_keys = ON');
-            } else {
+            } elseif (in_array($driver, ['mysql', 'mariadb'], true)) {
                 DB::statement('SET FOREIGN_KEY_CHECKS=1');
             }
         }
     }
 }
-
