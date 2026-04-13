@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class CurrentStateSeeder extends Seeder
 {
@@ -104,6 +105,7 @@ class CurrentStateSeeder extends Seeder
             ],
         ];
         $parentIdCache = [];
+        $payload = $this->sanitizePayloadByDependencies($payload, $insertOrder, $fkDependencies);
 
         $driver = DB::getDriverName();
         $isPostgres = $driver === 'pgsql';
@@ -202,7 +204,18 @@ class CurrentStateSeeder extends Seeder
                 }
 
                 foreach (array_chunk($rows, 200) as $chunk) {
-                    DB::table($table)->insert($chunk);
+                    try {
+                        DB::table($table)->insert($chunk);
+                    } catch (Throwable $e) {
+                        foreach ($chunk as $row) {
+                            try {
+                                DB::table($table)->insert($row);
+                            } catch (Throwable) {
+                                // Skip invalid rows (for example unresolved FK references)
+                                // so one bad row does not block the whole deployment.
+                            }
+                        }
+                    }
                 }
 
                 if ($table === 'users' && !empty($deferredUserUpdates)) {
@@ -218,5 +231,58 @@ class CurrentStateSeeder extends Seeder
                 DB::statement('SET FOREIGN_KEY_CHECKS=1');
             }
         }
+    }
+
+    /**
+     * Remove rows with broken FK references directly in the snapshot payload
+     * before any database insert, so inconsistent snapshots cannot crash deploy.
+     */
+    private function sanitizePayloadByDependencies(array $payload, array $insertOrder, array $fkDependencies): array
+    {
+        $payloadIdSets = [];
+        foreach ($insertOrder as $table) {
+            $payloadIdSets[$table] = array_flip(array_map(
+                'intval',
+                array_column($payload[$table] ?? [], 'id')
+            ));
+        }
+
+        $changed = true;
+        while ($changed) {
+            $changed = false;
+
+            foreach ($insertOrder as $table) {
+                if (!isset($fkDependencies[$table]) || empty($payload[$table])) {
+                    continue;
+                }
+
+                $rows = $payload[$table];
+                $filteredRows = array_values(array_filter($rows, function (array $row) use ($fkDependencies, $table, $payloadIdSets): bool {
+                    foreach ($fkDependencies[$table] as $fkColumn => $parentTable) {
+                        if (!array_key_exists($fkColumn, $row) || $row[$fkColumn] === null) {
+                            continue;
+                        }
+
+                        $fkValue = (int) $row[$fkColumn];
+                        if (!isset($payloadIdSets[$parentTable][$fkValue])) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }));
+
+                if (count($filteredRows) !== count($rows)) {
+                    $payload[$table] = $filteredRows;
+                    $payloadIdSets[$table] = array_flip(array_map(
+                        'intval',
+                        array_column($filteredRows, 'id')
+                    ));
+                    $changed = true;
+                }
+            }
+        }
+
+        return $payload;
     }
 }
