@@ -17,6 +17,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Upload Disk
+    |--------------------------------------------------------------------------
+    |
+    | Uploads (profile photos, logos, documents, etc.) can be routed to a
+    | dedicated disk independently from the framework default disk.
+    |
+    */
+    'upload_disk' => env('UPLOAD_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Storage;
 
 class PharmacyController extends Controller
 {
+    private function uploadDisk(): string
+    {
+        return (string) config('filesystems.upload_disk', 'public');
+    }
+
     private function presentPharmacy(Pharmacy $pharmacy): array
     {
         $pharmacy->loadMissing([
@@ -39,14 +44,20 @@ class PharmacyController extends Controller
             return;
         }
 
+        $disk = $this->uploadDisk();
         $path = parse_url($url, PHP_URL_PATH);
-        if (!$path || !str_starts_with($path, '/storage/')) {
+        if (!$path) {
             return;
         }
 
-        $relative = ltrim(substr($path, strlen('/storage/')), '/');
+        if (str_starts_with($path, '/storage/')) {
+            $relative = ltrim(substr($path, strlen('/storage/')), '/');
+        } else {
+            $relative = ltrim($path, '/');
+        }
+
         if ($relative !== '') {
-            Storage::disk('public')->delete($relative);
+            Storage::disk($disk)->delete($relative);
         }
     }
 
@@ -62,9 +73,10 @@ class PharmacyController extends Controller
             $requestFileKey => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
         ]);
 
+        $disk = $this->uploadDisk();
         $uploaded = $request->file($requestFileKey);
-        $path = $uploaded->store($directory, 'public');
-        $publicUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+        $path = $uploaded->store($directory, $disk);
+        $publicUrl = Storage::disk($disk)->url($path);
 
         $this->deleteIfLocalStorageUrl($pharmacy->{$databaseField});
         $pharmacy->update([$databaseField => $publicUrl]);

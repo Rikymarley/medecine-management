@@ -808,9 +808,12 @@ const PharmacyDashboard: React.FC = () => {
                             target.showPicker?.();
                           }}
                           onChange={(event) =>
-                            setWeeklySchedule((prev) =>
-                              prev.map((item, i) => (i === index ? { ...item, from: event.currentTarget.value || item.from } : item))
-                            )
+                            {
+                              const nextValue = event.currentTarget.value;
+                              setWeeklySchedule((prev) =>
+                                prev.map((item, i) => (i === index ? { ...item, from: nextValue || item.from } : item))
+                              );
+                            }
                           }
                           style={{
                             width: '100%',
@@ -831,9 +834,12 @@ const PharmacyDashboard: React.FC = () => {
                             target.showPicker?.();
                           }}
                           onChange={(event) =>
-                            setWeeklySchedule((prev) =>
-                              prev.map((item, i) => (i === index ? { ...item, to: event.currentTarget.value || item.to } : item))
-                            )
+                            {
+                              const nextValue = event.currentTarget.value;
+                              setWeeklySchedule((prev) =>
+                                prev.map((item, i) => (i === index ? { ...item, to: nextValue || item.to } : item))
+                              );
+                            }
                           }
                           style={{
                             width: '100%',

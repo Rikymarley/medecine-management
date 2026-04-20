@@ -10,6 +10,11 @@ use Illuminate\Validation\Rule;
 
 class PatientMedicineCabinetController extends Controller
 {
+    private function uploadDisk(): string
+    {
+        return (string) config('filesystems.upload_disk', 'public');
+    }
+
     private function formatCabinetItem(PatientMedicineCabinetItem $row): array
     {
         return [
@@ -56,14 +61,20 @@ class PatientMedicineCabinetController extends Controller
             return;
         }
 
+        $disk = $this->uploadDisk();
         $parsed = parse_url($url, PHP_URL_PATH);
-        if (!$parsed || !str_contains($parsed, '/storage/')) {
+        if (!$parsed) {
             return;
         }
 
-        $relative = ltrim(substr($parsed, strpos($parsed, '/storage/') + strlen('/storage/')), '/');
+        if (str_starts_with($parsed, '/storage/')) {
+            $relative = ltrim(substr($parsed, strlen('/storage/')), '/');
+        } else {
+            $relative = ltrim($parsed, '/');
+        }
+
         if ($relative !== '') {
-            Storage::disk('public')->delete($relative);
+            Storage::disk($disk)->delete($relative);
         }
     }
 
@@ -206,9 +217,10 @@ class PatientMedicineCabinetController extends Controller
             'photo' => ['required', 'image', 'max:4096'],
         ]);
 
+        $disk = $this->uploadDisk();
         $uploaded = $request->file('photo');
-        $path = $uploaded->store('cabinet/photos', 'public');
-        $publicUrl = Storage::disk('public')->url($path);
+        $path = $uploaded->store('cabinet/photos', $disk);
+        $publicUrl = Storage::disk($disk)->url($path);
 
         $this->deleteIfLocalStorageUrl($cabinetItem->photo_url);
         $cabinetItem->update(['photo_url' => $publicUrl]);
