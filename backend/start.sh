@@ -32,5 +32,8 @@ else
   echo "Skipping seeders (set RUN_DB_SEED=true to enable on next deploy)."
 fi
 
+echo "Ensuring public storage symlink..."
+php artisan storage:link || true
+
 echo "Starting Apache..."
 exec apache2-foreground

@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -147,39 +148,66 @@ class AuthController extends Controller
         return $row;
     }
 
+    /**
+     * Render may occasionally run against a lagging schema during rollouts.
+     * Keep doctor-directory queries resilient by selecting only existing columns.
+     *
+     * @param array<int, string> $columns
+     * @return array<int, string>
+     */
+    private function existingUserColumns(array $columns): array
+    {
+        $available = array_flip(Schema::getColumnListing('users'));
+        $filtered = array_values(array_filter(
+            $columns,
+            fn (string $column): bool => isset($available[$column])
+        ));
+
+        if (!in_array('id', $filtered, true)) {
+            array_unshift($filtered, 'id');
+        }
+        if (!in_array('name', $filtered, true)) {
+            $filtered[] = 'name';
+        }
+
+        return $filtered;
+    }
+
     public function doctorsDirectory()
     {
+        $doctorSelect = $this->existingUserColumns([
+            'id',
+            'name',
+            'phone',
+            'address',
+            'latitude',
+            'longitude',
+            'specialty',
+            'city',
+            'department',
+            'languages',
+            'teleconsultation_available',
+            'consultation_hours',
+            'license_number',
+            'license_verified',
+            'years_experience',
+            'consultation_fee_range',
+            'whatsapp',
+            'bio',
+            'profile_photo_url',
+            'profile_banner_url',
+            'can_verify_accounts',
+            'license_verified_at',
+            'license_verified_by_doctor_id',
+            'license_verification_notes',
+        ]);
+
         $doctors = User::query()
             ->with(['licenseVerifiedByDoctor:id,name', 'verifiedBy:id,name'])
             ->where('role', 'doctor')
             ->where('verification_status', 'approved')
             ->orderBy('name')
-            ->get([
-                'id',
-                'name',
-                'phone',
-                'address',
-                'latitude',
-                'longitude',
-                'specialty',
-                'city',
-                'department',
-                'languages',
-                'teleconsultation_available',
-                'consultation_hours',
-                'license_number',
-                'license_verified',
-                'years_experience',
-                'consultation_fee_range',
-                'whatsapp',
-                'bio',
-                'profile_photo_url',
-                'profile_banner_url',
-                'can_verify_accounts',
-                'license_verified_at',
-                'license_verified_by_doctor_id',
-                'license_verification_notes',
-            ])
+            ->get($doctorSelect)
             ->map(fn (User $doctor) => $this->presentDoctor($doctor))
             ->values();
 
@@ -188,40 +216,42 @@ class AuthController extends Controller
 
     public function doctorsDirectoryForDoctor()
     {
+        $doctorSelect = $this->existingUserColumns([
+            'id',
+            'name',
+            'phone',
+            'address',
+            'latitude',
+            'longitude',
+            'specialty',
+            'city',
+            'department',
+            'languages',
+            'teleconsultation_available',
+            'consultation_hours',
+            'license_number',
+            'license_verified',
+            'license_verified_at',
+            'license_verified_by_doctor_id',
+            'license_verification_notes',
+            'can_verify_accounts',
+            'years_experience',
+            'consultation_fee_range',
+            'whatsapp',
+            'bio',
+            'profile_photo_url',
+            'profile_banner_url',
+            'verification_status',
+            'verified_at',
+            'verified_by',
+            'verification_notes',
+        ]);
+
         $doctors = User::query()
             ->with(['licenseVerifiedByDoctor:id,name', 'verifiedBy:id,name'])
             ->where('role', 'doctor')
             ->orderBy('name')
-            ->get([
-                'id',
-                'name',
-                'phone',
-                'address',
-                'latitude',
-                'longitude',
-                'specialty',
-                'city',
-                'department',
-                'languages',
-                'teleconsultation_available',
-                'consultation_hours',
-                'license_number',
-                'license_verified',
-                'license_verified_at',
-                'license_verified_by_doctor_id',
-                'license_verification_notes',
-                'can_verify_accounts',
-                'years_experience',
-                'consultation_fee_range',
-                'whatsapp',
-                'bio',
-                'profile_photo_url',
-                'profile_banner_url',
-                'verification_status',
-                'verified_at',
-                'verified_by',
-                'verification_notes',
-            ])
+            ->get($doctorSelect)
             ->map(fn (User $doctor) => $this->presentDoctor($doctor))
             ->values();
 
