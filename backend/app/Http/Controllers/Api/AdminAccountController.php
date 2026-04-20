@@ -9,9 +9,23 @@ use App\Models\PasswordResetEvent;
 use App\Models\Pharmacy;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class AdminAccountController extends Controller
 {
+    /**
+     * @param array<int, string> $columns
+     * @return array<int, string>
+     */
+    private function existingColumns(string $table, array $columns): array
+    {
+        $available = array_flip(Schema::getColumnListing($table));
+        return array_values(array_filter(
+            $columns,
+            fn (string $column): bool => isset($available[$column])
+        ));
+    }
+
     public function passwordResetEvents(Request $request)
     {
         $data = $request->validate([
@@ -94,10 +108,33 @@ class AdminAccountController extends Controller
 
     public function pharmacies()
     {
+        $accountUserColumns = $this->existingColumns('users', [
+            'id',
+            'name',
+            'email',
+            'pharmacy_id',
+            'account_status',
+            'verification_status',
+            'verified_at',
+            'verified_by',
+            'verification_notes',
+            'blocked_by',
+            'blocked_at',
+            'can_verify_accounts',
+            'delegated_by',
+            'delegated_at',
+        ]);
+        if (!in_array('id', $accountUserColumns, true)) {
+            $accountUserColumns[] = 'id';
+        }
+        if (!in_array('pharmacy_id', $accountUserColumns, true)) {
+            $accountUserColumns[] = 'pharmacy_id';
+        }
+
         $rows = Pharmacy::query()
             ->with([
                 'licenseVerifiedByDoctor:id,name',
-                'accountUser:id,name,email,pharmacy_id,account_status,verification_status,verified_at,verified_by,verification_notes,blocked_by,blocked_at,can_verify_accounts,delegated_by,delegated_at',
+                'accountUser' => fn ($query) => $query->select($accountUserColumns),
                 'accountUser.verifiedBy:id,name',
                 'accountUser.blockedBy:id,name',
                 'accountUser.delegatedBy:id,name',
