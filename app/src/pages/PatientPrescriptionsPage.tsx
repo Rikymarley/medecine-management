@@ -12,6 +12,7 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonSkeletonText,
   IonText,
   IonTitle,
   IonToolbar,
@@ -32,6 +33,7 @@ const PatientPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [doctorFilter, setDoctorFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const pageSize = 12;
@@ -69,7 +71,18 @@ const PatientPrescriptionsPage: React.FC = () => {
   }, [LOAD_TTL_MS, cacheKey, token]);
 
   useEffect(() => {
-    loadPrescriptions(true).catch(() => undefined);
+    let cancelled = false;
+    setIsLoading(true);
+    loadPrescriptions(true)
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [loadPrescriptions]);
 
   useIonViewWillEnter(() => {
@@ -122,12 +135,28 @@ const PatientPrescriptionsPage: React.FC = () => {
         <IonCard className="surface-card">
           <IonCardContent>
             {sortedPrescriptions.length === 0 ? (
-              <IonText color="medium">
-                <p>Aucune ordonnance pour le moment.</p>
-              </IonText>
+              isLoading ? (
+                <IonList>
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <IonItem key={`rx-skeleton-${idx}`} lines="full">
+                      <IonLabel>
+                        <IonSkeletonText animated style={{ width: '45%', height: '14px' }} />
+                        <IonSkeletonText animated style={{ width: '35%', height: '12px' }} />
+                        <IonSkeletonText animated style={{ width: '55%', height: '12px' }} />
+                      </IonLabel>
+                    </IonItem>
+                  ))}
+                </IonList>
+              ) : (
+                <IonText color="medium">
+                  <div className="empty-state-card">
+                    <p style={{ margin: 0 }}>Aucune ordonnance pour le moment.</p>
+                  </div>
+                </IonText>
+              )
             ) : (
               <>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                <div className="sticky-filter-bar" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
                   <IonButton
                     size="small"
                     fill={doctorFilter === 'all' ? 'solid' : 'outline'}
@@ -148,7 +177,9 @@ const PatientPrescriptionsPage: React.FC = () => {
                 </div>
                 {filteredPrescriptions.length === 0 ? (
                   <IonText color="medium">
-                    <p>Aucune ordonnance pour ce docteur.</p>
+                    <div className="empty-state-card">
+                      <p style={{ margin: 0 }}>Aucune ordonnance pour ce docteur.</p>
+                    </div>
                   </IonText>
                 ) : (
                   <IonList>

@@ -18,6 +18,7 @@ import {
   IonSelect,
   IonSelectOption,
   IonSearchbar,
+  IonSkeletonText,
   IonSpinner,
   IonText,
   IonTextarea,
@@ -47,6 +48,7 @@ const DoctorPatientsPage: React.FC = () => {
   const [searchingDb, setSearchingDb] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [savingPatient, setSavingPatient] = useState(false);
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [newPatient, setNewPatient] = useState({
     name: '',
@@ -106,12 +108,19 @@ const DoctorPatientsPage: React.FC = () => {
   }, [LOAD_TTL_MS, token]);
 
   useEffect(() => {
-    loadPrescriptions(true).catch(() => undefined);
-  }, [loadPrescriptions]);
-
-  useEffect(() => {
-    loadDoctorPatients(true).catch(() => undefined);
-  }, [loadDoctorPatients]);
+    let cancelled = false;
+    setIsLoadingData(true);
+    Promise.all([loadPrescriptions(true), loadDoctorPatients(true)])
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingData(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadDoctorPatients, loadPrescriptions]);
 
   useIonViewWillEnter(() => {
     loadPrescriptions(false).catch(() => undefined);
@@ -388,9 +397,31 @@ const DoctorPatientsPage: React.FC = () => {
                 )}
               </>
             ) : null}
-            {patientEntries.length === 0 ? (
+            {isLoadingData && patientEntries.length === 0 ? (
+              <IonList>
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <IonItem key={`patient-skeleton-${idx}`} lines="full">
+                    <div
+                      slot="start"
+                      style={{
+                        width: '34px',
+                        height: '34px',
+                        borderRadius: '50%',
+                        background: '#e2e8f0'
+                      }}
+                    />
+                    <IonLabel>
+                      <IonSkeletonText animated style={{ width: '55%', height: '14px' }} />
+                      <IonSkeletonText animated style={{ width: '35%', height: '12px' }} />
+                    </IonLabel>
+                  </IonItem>
+                ))}
+              </IonList>
+            ) : patientEntries.length === 0 ? (
               <IonText color="medium">
-                <p>Aucun patient pour le moment.</p>
+                <div className="empty-state-card">
+                  <p style={{ margin: 0 }}>Aucun patient pour le moment.</p>
+                </div>
               </IonText>
             ) : (
               <IonList>

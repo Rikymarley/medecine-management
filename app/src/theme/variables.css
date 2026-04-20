@@ -163,6 +163,25 @@ ion-badge.status-completed {
   margin-top: 14px;
 }
 
+.sticky-filter-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  background: rgba(240, 246, 250, 0.92);
+  backdrop-filter: blur(4px);
+  border: 1px solid #dbe7ef;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.empty-state-card {
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 8px;
+  background: #f8fbfe;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr;

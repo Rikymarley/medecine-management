@@ -14,6 +14,7 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonSkeletonText,
   IonText,
   IonTitle,
   IonToolbar
@@ -80,10 +81,12 @@ const PharmacyPrescriptionsPage: React.FC = () => {
   const [expandedPrescriptions, setExpandedPrescriptions] = useState<Record<number, boolean>>({});
   const [statusFilter, setStatusFilter] = useState<FilterKey>('sent_to_pharmacies');
   const [reactivatingPrescriptionId, setReactivatingPrescriptionId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const cacheKey = user ? `pharmacy-prescriptions-cache-${user.id}` : null;
 
   const loadData = useCallback(async () => {
+    setIsLoading(true);
     try {
       if (!token) {
         throw new Error('Authentication required');
@@ -130,6 +133,8 @@ const PharmacyPrescriptionsPage: React.FC = () => {
       } catch {
         localStorage.removeItem(cacheKey);
       }
+    } finally {
+      setIsLoading(false);
     }
   }, [cacheKey, token]);
 
@@ -352,6 +357,7 @@ const PharmacyPrescriptionsPage: React.FC = () => {
             ) : null}
 
             <div
+              className="sticky-filter-bar"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, minmax(0,1fr))',
@@ -397,7 +403,33 @@ const PharmacyPrescriptionsPage: React.FC = () => {
               </IonBadge>
             </div>
 
-            {filteredPrescriptions.map((prescription) => (
+            {isLoading && prescriptions.length === 0 ? (
+              <IonCard className="surface-card" style={{ marginTop: '12px' }}>
+                <IonCardContent>
+                  <IonList>
+                    {Array.from({ length: 3 }).map((_, idx) => (
+                      <IonItem key={`ph-rx-skeleton-${idx}`} lines="full">
+                        <IonLabel>
+                          <IonSkeletonText animated style={{ width: '55%', height: '14px' }} />
+                          <IonSkeletonText animated style={{ width: '30%', height: '12px' }} />
+                          <IonSkeletonText animated style={{ width: '45%', height: '12px' }} />
+                        </IonLabel>
+                      </IonItem>
+                    ))}
+                  </IonList>
+                </IonCardContent>
+              </IonCard>
+            ) : filteredPrescriptions.length === 0 ? (
+              <IonCard className="surface-card" style={{ marginTop: '12px' }}>
+                <IonCardContent>
+                  <IonText color="medium">
+                    <div className="empty-state-card">
+                      <p style={{ margin: 0 }}>Aucune ordonnance pour ce filtre.</p>
+                    </div>
+                  </IonText>
+                </IonCardContent>
+              </IonCard>
+            ) : filteredPrescriptions.map((prescription) => (
               <IonCard key={prescription.id} className="surface-card" style={{ marginTop: '16px' }}>
                 <IonCardHeader>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
