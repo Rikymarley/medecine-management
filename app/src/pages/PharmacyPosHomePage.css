@@ -1,0 +1,38 @@
+.pos-left-column {
+  display: grid;
+  gap: 12px;
+}
+
+.pos-products-list {
+  margin-top: 10px;
+}
+
+.pos-inline-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pos-cart-lines {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--ion-color-light-shade);
+  border-radius: 10px;
+  background: #f8fbfe;
+}
+
+.pos-cart-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.pos-cart-total {
+  padding-top: 8px;
+  border-top: 1px dashed var(--ion-color-light-shade);
+  font-size: 1rem;
+}
