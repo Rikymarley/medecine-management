@@ -17,6 +17,23 @@ use Throwable;
 
 class DoctorVisitController extends Controller
 {
+    private function runWithRetry(callable $callback, int $maxAttempts = 2): mixed
+    {
+        $attempt = 0;
+        start:
+        try {
+            return $callback();
+        } catch (Throwable $exception) {
+            $attempt++;
+            report($exception);
+            if ($attempt < $maxAttempts) {
+                usleep(150000);
+                goto start;
+            }
+            throw $exception;
+        }
+    }
+
     private function normalizeNullableId(mixed $value): ?int
     {
         if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
@@ -277,22 +294,23 @@ class DoctorVisitController extends Controller
         }
 
         try {
-            $visit = DB::transaction(function () use ($data, $doctor, $patient, $familyMemberId, $normalizedVisitDate) {
-                return Visit::query()->create([
-                    'patient_user_id' => $patient->id,
-                    'family_member_id' => $familyMemberId,
-                    'doctor_user_id' => $doctor->id,
-                    'visit_date' => $normalizedVisitDate,
-                    'visit_type' => $data['visit_type'] ?? null,
-                    'chief_complaint' => $data['chief_complaint'] ?? null,
-                    'diagnosis' => $data['diagnosis'] ?? null,
-                    'clinical_notes' => $data['clinical_notes'] ?? null,
-                    'treatment_plan' => $data['treatment_plan'] ?? null,
-                    'status' => $data['status'] ?? 'open',
-                ]);
+            $visit = $this->runWithRetry(function () use ($data, $doctor, $patient, $familyMemberId, $normalizedVisitDate) {
+                return DB::transaction(function () use ($data, $doctor, $patient, $familyMemberId, $normalizedVisitDate) {
+                    return Visit::query()->create([
+                        'patient_user_id' => $patient->id,
+                        'family_member_id' => $familyMemberId,
+                        'doctor_user_id' => $doctor->id,
+                        'visit_date' => $normalizedVisitDate,
+                        'visit_type' => $data['visit_type'] ?? null,
+                        'chief_complaint' => $data['chief_complaint'] ?? null,
+                        'diagnosis' => $data['diagnosis'] ?? null,
+                        'clinical_notes' => $data['clinical_notes'] ?? null,
+                        'treatment_plan' => $data['treatment_plan'] ?? null,
+                        'status' => $data['status'] ?? 'open',
+                    ]);
+                });
             });
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => 'Impossible de creer la visite pour le moment. Veuillez reessayer.'], 422);
         }
 
@@ -325,18 +343,22 @@ class DoctorVisitController extends Controller
         }
 
         try {
-            $visit->update([
-                'family_member_id' => $familyMemberId,
-                'visit_date' => $normalizedVisitDate,
-                'visit_type' => $data['visit_type'] ?? null,
-                'chief_complaint' => $data['chief_complaint'] ?? null,
-                'diagnosis' => $data['diagnosis'] ?? null,
-                'clinical_notes' => $data['clinical_notes'] ?? null,
-                'treatment_plan' => $data['treatment_plan'] ?? null,
-                'status' => $data['status'] ?? $visit->status,
-            ]);
+            $this->runWithRetry(function () use ($visit, $familyMemberId, $normalizedVisitDate, $data) {
+                return DB::transaction(function () use ($visit, $familyMemberId, $normalizedVisitDate, $data) {
+                    $visit->update([
+                        'family_member_id' => $familyMemberId,
+                        'visit_date' => $normalizedVisitDate,
+                        'visit_type' => $data['visit_type'] ?? null,
+                        'chief_complaint' => $data['chief_complaint'] ?? null,
+                        'diagnosis' => $data['diagnosis'] ?? null,
+                        'clinical_notes' => $data['clinical_notes'] ?? null,
+                        'treatment_plan' => $data['treatment_plan'] ?? null,
+                        'status' => $data['status'] ?? $visit->status,
+                    ]);
+                    return true;
+                });
+            });
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => 'Impossible de mettre a jour la visite pour le moment. Veuillez reessayer.'], 422);
         }
 

@@ -18,6 +18,23 @@ use Throwable;
 
 class MedicalHistoryController extends Controller
 {
+    private function runWithRetry(callable $callback, int $maxAttempts = 2): mixed
+    {
+        $attempt = 0;
+        beginning:
+        try {
+            return $callback();
+        } catch (Throwable $exception) {
+            $attempt++;
+            report($exception);
+            if ($attempt < $maxAttempts) {
+                usleep(150000);
+                goto beginning;
+            }
+            throw $exception;
+        }
+    }
+
     private function normalizeNullableId(mixed $value): ?int
     {
         if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
@@ -353,20 +370,21 @@ class MedicalHistoryController extends Controller
         }
 
         try {
-            $entry = DB::transaction(function () use ($data, $patient) {
-                $created = MedicalHistoryEntry::query()->create(array_merge(
-                    $data,
-                    [
-                        'patient_user_id' => $patient->id,
-                        'doctor_user_id' => null,
-                    ]
-                ));
-                $this->syncEntryPrescriptionLinks($created, $data['prescription_id'] ?? null);
-                return $created;
+            $entry = $this->runWithRetry(function () use ($data, $patient) {
+                return DB::transaction(function () use ($data, $patient) {
+                    $created = MedicalHistoryEntry::query()->create(array_merge(
+                        $data,
+                        [
+                            'patient_user_id' => $patient->id,
+                            'doctor_user_id' => null,
+                        ]
+                    ));
+                    $this->syncEntryPrescriptionLinks($created, $data['prescription_id'] ?? null);
+                    return $created;
+                });
             });
             $this->ensureEntryCode($entry);
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer."], 422);
         }
 
@@ -397,12 +415,14 @@ class MedicalHistoryController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($entry, $data) {
-                $entry->update($data);
-                $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+            $this->runWithRetry(function () use ($entry, $data) {
+                return DB::transaction(function () use ($entry, $data) {
+                    $entry->update($data);
+                    $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+                    return true;
+                });
             });
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => "Impossible de mettre a jour l'historique pour le moment. Veuillez reessayer."], 422);
         }
 
@@ -476,20 +496,21 @@ class MedicalHistoryController extends Controller
         }
 
         try {
-            $entry = DB::transaction(function () use ($data, $patient, $doctor) {
-                $created = MedicalHistoryEntry::query()->create(array_merge(
-                    $data,
-                    [
-                        'patient_user_id' => $patient->id,
-                        'doctor_user_id' => $doctor->id,
-                    ]
-                ));
-                $this->syncEntryPrescriptionLinks($created, $data['prescription_id'] ?? null);
-                return $created;
+            $entry = $this->runWithRetry(function () use ($data, $patient, $doctor) {
+                return DB::transaction(function () use ($data, $patient, $doctor) {
+                    $created = MedicalHistoryEntry::query()->create(array_merge(
+                        $data,
+                        [
+                            'patient_user_id' => $patient->id,
+                            'doctor_user_id' => $doctor->id,
+                        ]
+                    ));
+                    $this->syncEntryPrescriptionLinks($created, $data['prescription_id'] ?? null);
+                    return $created;
+                });
             });
             $this->ensureEntryCode($entry);
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer."], 422);
         }
 
@@ -529,17 +550,19 @@ class MedicalHistoryController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($entry, $data, $doctor) {
-                $entry->update(array_merge(
-                    $data,
-                    [
-                        'doctor_user_id' => $doctor->id,
-                    ]
-                ));
-                $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+            $this->runWithRetry(function () use ($entry, $data, $doctor) {
+                return DB::transaction(function () use ($entry, $data, $doctor) {
+                    $entry->update(array_merge(
+                        $data,
+                        [
+                            'doctor_user_id' => $doctor->id,
+                        ]
+                    ));
+                    $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+                    return true;
+                });
             });
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => "Impossible de mettre a jour l'historique pour le moment. Veuillez reessayer."], 422);
         }
 

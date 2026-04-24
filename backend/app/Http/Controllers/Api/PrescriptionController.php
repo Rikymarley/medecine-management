@@ -17,6 +17,23 @@ use Illuminate\Support\Str;
 
 class PrescriptionController extends Controller
 {
+    private function runWithRetry(callable $callback, int $maxAttempts = 2): mixed
+    {
+        $attempt = 0;
+        start:
+        try {
+            return $callback();
+        } catch (\Throwable $exception) {
+            $attempt++;
+            report($exception);
+            if ($attempt < $maxAttempts) {
+                usleep(150000);
+                goto start;
+            }
+            throw $exception;
+        }
+    }
+
     private function clipText(?string $value, int $max): ?string
     {
         if ($value === null) {
@@ -500,7 +517,7 @@ class PrescriptionController extends Controller
         }, $data['medicine_requests']);
 
         try {
-            $prescription = DB::transaction(function () use (
+            $prescription = $this->runWithRetry(function () use (
                 $patientUser,
                 $doctor,
                 $resolvedPatientName,
@@ -509,31 +526,41 @@ class PrescriptionController extends Controller
                 $resolvedVisitId,
                 $medicinePayload
             ) {
-                $created = Prescription::query()->create([
-                    'patient_user_id' => $patientUser->id,
-                    'doctor_user_id' => $doctor->id,
-                    'patient_name' => $resolvedPatientName,
-                    'patient_phone' => $resolvedPatientPhone,
-                    'doctor_name' => $doctor->name,
-                    'source' => 'app',
-                    'family_member_id' => $resolvedFamilyMemberId,
-                    'visit_id' => $resolvedVisitId,
-                    'status' => 'sent_to_pharmacies',
-                    'print_code' => null,
-                    'qr_token' => Str::random(64),
-                ]);
+                return DB::transaction(function () use (
+                    $patientUser,
+                    $doctor,
+                    $resolvedPatientName,
+                    $resolvedPatientPhone,
+                    $resolvedFamilyMemberId,
+                    $resolvedVisitId,
+                    $medicinePayload
+                ) {
+                    $created = Prescription::query()->create([
+                        'patient_user_id' => $patientUser->id,
+                        'doctor_user_id' => $doctor->id,
+                        'patient_name' => $resolvedPatientName,
+                        'patient_phone' => $resolvedPatientPhone,
+                        'doctor_name' => $doctor->name,
+                        'source' => 'app',
+                        'family_member_id' => $resolvedFamilyMemberId,
+                        'visit_id' => $resolvedVisitId,
+                        'status' => 'sent_to_pharmacies',
+                        'print_code' => null,
+                        'qr_token' => Str::random(64),
+                    ]);
 
-                $created->statusLogs()->create([
-                    'old_status' => null,
-                    'new_status' => 'sent_to_pharmacies',
-                    'changed_by_user_id' => $doctor->id,
-                    'reason' => 'created',
-                    'metadata' => null,
-                    'changed_at' => now(),
-                ]);
+                    $created->statusLogs()->create([
+                        'old_status' => null,
+                        'new_status' => 'sent_to_pharmacies',
+                        'changed_by_user_id' => $doctor->id,
+                        'reason' => 'created',
+                        'metadata' => null,
+                        'changed_at' => now(),
+                    ]);
 
-                $created->medicineRequests()->createMany($medicinePayload);
-                return $created;
+                    $created->medicineRequests()->createMany($medicinePayload);
+                    return $created;
+                });
             });
 
             $this->ensurePrintArtifacts($prescription);
@@ -548,7 +575,6 @@ class PrescriptionController extends Controller
 
             return response()->json($prescription->load($this->baseRelations()), 201);
         } catch (\Throwable $exception) {
-            report($exception);
             return response()->json([
                 'message' => "Impossible de creer l'ordonnance pour le moment. Veuillez reessayer.",
             ], 422);

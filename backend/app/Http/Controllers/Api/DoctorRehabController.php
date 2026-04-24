@@ -16,6 +16,23 @@ use Throwable;
 
 class DoctorRehabController extends Controller
 {
+    private function runWithRetry(callable $callback, int $maxAttempts = 2): mixed
+    {
+        $attempt = 0;
+        start:
+        try {
+            return $callback();
+        } catch (Throwable $exception) {
+            $attempt++;
+            report($exception);
+            if ($attempt < $maxAttempts) {
+                usleep(150000);
+                goto start;
+            }
+            throw $exception;
+        }
+    }
+
     private function normalizeNullableId(mixed $value): ?int
     {
         if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
@@ -178,19 +195,20 @@ class DoctorRehabController extends Controller
         }
 
         try {
-            $row = DB::transaction(function () use ($data, $patient, $doctor) {
-                return RehabEntry::query()->create([
-                    ...$data,
-                    'patient_user_id' => $patient->id,
-                    'doctor_user_id' => $doctor->id,
-                ]);
+            $row = $this->runWithRetry(function () use ($data, $patient, $doctor) {
+                return DB::transaction(function () use ($data, $patient, $doctor) {
+                    return RehabEntry::query()->create([
+                        ...$data,
+                        'patient_user_id' => $patient->id,
+                        'doctor_user_id' => $doctor->id,
+                    ]);
+                });
             })->load([
                 'doctor:id,name',
                 'prescription:id,print_code,requested_at',
                 'medicalHistoryEntry:id,entry_code,title',
             ]);
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => 'Impossible de creer la reeducation pour le moment. Veuillez reessayer.'], 422);
         }
 
@@ -220,11 +238,13 @@ class DoctorRehabController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($entry, $data) {
-                $entry->update($data);
+            $this->runWithRetry(function () use ($entry, $data) {
+                return DB::transaction(function () use ($entry, $data) {
+                    $entry->update($data);
+                    return true;
+                });
             });
         } catch (Throwable $exception) {
-            report($exception);
             return response()->json(['message' => 'Impossible de mettre a jour la reeducation pour le moment. Veuillez reessayer.'], 422);
         }
 
