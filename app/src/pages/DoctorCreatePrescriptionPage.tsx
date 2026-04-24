@@ -107,7 +107,7 @@ const parsePositiveId = (value: string | null): number | null => {
 };
 
 const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(data.qr_payload)}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.qr_payload)}`;
   const rows = data.medicine_requests
     .map((med, index) => {
       const details = [med.form, med.strength].filter(Boolean).join(' · ');
@@ -117,16 +117,16 @@ const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
       ].filter(Boolean);
 
       return `
-        <tr>
-          <td>${index + 1}</td>
-          <td>
-            <strong>${escapeHtml(med.name)}</strong>
-            ${details ? `<div class="sub">${escapeHtml(details)}</div>` : ''}
-            ${med.notes ? `<div class="sub">Note: ${escapeHtml(med.notes)}</div>` : ''}
-          </td>
-          <td>${med.quantity ?? 1}</td>
-          <td>${scheduleBits.length ? escapeHtml(scheduleBits.join(' · ')) : '-'}</td>
-        </tr>
+        <div class="rx-item">
+          <div class="rx-top">
+            <span class="rx-index">${index + 1}.</span>
+            <span class="rx-name">${escapeHtml(med.name)}</span>
+          </div>
+          ${details ? `<div class="sub">${escapeHtml(details)}</div>` : ''}
+          <div class="sub"><strong>Qté:</strong> ${med.quantity ?? 1}</div>
+          <div class="sub"><strong>Posologie:</strong> ${scheduleBits.length ? escapeHtml(scheduleBits.join(' · ')) : '-'}</div>
+          ${med.notes ? `<div class="sub"><strong>Note:</strong> ${escapeHtml(med.notes)}</div>` : ''}
+        </div>
       `;
     })
     .join('');
@@ -137,51 +137,63 @@ const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
   <meta charset="utf-8" />
   <title>Ordonnance ${data.print_code}</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #0f172a; margin: 24px; }
-    .header { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
-    .meta { font-size: 14px; line-height: 1.5; }
-    .qr { text-align:center; }
-    .qr img { width: 220px; height: 220px; border: 1px solid #cbd5e1; padding: 6px; border-radius: 10px; }
-    .code { margin-top: 8px; font-size: 16px; font-weight: 700; letter-spacing: 1px; }
-    h1 { font-size: 24px; margin: 0 0 8px; }
-    h2 { font-size: 16px; margin: 24px 0 10px; }
-    .badge { display:inline-block; background:#ecfeff; color:#0f766e; border:1px solid #99f6e4; border-radius:999px; padding: 4px 10px; font-size:12px; font-weight:600; }
-    table { width:100%; border-collapse: collapse; margin-top:10px; }
-    th, td { border:1px solid #e2e8f0; padding:8px; text-align:left; vertical-align:top; font-size:14px; }
-    th { background:#f8fafc; }
-    .sub { color:#475569; font-size:12px; margin-top:2px; }
-    .footer { margin-top: 22px; color:#475569; font-size:12px; }
+    @page { size: 80mm auto; margin: 3mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      color: #111827;
+      margin: 0 auto;
+      width: 74mm;
+      max-width: 74mm;
+      font-size: 11px;
+      line-height: 1.35;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .header { text-align: center; border-bottom: 1px dashed #64748b; padding-bottom: 6px; margin-bottom: 6px; }
+    h1 { font-size: 14px; margin: 6px 0 12px; font-weight: 700; }
+    .meta { text-align: left; margin-top: 6px; }
+    .meta div { margin: 1px 0; }
+    .qr { text-align:center; margin-top: 8px; }
+    .qr img { width: 50%; max-width: 140px; aspect-ratio: 1 / 1; border: 1px solid #cbd5e1; padding: 3px; border-radius: 6px; }
+    .qr-separator { margin: 10px 0; width: 100%; border-top: 1px dashed #64748b; }
+    .code { margin-top: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; }
+    .section-title { font-size: 12px; font-weight: 700; margin: 8px 0 4px; }
+    .rx-item { border-top: 1px dashed #cbd5e1; padding: 4px 0; }
+    .rx-top { display: flex; gap: 4px; align-items: baseline; }
+    .rx-index { font-weight: 700; }
+    .rx-name { font-weight: 700; }
+    .sub { color:#334155; font-size:10px; margin-top:1px; }
+    .footer {
+      margin-top: 8px;
+      border-top: 1px dashed #64748b;
+      padding-top: 6px;
+      color:#475569;
+      font-size:10px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <div>
-      <h1>Ordonnance ${escapeHtml(data.print_code)}</h1>
-      <div class="meta">
-        <div><strong>Patient:</strong> ${escapeHtml(data.patient_name)}</div>
-        ${data.family_member_name ? `<div><strong>Membre de famille:</strong> ${escapeHtml(data.family_member_name)}</div>` : ''}
-        <div><strong>Telephone:</strong> ${escapeHtml(data.patient_phone || 'N/A')}</div>
-        <div><strong>Docteur:</strong> ${escapeHtml(data.doctor_name)}</div>
-        <div><strong>Date:</strong> ${escapeHtml(formatPrintDate(data.requested_at))}</div>
-      </div>
-      <h2>Medicaments</h2>
-    </div>
-    <div class="qr">
-      <img src="${qrUrl}" alt="QR ordonnance" />
-      <div class="code">${escapeHtml(data.print_code)}</div>
-      <div class="badge">Code de secours</div>
+    <h1>Ordonnance ${escapeHtml(data.print_code)}</h1>
+    <div class="meta">
+      <div><strong>Patient:</strong> ${escapeHtml(data.patient_name)}</div>
+      ${data.family_member_name ? `<div><strong>Membre:</strong> ${escapeHtml(data.family_member_name)}</div>` : ''}
+      <div><strong>Téléphone:</strong> ${escapeHtml(data.patient_phone || 'N/A')}</div>
+      <div><strong>Médecin:</strong> ${escapeHtml(data.doctor_name)}</div>
+      <div><strong>Date:</strong> ${escapeHtml(formatPrintDate(data.requested_at))}</div>
     </div>
   </div>
-  <table>
-    <thead>
-      <tr><th>#</th><th>Medicament</th><th>Quantite</th><th>Posologie</th></tr>
-    </thead>
-    <tbody>
-      ${rows}
-    </tbody>
-  </table>
+  <div class="section-title">Médicaments</div>
+  ${rows}
+  <div class="qr">
+    <div class="qr-separator"></div>
+    <img src="${qrUrl}" alt="QR ordonnance" />
+    <div class="code">${escapeHtml(data.print_code)}</div>
+  </div>
   <div class="footer">
-    Impression #${data.print_count} · Imprime le ${escapeHtml(formatPrintDate(data.printed_at))}
+    Impression #${data.print_count} · Imprimé le ${escapeHtml(formatPrintDate(data.printed_at))}
   </div>
 </body>
 </html>`;
@@ -591,7 +603,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
 
     try {
       const printData = await api.getDoctorPrescriptionPrintData(token, prescriptionId);
-      const popup = window.open('about:blank', '_blank', 'width=980,height=900');
+      const popup = window.open('about:blank', '_blank', 'width=420,height=860');
       if (!popup) {
         setPrintMessage('Popup bloquee. Autorisez les popups puis reessayez.');
         return;

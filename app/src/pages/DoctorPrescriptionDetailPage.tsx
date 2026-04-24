@@ -114,44 +114,48 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
     }
     try {
       const data = await api.getDoctorPrescriptionPrintData(token, prescription.id);
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(data.qr_payload)}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(data.qr_payload)}`;
       const rows = data.medicine_requests
         .map((med, index) => {
           const details = [med.form, med.strength].filter(Boolean).join(' · ');
           return `
-            <tr>
-              <td>${index + 1}</td>
-              <td>
-                <strong>${escapeHtml(med.name)}</strong>
-                ${details ? `<div style="color:#475569;font-size:12px">${escapeHtml(details)}</div>` : ''}
-              </td>
-              <td>${med.quantity ?? 1}</td>
-            </tr>
+            <div class="rx-item">
+              <div class="rx-top"><span class="rx-index">${index + 1}.</span><span class="rx-name">${escapeHtml(med.name)}</span></div>
+              ${details ? `<div class="sub">${escapeHtml(details)}</div>` : ''}
+              <div class="sub"><strong>Qté:</strong> ${med.quantity ?? 1}</div>
+            </div>
           `;
         })
         .join('');
       const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8" />
       <title>Ordonnance ${data.print_code}</title>
       <style>
-      body{font-family:Arial,sans-serif;color:#0f172a;margin:24px}
-      .header{display:flex;justify-content:space-between;gap:16px}
-      .meta{font-size:14px;line-height:1.5}
-      .qr img{width:200px;height:200px;border:1px solid #cbd5e1;padding:6px;border-radius:10px}
-      table{width:100%;border-collapse:collapse;margin-top:10px}
-      th,td{border:1px solid #e2e8f0;padding:8px;text-align:left}
-      th{background:#f8fafc}
+      @page { size: 80mm auto; margin: 3mm; }
+      * { box-sizing: border-box; }
+      body{font-family:Arial,sans-serif;color:#111827;margin:0 auto;width:74mm;max-width:74mm;font-size:11px;line-height:1.35}
+      .header{text-align:center;border-bottom:1px dashed #64748b;padding-bottom:6px;margin-bottom:6px}
+      .meta{font-size:11px;line-height:1.45;text-align:left}
+      .section-title{font-size:12px;font-weight:700;margin:8px 0 4px}
+      .rx-item{border-top:1px dashed #cbd5e1;padding:4px 0}
+      .rx-top{display:flex;gap:4px;align-items:baseline}
+      .rx-index,.rx-name{font-weight:700}
+      .sub{color:#334155;font-size:10px;margin-top:1px}
+      .qr{text-align:center;margin-top:8px}
+      .qr img{width:50%;max-width:140px;aspect-ratio:1 / 1;border:1px solid #cbd5e1;padding:3px;border-radius:6px}
+      .qr-separator{margin:10px 0;width:100%;border-top:1px dashed #64748b}
+      .code{margin-top:4px;font-size:12px;font-weight:700;letter-spacing:.6px}
+      .footer{margin-top:8px;border-top:1px dashed #64748b;padding-top:6px;color:#475569;font-size:10px;text-align:center}
       </style></head><body>
-      <div class="header">
+      <div class="header"><h2 style="margin:6px 0 12px;font-size:14px">Ordonnance ${escapeHtml(data.print_code)}</h2>
       <div class="meta">
-      <h2>Ordonnance ${escapeHtml(data.print_code)}</h2>
       <div><strong>Patient:</strong> ${escapeHtml(data.patient_name)}</div>
       <div><strong>Docteur:</strong> ${escapeHtml(data.doctor_name)}</div>
       <div><strong>Date:</strong> ${escapeHtml(formatPrintDate(data.requested_at))}</div>
-      </div>
-      <div class="qr"><img src="${qrUrl}" alt="QR" /><div><strong>${escapeHtml(data.print_code)}</strong></div></div>
-      </div>
-      <table><thead><tr><th>#</th><th>Medicament</th><th>Quantite</th></tr></thead><tbody>${rows}</tbody></table>
-      <div style="margin-top:14px;color:#475569;font-size:12px">Impression #${data.print_count} · ${escapeHtml(formatPrintDate(data.printed_at))}</div>
+      </div></div>
+      <div class="section-title">Médicaments</div>
+      ${rows}
+      <div class="qr"><div class="qr-separator"></div><img src="${qrUrl}" alt="QR" /><div class="code">${escapeHtml(data.print_code)}</div></div>
+      <div class="footer">Impression #${data.print_count} · ${escapeHtml(formatPrintDate(data.printed_at))}</div>
       </body></html>`;
 
       const popup = window.open('about:blank', '_blank', 'width=980,height=900');
