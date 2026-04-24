@@ -222,6 +222,12 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     const prefilledFamilyMemberName = params.get('familyMemberName');
     const prefilledFamilyMemberIdRaw = params.get('familyMemberId');
     const prefilledFamilyMemberId = prefilledFamilyMemberIdRaw ? Number(prefilledFamilyMemberIdRaw) : null;
+    if (prefilledVisitId && Number.isFinite(prefilledVisitId)) {
+      setSelectedVisitId(prefilledVisitId);
+    } else {
+      setSelectedVisitId(null);
+    }
+
     if (prefilledPatient) {
       setPatientName(prefilledPatient);
       const matching = prescriptions.find((p) => p.patient_name === prefilledPatient && p.patient_user_id);
@@ -230,9 +236,6 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
           ? Number(prefilledPatientUserId)
           : matching?.patient_user_id ?? null
       );
-      if (prefilledVisitId && Number.isFinite(prefilledVisitId)) {
-        setSelectedVisitId(prefilledVisitId);
-      }
       if (prefilledFamilyMemberName) {
         setFamilyMemberName(prefilledFamilyMemberName);
       }
@@ -416,11 +419,34 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     setError(null);
     try {
       const resolvedPatientUserId = selectedPatientUserId ?? undefined;
+      const params = new URLSearchParams(location.search);
+      const queryVisitIdRaw = params.get('visitId');
+      const queryVisitId =
+        queryVisitIdRaw && Number.isFinite(Number(queryVisitIdRaw))
+          ? Number(queryVisitIdRaw)
+          : null;
+      const safeVisitId =
+        ((selectedVisitId && Number.isFinite(selectedVisitId) && selectedVisitId > 0
+          ? selectedVisitId
+          : null) ??
+          (queryVisitId && queryVisitId > 0 ? queryVisitId : null)) &&
+        Number.isFinite(
+          ((selectedVisitId && Number.isFinite(selectedVisitId) && selectedVisitId > 0
+            ? selectedVisitId
+            : null) ??
+            (queryVisitId && queryVisitId > 0 ? queryVisitId : null)) as number
+        )
+          ? (((selectedVisitId && Number.isFinite(selectedVisitId) && selectedVisitId > 0
+              ? selectedVisitId
+              : null) ??
+              (queryVisitId && queryVisitId > 0 ? queryVisitId : null)) as number)
+          : undefined;
       const payload = {
         patient_name: clipText(patientName, MAX_PATIENT_NAME_LENGTH),
         patient_phone: maskHaitiPhone(patientPhone).trim() || null,
         patient_user_id: resolvedPatientUserId,
         family_member_id: selectedFamilyMemberId ?? undefined,
+        visit_id: safeVisitId,
         medicine_requests: filtered.map((med) => ({
           name: clipText(med.name, MAX_MEDICINE_NAME_LENGTH),
           strength: med.strength ? clipText(med.strength, MAX_MEDICINE_STRENGTH_LENGTH) : null,
@@ -439,7 +465,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         patient_phone: payload.patient_phone,
         patient_user_id: payload.patient_user_id,
         family_member_id: payload.family_member_id,
-        visit_id: selectedVisitId,
+        visit_id: payload.visit_id,
         medicine_requests: payload.medicine_requests
       });
       console.log('[CREATE PRESCRIPTION] success');

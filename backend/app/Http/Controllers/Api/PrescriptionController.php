@@ -361,6 +361,26 @@ class PrescriptionController extends Controller
 
     public function store(Request $request)
     {
+        $visitIdRaw = $request->input('visit_id');
+        if (
+            $visitIdRaw === '' ||
+            $visitIdRaw === 'undefined' ||
+            $visitIdRaw === 'null' ||
+            (is_numeric($visitIdRaw) && (int) $visitIdRaw <= 0)
+        ) {
+            $request->merge(['visit_id' => null]);
+        }
+
+        $familyMemberIdRaw = $request->input('family_member_id');
+        if (
+            $familyMemberIdRaw === '' ||
+            $familyMemberIdRaw === 'undefined' ||
+            $familyMemberIdRaw === 'null' ||
+            (is_numeric($familyMemberIdRaw) && (int) $familyMemberIdRaw <= 0)
+        ) {
+            $request->merge(['family_member_id' => null]);
+        }
+
         $data = $request->validate([
             'patient_name' => ['required', 'string', 'max:255'],
             'patient_phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
