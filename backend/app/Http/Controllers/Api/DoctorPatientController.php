@@ -4,13 +4,81 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class DoctorPatientController extends Controller
 {
+    private function isUsersPrimaryKeyConflict(\Throwable $exception): bool
+    {
+        if (!$exception instanceof QueryException) {
+            return false;
+        }
+
+        $message = strtolower($exception->getMessage());
+        return str_contains($message, 'users_pkey')
+            || str_contains($message, 'duplicate key value violates unique constraint')
+            || str_contains($message, 'key (id)=(');
+    }
+
+    private function syncUsersSequence(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        $table = DB::getTablePrefix() . 'users';
+        $seqRow = DB::selectOne("SELECT pg_get_serial_sequence(?, 'id') AS seq", [$table]);
+        $sequence = $seqRow?->seq ?? null;
+        if (!$sequence) {
+            return;
+        }
+
+        DB::statement(
+            "SELECT setval(?, COALESCE((SELECT MAX(id) FROM users), 0) + 1, false)",
+            [$sequence]
+        );
+    }
+
+    private function runWithRetry(callable $callback, int $maxAttempts = 3): mixed
+    {
+        $attempt = 0;
+        start:
+        try {
+            return $callback();
+        } catch (\Throwable $exception) {
+            $attempt++;
+            report($exception);
+            if ($attempt < $maxAttempts) {
+                usleep(150000);
+                goto start;
+            }
+            throw $exception;
+        }
+    }
+
+    private function mapPatientResponse(User $row): array
+    {
+        return [
+            'id' => $row->id,
+            'doctor_user_id' => $row->created_by_doctor_id,
+            'name' => $row->name,
+            'phone' => $row->phone,
+            'ninu' => $row->ninu,
+            'date_of_birth' => $row->date_of_birth,
+            'address' => $row->address,
+            'age' => $row->age,
+            'gender' => $row->gender,
+            'notes' => $row->emergency_notes,
+            'created_at' => $row->created_at,
+            'updated_at' => $row->updated_at,
+        ];
+    }
+
     private function generateClaimToken(): string
     {
         do {
@@ -179,52 +247,72 @@ class DoctorPatientController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ($this->hasDuplicate($request->user()->id, $data['name'], $data['phone'] ?? null, $data['ninu'] ?? null)) {
+        $doctorId = (int) $request->user()->id;
+        $name = trim((string) ($data['name'] ?? ''));
+        $phone = $this->normalizedPhone($data['phone'] ?? null);
+        $ninu = trim((string) ($data['ninu'] ?? '')) ?: null;
+
+        if ($this->hasDuplicate($doctorId, $name, $phone, $ninu)) {
             return response()->json([
                 'message' => 'Ce patient existe deja pour ce medecin. Utilisez la fiche existante.'
             ], 422);
         }
 
-        $placeholderEmail = 'patient+' . Str::uuid()->toString() . '@retel.local';
+        $createRow = function () use ($data, $doctorId, $name, $phone, $ninu): User {
+            return DB::transaction(function () use ($data, $doctorId, $name, $phone, $ninu) {
+                $row = User::create([
+                    'name' => $name,
+                    'email' => 'patient+' . Str::uuid()->toString() . '@retel.local',
+                    'phone' => $phone,
+                    'ninu' => $ninu,
+                    'date_of_birth' => $data['date_of_birth'] ?? null,
+                    'address' => $data['address'] ?? null,
+                    'age' => $data['age'] ?? null,
+                    'gender' => $data['gender'] ?? null,
+                    'emergency_notes' => $data['notes'] ?? null,
+                    'password' => Hash::make(Str::random(32)),
+                    'role' => 'patient',
+                    'account_status' => 'active',
+                    'created_by_doctor_id' => $doctorId,
+                    'verification_status' => 'approved',
+                    'verified_at' => now(),
+                    'verified_by' => $doctorId,
+                    'claim_token' => $this->generateClaimToken(),
+                    'claim_token_expires_at' => now()->addMonths(12),
+                ]);
 
-        $row = User::create([
-            'name' => trim($data['name']),
-            'email' => $placeholderEmail,
-            'phone' => $this->normalizedPhone($data['phone'] ?? null),
-            'ninu' => trim((string) ($data['ninu'] ?? '')) ?: null,
-            'date_of_birth' => $data['date_of_birth'] ?? null,
-            'address' => $data['address'] ?? null,
-            'age' => $data['age'] ?? null,
-            'gender' => $data['gender'] ?? null,
-            'emergency_notes' => $data['notes'] ?? null,
-            'password' => Hash::make(Str::random(32)),
-            'role' => 'patient',
-            'account_status' => 'active',
-            'created_by_doctor_id' => $request->user()->id,
-            'verification_status' => 'approved',
-            'verified_at' => now(),
-            'verified_by' => $request->user()->id,
-            'claim_token' => $this->generateClaimToken(),
-            'claim_token_expires_at' => now()->addMonths(12),
-        ]);
-        if (Schema::hasColumn('users', 'principal_patient_id')) {
-            $row->update(['principal_patient_id' => $row->id]);
+                if (Schema::hasColumn('users', 'principal_patient_id')) {
+                    $row->update(['principal_patient_id' => $row->id]);
+                }
+
+                return $row->fresh();
+            });
+        };
+
+        try {
+            try {
+                $row = $this->runWithRetry($createRow, 2);
+            } catch (QueryException $exception) {
+                if ($this->isUsersPrimaryKeyConflict($exception)) {
+                    $this->syncUsersSequence();
+                    $row = $this->runWithRetry($createRow, 2);
+                } else {
+                    throw $exception;
+                }
+            }
+
+            return response()->json($this->mapPatientResponse($row), 201);
+        } catch (QueryException $exception) {
+            if ($ninu !== null && str_contains(strtolower($exception->getMessage()), 'ninu')) {
+                return response()->json([
+                    'message' => 'Ce NINU existe deja. Verifiez le patient avant de creer un doublon.'
+                ], 422);
+            }
+
+            return response()->json([
+                'message' => "Impossible de creer le patient pour le moment. Veuillez reessayer."
+            ], 422);
         }
-
-        return response()->json([
-            'id' => $row->id,
-            'doctor_user_id' => $row->created_by_doctor_id,
-            'name' => $row->name,
-            'phone' => $row->phone,
-            'ninu' => $row->ninu,
-            'date_of_birth' => $row->date_of_birth,
-            'address' => $row->address,
-            'age' => $row->age,
-            'gender' => $row->gender,
-            'notes' => $row->emergency_notes,
-            'created_at' => $row->created_at,
-            'updated_at' => $row->updated_at,
-        ], 201);
     }
 
     public function update(Request $request, int $patient)

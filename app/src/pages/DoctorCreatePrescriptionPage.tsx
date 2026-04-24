@@ -522,35 +522,61 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       setError('Veuillez vous reconnecter.');
       return;
     }
-    if (!patientName.trim()) {
+
+    const normalizedName = clipText(patientName, MAX_PATIENT_NAME_LENGTH);
+    const normalizedPhone = maskHaitiPhone(patientPhone).trim();
+    const normalizedNinu = clipText(patientNinu, 50);
+    const normalizedDob = patientDob?.trim() || '';
+    const normalizedAddress = clipText(patientAddress, 255);
+    const normalizedNotes = clipText(patientNotes, 1000);
+    const normalizedAge = toPositiveInt(patientAge);
+
+    if (!normalizedName) {
       setError('Nom du patient requis.');
       return;
     }
+    if (normalizedPhone && !/^\+509-\d{4}-\d{4}$/.test(normalizedPhone)) {
+      setError('Telephone invalide. Format attendu: +509-xxxx-xxxx');
+      return;
+    }
+
+    const payload = {
+      name: normalizedName,
+      phone: normalizedPhone || null,
+      ninu: normalizedNinu || null,
+      date_of_birth: normalizedDob || null,
+      address: normalizedAddress || null,
+      age: normalizedAge,
+      gender: patientGender || null,
+      notes: normalizedNotes || null
+    };
 
     setLoading(true);
     setError(null);
     setPatientCreateMessage(null);
     setAvailabilityMessage(null);
     try {
-      const created = await api.createDoctorPatient(token, {
-        name: patientName.trim(),
-        phone: maskHaitiPhone(patientPhone).trim() || null,
-        ninu: patientNinu.trim() || null,
-        date_of_birth: patientDob || null,
-        address: patientAddress.trim() || null,
-        age: toPositiveInt(patientAge),
-        gender: patientGender || null,
-        notes: patientNotes.trim() || null
-      });
+      console.log('[CREATE PATIENT] payload', payload);
+      const created = await api.createDoctorPatient(token, payload);
+      console.log('[CREATE PATIENT] success', created.id);
       setDoctorPatients((prev) => {
         const next = [...prev.filter((row) => row.id !== created.id), created];
         next.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
         return next;
       });
+
+      setPatientName(created.name ?? normalizedName);
+      setPatientPhone(created.phone ?? normalizedPhone);
+      setPatientNinu(created.ninu ?? normalizedNinu);
+      setPatientDob(created.date_of_birth ?? normalizedDob);
       setSelectedPatientUserId(created.id);
-      setPatientCreateMessage('Patient cree et selectionne.');
+      setSelectedFamilyMemberId(null);
+      setFamilyMemberName('');
+      setFamilyMembers([]);
+      setPatientCreateMessage(`Patient cree et selectionne: ${created.name}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Echec de creation du patient.');
+      console.error('[CREATE PATIENT] failed', err);
+      setError(err instanceof Error ? err.message : 'Impossible de creer le patient pour le moment. Veuillez reessayer.');
     } finally {
       setLoading(false);
     }
