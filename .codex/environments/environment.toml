@@ -52,3 +52,23 @@ command = "ngrok http 5173"
 name = "PKILL ALL"
 icon = "tool"
 command = "pkill -f ngrok; pkill -f \"php artisan serve\"; pkill -f \"npm run dev\""
+
+[[actions]]
+name = "SET LCAL ENV"
+icon = "tool"
+command = '''
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/backend
+cp .env.local .env
+php artisan config:clear
+php artisan cache:clear
+'''
+
+[[actions]]
+name = "SET PROD ENV"
+icon = "tool"
+command = '''
+cd /Users/fredericflorville/Documents/DEVELOPMENT/BACK_END/RETEL/medecine-management/backend
+cp .env.production .env
+php artisan config:clear
+php artisan cache:clear
+'''

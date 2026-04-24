@@ -8,6 +8,7 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonDatetime,
   IonHeader,
   IonIcon,
   IonInput,
@@ -28,6 +29,7 @@ import {
 import {
   addOutline,
   barChartOutline,
+  calendarOutline,
   closeOutline,
   chevronDownOutline,
   chevronUpOutline,
@@ -95,6 +97,19 @@ const toDateInputValue = (value: string | null | undefined): string => {
     return '';
   }
   return value.includes('T') ? value.slice(0, 10) : value;
+};
+
+const toPickerDateValue = (value: string | null | undefined): string | undefined => {
+  const normalized = toDateInputValue(value);
+  return normalized || undefined;
+};
+
+const fromPickerDateValue = (value: string | string[] | null | undefined): string => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) {
+    return '';
+  }
+  return raw.includes('T') ? raw.slice(0, 10) : raw;
 };
 
 const parseVitalNumber = (value: string): number | null => {
@@ -180,6 +195,9 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [isHistoryModalContextCollapsed, setIsHistoryModalContextCollapsed] = useState(false);
   const [isHistoryModalDetailsCollapsed, setIsHistoryModalDetailsCollapsed] = useState(false);
   const [isHistoryModalDatesCollapsed, setIsHistoryModalDatesCollapsed] = useState(false);
+  const [isHistoryStartPickerOpen, setIsHistoryStartPickerOpen] = useState(false);
+  const [isHistoryEndPickerOpen, setIsHistoryEndPickerOpen] = useState(false);
+  const [isRehabFollowUpPickerOpen, setIsRehabFollowUpPickerOpen] = useState(false);
   const [expandedLinkedPrescriptions, setExpandedLinkedPrescriptions] = useState<Record<number, boolean>>({});
   const [expandedLinkedRehab, setExpandedLinkedRehab] = useState<Record<number, boolean>>({});
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -1651,6 +1669,14 @@ useEffect(() => {
                         lines="full"
                         button
                         detail
+                        style={{
+                          border: '1px solid #d1e1ec',
+                          borderLeft: '4px solid #8fb3c9',
+                          borderRadius: '12px',
+                          marginBottom: '10px',
+                          boxShadow: '0 4px 14px rgba(15, 23, 42, 0.05)',
+                          background: '#ffffff'
+                        }}
                         onClick={() => navigateToVisitDetail(visit.id)}
                       >
                         <IonLabel>
@@ -1967,6 +1993,14 @@ useEffect(() => {
                     lines="full"
                     button
                     detail
+                    style={{
+                      border: '1px solid #d1e1ec',
+                      borderLeft: '4px solid #8fb3c9',
+                      borderRadius: '12px',
+                      marginBottom: '10px',
+                      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.05)',
+                      background: '#ffffff'
+                    }}
                     onClick={() => {
                       const params = new URLSearchParams();
                       if (effectiveFamilyMemberId) {
@@ -2036,7 +2070,18 @@ useEffect(() => {
               ) : (
                 <IonList>
                   {rehabEntries.map((entry) => (
-                    <IonItem key={entry.id} lines="full">
+                    <IonItem
+                      key={entry.id}
+                      lines="full"
+                      style={{
+                        border: '1px solid #d1e1ec',
+                        borderLeft: '4px solid #8fb3c9',
+                        borderRadius: '12px',
+                        marginBottom: '10px',
+                        boxShadow: '0 4px 14px rgba(15, 23, 42, 0.05)',
+                        background: '#ffffff'
+                      }}
+                    >
                       <IonLabel>
                         <h3 style={{ marginBottom: '4px' }}>
                           Suivi {formatDateHaiti(entry.follow_up_date || entry.created_at)}
@@ -2106,6 +2151,14 @@ useEffect(() => {
                     lines="full"
                     button
                     detail
+                    style={{
+                      border: '1px solid #d1e1ec',
+                      borderLeft: '4px solid #8fb3c9',
+                      borderRadius: '12px',
+                      marginBottom: '10px',
+                      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.05)',
+                      background: '#ffffff'
+                    }}
                     onClick={() => {
                       const params = new URLSearchParams();
                       if (effectiveFamilyMemberId) {
@@ -2273,19 +2326,73 @@ useEffect(() => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <IonItem lines="none">
                       <IonLabel position="stacked">Debut</IonLabel>
-                      <IonInput
-                        type="date"
-                        value={historyForm.started_at}
-                        onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, started_at: e.detail.value ?? '' }))}
-                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                        <IonInput
+                          readonly
+                          value={historyForm.started_at ? formatDateHaiti(historyForm.started_at) : ''}
+                          placeholder="Aucune date"
+                        />
+                        <IonButton fill="clear" onClick={() => setIsHistoryStartPickerOpen(true)}>
+                          <IonIcon icon={calendarOutline} />
+                        </IonButton>
+                      </div>
+                      <IonModal
+                        isOpen={isHistoryStartPickerOpen}
+                        onDidDismiss={() => setIsHistoryStartPickerOpen(false)}
+                        keepContentsMounted
+                      >
+                        <IonDatetime
+                          presentation="date"
+                          locale="fr-HT"
+                          value={toPickerDateValue(historyForm.started_at)}
+                          onIonChange={(e) =>
+                            {
+                              setHistoryForm((prev) => ({
+                                ...prev,
+                                started_at: fromPickerDateValue(e.detail.value),
+                              }));
+                              setIsHistoryStartPickerOpen(false);
+                            }
+                          }
+                          onIonCancel={() => setIsHistoryStartPickerOpen(false)}
+                          onIonBlur={() => setIsHistoryStartPickerOpen(false)}
+                        />
+                      </IonModal>
                     </IonItem>
                     <IonItem lines="none">
                       <IonLabel position="stacked">Fin</IonLabel>
-                      <IonInput
-                        type="date"
-                        value={historyForm.ended_at}
-                        onIonInput={(e) => setHistoryForm((prev) => ({ ...prev, ended_at: e.detail.value ?? '' }))}
-                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                        <IonInput
+                          readonly
+                          value={historyForm.ended_at ? formatDateHaiti(historyForm.ended_at) : ''}
+                          placeholder="Aucune date"
+                        />
+                        <IonButton fill="clear" onClick={() => setIsHistoryEndPickerOpen(true)}>
+                          <IonIcon icon={calendarOutline} />
+                        </IonButton>
+                      </div>
+                      <IonModal
+                        isOpen={isHistoryEndPickerOpen}
+                        onDidDismiss={() => setIsHistoryEndPickerOpen(false)}
+                        keepContentsMounted
+                      >
+                        <IonDatetime
+                          presentation="date"
+                          locale="fr-HT"
+                          value={toPickerDateValue(historyForm.ended_at)}
+                          onIonChange={(e) =>
+                            {
+                              setHistoryForm((prev) => ({
+                                ...prev,
+                                ended_at: fromPickerDateValue(e.detail.value),
+                              }));
+                              setIsHistoryEndPickerOpen(false);
+                            }
+                          }
+                          onIonCancel={() => setIsHistoryEndPickerOpen(false)}
+                          onIonBlur={() => setIsHistoryEndPickerOpen(false)}
+                        />
+                      </IonModal>
                     </IonItem>
                   </div>
                   <IonItem lines="none" style={{ marginTop: '8px' }}>
@@ -2517,11 +2624,38 @@ useEffect(() => {
                 </IonItem>
                 <IonItem lines="none">
                   <IonLabel position="stacked">Date de suivi</IonLabel>
-                  <IonInput
-                    type="date"
-                    value={rehabForm.follow_up_date}
-                    onIonInput={(e) => setRehabForm((prev) => ({ ...prev, follow_up_date: e.detail.value ?? '' }))}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                    <IonInput
+                      readonly
+                      value={rehabForm.follow_up_date ? formatDateHaiti(rehabForm.follow_up_date) : ''}
+                      placeholder="Aucune date"
+                    />
+                    <IonButton fill="clear" onClick={() => setIsRehabFollowUpPickerOpen(true)}>
+                      <IonIcon icon={calendarOutline} />
+                    </IonButton>
+                  </div>
+                  <IonModal
+                    isOpen={isRehabFollowUpPickerOpen}
+                    onDidDismiss={() => setIsRehabFollowUpPickerOpen(false)}
+                    keepContentsMounted
+                  >
+                    <IonDatetime
+                      presentation="date"
+                      locale="fr-HT"
+                      value={toPickerDateValue(rehabForm.follow_up_date)}
+                      onIonChange={(e) =>
+                        {
+                          setRehabForm((prev) => ({
+                            ...prev,
+                            follow_up_date: fromPickerDateValue(e.detail.value),
+                          }));
+                          setIsRehabFollowUpPickerOpen(false);
+                        }
+                      }
+                      onIonCancel={() => setIsRehabFollowUpPickerOpen(false)}
+                      onIonBlur={() => setIsRehabFollowUpPickerOpen(false)}
+                    />
+                  </IonModal>
                 </IonItem>
               </IonCardContent>
             </IonCard>

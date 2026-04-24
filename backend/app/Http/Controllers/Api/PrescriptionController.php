@@ -386,7 +386,7 @@ class PrescriptionController extends Controller
             'patient_phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'patient_user_id' => ['required', 'integer', 'exists:users,id'],
             'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
-            'visit_id' => ['nullable', 'integer', 'exists:visits,id'],
+            'visit_id' => ['nullable', 'integer', 'min:1'],
             'medicine_requests' => ['required', 'array', 'min:1'],
             'medicine_requests.*.name' => ['required', 'string', 'max:255'],
             'medicine_requests.*.strength' => ['nullable', 'string', 'max:50'],
@@ -428,18 +428,14 @@ class PrescriptionController extends Controller
             }
         }
 
+        $resolvedVisitId = null;
         if (!empty($data['visit_id'])) {
-            $visitValid = Visit::query()
+            $visit = Visit::query()
                 ->where('id', $data['visit_id'])
                 ->where('patient_user_id', $patientUser->id)
                 ->where('doctor_user_id', $request->user()->id)
-                ->exists();
-
-            if (!$visitValid) {
-                return response()->json([
-                    'message' => 'Visite invalide pour ce patient.'
-                ], 422);
-            }
+                ->first();
+            $resolvedVisitId = $visit?->id;
         }
 
         $doctor = $request->user();
@@ -461,7 +457,7 @@ class PrescriptionController extends Controller
             'doctor_name' => $doctor->name,
             'source' => $patientUser ? 'app' : 'paper',
             'family_member_id' => $data['family_member_id'] ?? null,
-            'visit_id' => $data['visit_id'] ?? null,
+            'visit_id' => $resolvedVisitId,
             'status' => 'sent_to_pharmacies',
             'print_code' => null,
             'qr_token' => Str::random(64),
