@@ -14,6 +14,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class PrescriptionController extends Controller
@@ -812,7 +813,9 @@ class PrescriptionController extends Controller
                 'claim_token' => $this->generateClaimToken(),
                 'claim_token_expires_at' => now()->addMonths(12),
             ]);
-            $patient->update(['principal_patient_id' => $patient->id]);
+            if (Schema::hasColumn('users', 'principal_patient_id')) {
+                $patient->update(['principal_patient_id' => $patient->id]);
+            }
         }
 
         $prescription->update([

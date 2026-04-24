@@ -333,7 +333,7 @@ class AuthController extends Controller
         $data['license_verification_notes'] = null;
 
         $user = User::create($data);
-        if ($user->role === 'patient') {
+        if ($user->role === 'patient' && Schema::hasColumn('users', 'principal_patient_id')) {
             $user->update(['principal_patient_id' => $user->id]);
         }
         if ($user->role === 'doctor') {

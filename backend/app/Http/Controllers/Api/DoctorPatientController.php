@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -206,7 +207,9 @@ class DoctorPatientController extends Controller
             'claim_token' => $this->generateClaimToken(),
             'claim_token_expires_at' => now()->addMonths(12),
         ]);
-        $row->update(['principal_patient_id' => $row->id]);
+        if (Schema::hasColumn('users', 'principal_patient_id')) {
+            $row->update(['principal_patient_id' => $row->id]);
+        }
 
         return response()->json([
             'id' => $row->id,
