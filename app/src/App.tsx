@@ -321,6 +321,11 @@ const App: React.FC = () => (
               <DoctorVisitFormPage />
             </RequireRole>
           </Route>
+          <Route exact path="/doctor/visit-form/new">
+            <RequireRole role="doctor">
+              <DoctorVisitFormPage />
+            </RequireRole>
+          </Route>
           <Route exact path="/doctor/mes-visites">
             <RequireRole role="doctor">
               <DoctorMyVisitsPage />

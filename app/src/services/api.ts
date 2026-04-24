@@ -21,15 +21,30 @@ const makeGetCacheKey = (path: string, options: RequestOptions): string => {
   return `${tokenPart}::${path}`;
 };
 
+const getApiOrigin = (): string | null => {
+  try {
+    if (/^https?:\/\//i.test(API_URL)) {
+      return new URL(API_URL).origin;
+    }
+  } catch {
+    // ignore and fallback below
+  }
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return null;
+};
+
 const normalizeStorageUrl = (value: string): string => {
+  const apiOrigin = getApiOrigin();
+  if (value.startsWith('/storage/')) {
+    return apiOrigin ? `${apiOrigin}${value}` : value;
+  }
   const match = value.match(/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(\/storage\/.+)$/i);
   if (!match) {
     return value;
   }
-  if (typeof window === 'undefined') {
-    return value;
-  }
-  return `${window.location.origin}${match[1]}`;
+  return apiOrigin ? `${apiOrigin}${match[1]}` : value;
 };
 
 const normalizePayloadStorageUrls = <T>(payload: T): T => {

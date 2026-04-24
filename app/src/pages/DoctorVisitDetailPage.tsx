@@ -22,7 +22,7 @@ import {
 } from '@ionic/react';
 import { documentTextOutline, listOutline, medicalOutline, newspaperOutline, personCircleOutline, pulseOutline } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useParams } from 'react-router';
+import { useHistory, useLocation, useParams } from 'react-router';
 import { api, ApiVisitDetail } from '../services/api';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
@@ -33,6 +33,7 @@ const DoctorVisitDetailPage: React.FC = () => {
   const { token } = useAuth();
   const { visitId } = useParams<{ visitId: string }>();
   const location = useLocation();
+  const history = useHistory();
   const ionRouter = useIonRouter();
   const [visit, setVisit] = useState<ApiVisitDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +63,11 @@ const DoctorVisitDetailPage: React.FC = () => {
       setLoading(false);
       return;
     }
+    if (visitId === 'new') {
+      setLoading(false);
+      history.replace(`/doctor/visit-form/new${location.search || ''}`);
+      return;
+    }
     const parsedVisitId = Number(visitId);
     if (!Number.isFinite(parsedVisitId) || parsedVisitId <= 0) {
       setVisit(null);
@@ -85,7 +91,7 @@ const DoctorVisitDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [token, visitId]);
+  }, [history, location.search, token, visitId]);
 
   useIonViewWillEnter(() => {
     loadVisit();
@@ -155,6 +161,25 @@ const DoctorVisitDetailPage: React.FC = () => {
     params.set('patientUserId', String(visit.patient_user_id));
     params.set('visitId', String(visit.id));
     params.set('openRehabModal', '1');
+    if (visit.family_member_id) {
+      params.set('familyMemberId', String(visit.family_member_id));
+    }
+    if (visit.family_member_name) {
+      params.set('familyMemberName', visit.family_member_name);
+    }
+    ionRouter.push(`/doctor/patients/${patientRouteName}?${params.toString()}`, 'forward', 'push');
+  };
+
+  const goToRehabDetailFromVisit = (rehabId: number | null) => {
+    if (!visit || !rehabId) {
+      return;
+    }
+    const patientRouteName = encodeURIComponent(visit.patient_name ?? patientName ?? 'Patient');
+    const params = new URLSearchParams();
+    params.set('patientUserId', String(visit.patient_user_id));
+    params.set('visitId', String(visit.id));
+    params.set('openRehabModal', '1');
+    params.set('rehabEntryId', String(rehabId));
     if (visit.family_member_id) {
       params.set('familyMemberId', String(visit.family_member_id));
     }
@@ -338,7 +363,7 @@ const DoctorVisitDetailPage: React.FC = () => {
                 ) : (
                   <IonList>
                     {rehabEntries.map((rehab) => (
-                      <IonItem key={rehab.id} lines="full">
+                      <IonItem key={rehab.id} lines="full" button detail onClick={() => goToRehabDetailFromVisit(rehab.id)}>
                         <IonLabel>
                           <h3 style={{ margin: 0 }}>{rehab.reference}</h3>
                           <p style={{ margin: '4px 0 0 0' }}>

@@ -191,8 +191,10 @@ const DoctorMedicalHistoryEntryPage: React.FC = () => {
                     <IonBadge color={visibilityColor[entry.visibility]}>{visibilityLabel[entry.visibility]}</IonBadge>
                   </div>
                   <p>
-                    <strong>Créé le:</strong> {formatDateTime(entry.created_at)} · <strong>Dernière mise à jour:</strong>{' '}
-                    {formatDateTime(entry.updated_at)}
+                    <strong>Créé le:</strong> {formatDateTime(entry.created_at)} ·
+                  </p>
+                  <p>
+                    <strong>Dernière mise à jour:</strong> {formatDateTime(entry.updated_at)}
                   </p>
                 </IonCardContent>
               </IonCard>

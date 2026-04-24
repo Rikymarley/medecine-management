@@ -16,9 +16,22 @@ class DoctorVisitController extends Controller
 {
     private function visitReference(Visit $visit): string
     {
-        $date = optional($visit->visit_date ?? $visit->created_at)->format('Ymd') ?? now()->format('Ymd');
+        $referenceDate = optional($visit->visit_date ?? $visit->created_at)->toDateString() ?? now()->toDateString();
+        $date = str_replace('-', '', $referenceDate);
 
-        return 'VIS-' . $date . '-' . str_pad((string) $visit->id, 6, '0', STR_PAD_LEFT);
+        static $dailyVisitIdsByDate = [];
+        if (!array_key_exists($referenceDate, $dailyVisitIdsByDate)) {
+            $dailyVisitIdsByDate[$referenceDate] = Visit::query()
+                ->whereDate('visit_date', $referenceDate)
+                ->orderBy('id')
+                ->pluck('id')
+                ->all();
+        }
+
+        $index = array_search($visit->id, $dailyVisitIdsByDate[$referenceDate], true);
+        $dailySequence = $index === false ? 1 : ($index + 1);
+
+        return 'VIS-' . $date . '-' . str_pad((string) $dailySequence, 6, '0', STR_PAD_LEFT);
     }
 
     private function ensureFamilyMemberBelongsToPatient(?int $familyMemberId, int $patientUserId): bool
@@ -220,11 +233,13 @@ class DoctorVisitController extends Controller
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
 
-        $visit = Visit::create([
-            ...$data,
-            'doctor_user_id' => $request->user()->id,
-            'status' => $data['status'] ?? 'open',
-        ]);
+        $visit = Visit::create(array_merge(
+            $data,
+            [
+                'doctor_user_id' => $request->user()->id,
+                'status' => $data['status'] ?? 'open',
+            ]
+        ));
 
         return response()->json($this->formatVisit($visit), 201);
     }
@@ -245,10 +260,12 @@ class DoctorVisitController extends Controller
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
 
-        $visit->update([
-            ...$data,
-            'status' => $data['status'] ?? $visit->status,
-        ]);
+        $visit->update(array_merge(
+            $data,
+            [
+                'status' => $data['status'] ?? $visit->status,
+            ]
+        ));
 
         return response()->json($this->formatVisitDetail($visit->refresh()));
     }

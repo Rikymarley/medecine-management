@@ -9,6 +9,7 @@ import {
   IonInput,
   IonItem,
   IonLabel,
+  IonLoading,
   IonPage,
   IonText,
   IonTitle,
@@ -59,6 +60,7 @@ const Login: React.FC = () => {
               <IonInput
                 type="email"
                 value={email}
+                disabled={loading}
                 onIonInput={(e) => setEmail(e.detail.value ?? '')}
               />
             </IonItem>
@@ -67,6 +69,7 @@ const Login: React.FC = () => {
               <IonInput
                 type="password"
                 value={password}
+                disabled={loading}
                 onIonInput={(e) => setPassword(e.detail.value ?? '')}
               />
             </IonItem>
@@ -77,7 +80,7 @@ const Login: React.FC = () => {
             ) : null}
             <div style={{ display: 'grid', gap: '12px', marginTop: '16px' }}>
               <IonButton expand="block" onClick={submit} disabled={loading}>
-                Se connecter
+                {loading ? 'Connexion en cours...' : 'Se connecter'}
               </IonButton>
               <IonButton
                 expand="block"
@@ -103,6 +106,7 @@ const Login: React.FC = () => {
                 Recuperer mot de passe
               </IonButton>
             </div>
+            <IonLoading isOpen={loading} message="Connexion en cours..." />
           </IonCardContent>
         </IonCard>
       </IonContent>

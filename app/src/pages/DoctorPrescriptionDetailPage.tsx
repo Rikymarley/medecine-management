@@ -75,10 +75,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
     prescription?.patient_name ||
     'Patient';
   const medicineCount = prescription?.medicine_requests.length ?? 0;
-  const totalQuantity = useMemo(
-    () => (prescription?.medicine_requests ?? []).reduce((sum, med) => sum + (med.quantity ?? 1), 0),
-    [prescription]
-  );
   useEffect(() => {
     const load = async () => {
       if (!cacheKey) {
@@ -276,7 +272,6 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
                   <IonBadge color="light">Code: {getPrescriptionCode(prescription)}</IonBadge>
                   <IonBadge color="light">{medicineCount} medicament(s)</IonBadge>
-                  <IonBadge color="light">Quantite totale: {totalQuantity}</IonBadge>
                   {prescription.family_member_id ? <IonBadge color="medium">Membre de famille</IonBadge> : null}
                 </div>
 
@@ -285,7 +280,7 @@ const DoctorPrescriptionDetailPage: React.FC = () => {
                   Demandee le {formatDateTime(prescription.requested_at)}
                 </p>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'inline-flex', gap: '8px', flexWrap: 'wrap', float: 'right', marginBottom: '10px' }}>
                   <IonButton fill="outline" onClick={printPrescription}>
                     <IonIcon icon={printOutline} slot="start" />
                     Reimprimer (QR)

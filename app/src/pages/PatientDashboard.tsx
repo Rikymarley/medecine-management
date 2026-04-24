@@ -594,7 +594,7 @@ const PatientDashboard: React.FC = () => {
                 onClick={() => setContactExpanded((prev) => !prev)}
                 style={{ margin: 0 }}
               >
-                Coordonnees {contactExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
+                Information Personnelles et coordonnees {contactExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
               </IonButton>
               {contactExpanded ? (
                 <>
@@ -635,6 +635,31 @@ const PatientDashboard: React.FC = () => {
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>NINU</IonLabel>
                     <IonInput disabled={!editMode} value={ninu} onIonInput={(e) => setNinu(e.detail.value ?? '')} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Date de naissance</IonLabel>
+                    <IonInput
+                      disabled={!editMode}
+                      type="date"
+                      value={dateOfBirth}
+                      onIonInput={(e) => setDateOfBirth(e.detail.value ?? '')}
+                    />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Age (calcule)</IonLabel>
+                    <IonInput disabled value={computedAge === null ? '' : String(computedAge)} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Genre</IonLabel>
+                    <IonSelect
+                      disabled={!editMode}
+                      value={gender}
+                      onIonChange={(e) => setGender((e.detail.value as '' | 'male' | 'female') ?? '')}
+                    >
+                      <IonSelectOption value="">Non precise</IonSelectOption>
+                      <IonSelectOption value="male">M</IonSelectOption>
+                      <IonSelectOption value="female">F</IonSelectOption>
+                    </IonSelect>
                   </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Piece d'identite (optionnel)</IonLabel>
@@ -695,36 +720,11 @@ const PatientDashboard: React.FC = () => {
                 onClick={() => setPersonalExpanded((prev) => !prev)}
                 style={{ margin: 0 }}
               >
-                Informations personnelles{' '}
+                Sante{' '}
                 {personalExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
               </IonButton>
               {personalExpanded ? (
                 <>
-                  <IonItem lines="none">
-                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Date de naissance</IonLabel>
-                    <IonInput
-                      disabled={!editMode}
-                      type="date"
-                      value={dateOfBirth}
-                      onIonInput={(e) => setDateOfBirth(e.detail.value ?? '')}
-                    />
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Age (calcule)</IonLabel>
-                    <IonInput disabled value={computedAge === null ? '' : String(computedAge)} />
-                  </IonItem>
-                  <IonItem lines="none">
-                    <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Genre</IonLabel>
-                    <IonSelect
-                      disabled={!editMode}
-                      value={gender}
-                      onIonChange={(e) => setGender((e.detail.value as '' | 'male' | 'female') ?? '')}
-                    >
-                      <IonSelectOption value="">Non precise</IonSelectOption>
-                      <IonSelectOption value="male">M</IonSelectOption>
-                      <IonSelectOption value="female">F</IonSelectOption>
-                    </IonSelect>
-                  </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Allergies</IonLabel>
                     <IonTextarea

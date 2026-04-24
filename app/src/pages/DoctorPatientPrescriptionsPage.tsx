@@ -26,6 +26,7 @@ import {
   useIonViewWillEnter
 } from '@ionic/react';
 import {
+  addOutline,
   barChartOutline,
   closeOutline,
   chevronDownOutline,
@@ -95,6 +96,48 @@ const toDateInputValue = (value: string | null | undefined): string => {
   return value.includes('T') ? value.slice(0, 10) : value;
 };
 
+const parseVitalNumber = (value: string): number | null => {
+  const normalized = value.trim().replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const collapsibleHeaderRowStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '8px',
+  marginBottom: '8px',
+  padding: '6px 8px',
+  borderRadius: '10px',
+  background: '#f8fafc',
+  border: '1px solid #e2e8f0'
+} as const;
+
+const collapsibleHeaderTitleStyle = {
+  margin: 0,
+  fontWeight: 700,
+  fontSize: '1.02rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+  color: '#0f172a'
+} as const;
+
+type VitalSignEntry = {
+  id: number;
+  recorded_at: string;
+  systolic: number | null;
+  diastolic: number | null;
+  heart_rate: number | null;
+  temperature_c: number | null;
+  spo2: number | null;
+  glucose_mg_dl: number | null;
+  weight_kg: number | null;
+  note: string;
+};
+
 const DoctorPatientPrescriptionsPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
@@ -107,6 +150,20 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<number | null>(null);
   const [medicalHistory, setMedicalHistory] = useState<ApiMedicalHistoryEntry[]>([]);
   const [rehabEntries, setRehabEntries] = useState<ApiRehabEntry[]>([]);
+  const [vitalSignEntries, setVitalSignEntries] = useState<VitalSignEntry[]>([]);
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [vitalsForm, setVitalsForm] = useState({
+    recorded_at: new Date().toISOString().slice(0, 16),
+    systolic: '',
+    diastolic: '',
+    heart_rate: '',
+    temperature_c: '',
+    spo2: '',
+    glucose_mg_dl: '',
+    weight_kg: '',
+    note: ''
+  });
+  const [vitalsError, setVitalsError] = useState<string | null>(null);
   const [patientProfile, setPatientProfile] = useState<ApiDoctorPatientProfile | null>(null);
   const [patientProfileError, setPatientProfileError] = useState<string | null>(null);
   const [principalPatientProfile, setPrincipalPatientProfile] = useState<ApiDoctorPatientProfile | null>(null);
@@ -204,6 +261,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const patientUserIdFromQuery = search.get('patientUserId') ? Number(search.get('patientUserId')) : null;
   const prefillPrescriptionId = search.get('prescriptionId') ? Number(search.get('prescriptionId')) : null;
   const prefillVisitId = search.get('visitId') ? Number(search.get('visitId')) : null;
+  const rehabEntryIdFromQuery = search.get('rehabEntryId') ? Number(search.get('rehabEntryId')) : null;
   const openHistoryModalFromVisit = search.get('openHistoryModal') === '1';
   const openRehabModalFromVisit = search.get('openRehabModal') === '1';
   const showLegacyPrescriptionsCard = search.get('legacyPrescriptions') === '1';
@@ -231,6 +289,109 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     }
     return `doctor-visits-${user.id}-${patientUserId}-${effectiveFamilyMemberId ?? 'principal'}`;
   }, [user, patientUserId, effectiveFamilyMemberId]);
+  const visitContextFamilyMemberId = useMemo(() => {
+    if (!prefillVisitId || !Number.isFinite(prefillVisitId)) {
+      return null;
+    }
+    const matchedVisit = visits.find((row) => row.id === prefillVisitId);
+    return matchedVisit?.family_member_id ?? null;
+  }, [prefillVisitId, visits]);
+  const vitalTargetUserId = useMemo(() => {
+    const targetFamilyMemberId = visitContextFamilyMemberId ?? effectiveFamilyMemberId;
+    if (targetFamilyMemberId) {
+      const familyMember = familyMembers.find((member) => member.id === targetFamilyMemberId);
+      if (familyMember?.linked_user_id) {
+        return familyMember.linked_user_id;
+      }
+    }
+    return patientUserId;
+  }, [effectiveFamilyMemberId, familyMembers, patientUserId, visitContextFamilyMemberId]);
+
+  useEffect(() => {
+    if (!vitalTargetUserId) {
+      setVitalSignEntries([]);
+      return;
+    }
+    const storageKey = `patient-vitals-${vitalTargetUserId}`;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) {
+        setVitalSignEntries([]);
+        return;
+      }
+      const parsed = JSON.parse(raw) as VitalSignEntry[];
+      if (!Array.isArray(parsed)) {
+        setVitalSignEntries([]);
+        return;
+      }
+      const sorted = [...parsed].sort(
+        (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
+      );
+      setVitalSignEntries(sorted);
+    } catch {
+      setVitalSignEntries([]);
+    }
+  }, [vitalTargetUserId]);
+
+  const resetVitalsForm = useCallback(() => {
+    setVitalsForm({
+      recorded_at: new Date().toISOString().slice(0, 16),
+      systolic: '',
+      diastolic: '',
+      heart_rate: '',
+      temperature_c: '',
+      spo2: '',
+      glucose_mg_dl: '',
+      weight_kg: '',
+      note: ''
+    });
+    setVitalsError(null);
+  }, []);
+
+  const saveVitalsEntry = useCallback(() => {
+    if (!vitalTargetUserId) {
+      setVitalsError('Patient introuvable.');
+      return;
+    }
+    if (!vitalsForm.recorded_at) {
+      setVitalsError('Date/heure requise.');
+      return;
+    }
+    const newEntry: VitalSignEntry = {
+      id: Date.now(),
+      recorded_at: new Date(vitalsForm.recorded_at).toISOString(),
+      systolic: parseVitalNumber(vitalsForm.systolic),
+      diastolic: parseVitalNumber(vitalsForm.diastolic),
+      heart_rate: parseVitalNumber(vitalsForm.heart_rate),
+      temperature_c: parseVitalNumber(vitalsForm.temperature_c),
+      spo2: parseVitalNumber(vitalsForm.spo2),
+      glucose_mg_dl: parseVitalNumber(vitalsForm.glucose_mg_dl),
+      weight_kg: parseVitalNumber(vitalsForm.weight_kg),
+      note: vitalsForm.note.trim()
+    };
+
+    if (
+      newEntry.systolic === null &&
+      newEntry.diastolic === null &&
+      newEntry.heart_rate === null &&
+      newEntry.temperature_c === null &&
+      newEntry.spo2 === null &&
+      newEntry.glucose_mg_dl === null &&
+      newEntry.weight_kg === null
+    ) {
+      setVitalsError('Ajoutez au moins une mesure.');
+      return;
+    }
+
+    const next = [newEntry, ...vitalSignEntries].sort(
+      (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
+    );
+    const storageKey = `patient-vitals-${vitalTargetUserId}`;
+    setVitalSignEntries(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+    setShowVitalsModal(false);
+    resetVitalsForm();
+  }, [resetVitalsForm, vitalSignEntries, vitalTargetUserId, vitalsForm]);
 
   const loadPrescriptions = useCallback(async (force = false) => {
     if (!force && Date.now() - lastPrescriptionsLoadAtRef.current < LOAD_TTL_MS) {
@@ -800,21 +961,61 @@ useEffect(() => {
       return;
     }
 
-    setRehabForm((prev) => ({
-      ...prev,
-      medical_history_entry_id: '',
-      prescription_id: '',
-      visit_id: prefillVisitId && Number.isFinite(prefillVisitId) ? String(prefillVisitId) : prev.visit_id
-    }));
+    if (rehabEntryIdFromQuery && Number.isFinite(rehabEntryIdFromQuery) && rehabEntries.length > 0) {
+      const targetEntry = rehabEntries.find((entry) => entry.id === rehabEntryIdFromQuery);
+      if (targetEntry) {
+        setEditingRehabId(targetEntry.id);
+        setRehabForm({
+          medical_history_entry_id: targetEntry.medical_history_entry_id ? String(targetEntry.medical_history_entry_id) : '',
+          prescription_id: targetEntry.prescription_id ? String(targetEntry.prescription_id) : '',
+          visit_id: targetEntry.visit_id ? String(targetEntry.visit_id) : '',
+          sessions_per_week: targetEntry.sessions_per_week ? String(targetEntry.sessions_per_week) : '',
+          duration_weeks: targetEntry.duration_weeks ? String(targetEntry.duration_weeks) : '',
+          goals: targetEntry.goals ?? '',
+          exercise_type: targetEntry.exercise_type ?? '',
+          exercise_reps: targetEntry.exercise_reps ?? '',
+          exercise_frequency: targetEntry.exercise_frequency ?? '',
+          exercise_notes: targetEntry.exercise_notes ?? '',
+          pain_score: targetEntry.pain_score ? String(targetEntry.pain_score) : '',
+          mobility_score: targetEntry.mobility_score ?? '',
+          progress_notes: targetEntry.progress_notes ?? '',
+          follow_up_date: toDateInputValue(targetEntry.follow_up_date)
+        });
+      } else {
+        setRehabForm((prev) => ({
+          ...prev,
+          medical_history_entry_id: '',
+          prescription_id: '',
+          visit_id: prefillVisitId && Number.isFinite(prefillVisitId) ? String(prefillVisitId) : prev.visit_id
+        }));
+      }
+    } else {
+      setRehabForm((prev) => ({
+        ...prev,
+        medical_history_entry_id: '',
+        prescription_id: '',
+        visit_id: prefillVisitId && Number.isFinite(prefillVisitId) ? String(prefillVisitId) : prev.visit_id
+      }));
+    }
+
     setShowRehabModal(true);
     setRehabError(null);
     const params = new URLSearchParams(location.search);
     params.delete('openRehabModal');
+    params.delete('rehabEntryId');
     routerHistory.replace({
       pathname: location.pathname,
       search: params.toString() ? `?${params.toString()}` : ''
     });
-  }, [location.pathname, location.search, openRehabModalFromVisit, prefillVisitId, routerHistory]);
+  }, [
+    location.pathname,
+    location.search,
+    openRehabModalFromVisit,
+    prefillVisitId,
+    rehabEntries,
+    rehabEntryIdFromQuery,
+    routerHistory
+  ]);
 
   const startHistoryEdit = useCallback(
     (entry: ApiMedicalHistoryEntry) => {
@@ -1036,7 +1237,7 @@ useEffect(() => {
                       : "Demande d'acces"}
                   </IonButton>
                 ) : null}
-                <IonButton fill="clear" size="small" onClick={() => setIsProfileCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsProfileCollapsed((prev) => !prev)}>
                   <IonIcon icon={isProfileCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1120,9 +1321,6 @@ useEffect(() => {
                       <IonBadge color="light">
                         {activeAge ?? 'Age ?'} {activeAge !== null ? 'ans' : ''}
                       </IonBadge>
-                      {!profileFamilyMember ? (
-                        <IonBadge color="light">{patientProfile?.ninu ? 'NINU renseigne' : 'NINU manquant'}</IonBadge>
-                      ) : null}
                       {profileFamilyMember ? <IonBadge color="medium">Membre de famille</IonBadge> : null}
                     </div>
                   </div>
@@ -1130,12 +1328,12 @@ useEffect(() => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
                   <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={collapsibleHeaderRowStyle}>
+                      <p style={collapsibleHeaderTitleStyle}>
                         <IonIcon icon={personOutline} />
                         Identite
                       </p>
-                      <IonButton fill="clear" size="small" onClick={() => setIsIdentityCollapsed((prev) => !prev)}>
+                      <IonButton fill="clear" color="medium" size="small" onClick={() => setIsIdentityCollapsed((prev) => !prev)}>
                         <IonIcon icon={isIdentityCollapsed ? chevronDownOutline : chevronUpOutline} />
                       </IonButton>
                     </div>
@@ -1165,10 +1363,10 @@ useEffect(() => {
                         </p>
                         <p><strong>Adresse:</strong> {profileFamilyMember ? 'N/D' : patientProfile?.address ?? 'N/D'}</p>
                         {!profileFamilyMember ? <p><strong>NINU:</strong> {patientProfile?.ninu ?? 'N/D'}</p> : null}
-                        {!profileFamilyMember ? (
+                        {!profileFamilyMember && patientProfile?.claim_token ? (
                           <div style={{ marginTop: '10px', border: '1px dashed #cbd5e1', borderRadius: '10px', padding: '8px' }}>
                             <p style={{ margin: '0 0 4px 0' }}>
-                              <strong>Token reclamation:</strong> {patientProfile?.claim_token ?? 'N/D'}
+                              <strong>Token reclamation:</strong> {patientProfile.claim_token}
                             </p>
                             {patientProfile?.claimed_at ? (
                               <p style={{ margin: 0, color: '#16a34a', fontSize: '0.9rem' }}>
@@ -1185,11 +1383,7 @@ useEffect(() => {
                                   style={{ width: '160px', height: '160px', objectFit: 'contain', borderRadius: '8px', border: '1px solid #dbe7ef' }}
                                 />
                               </>
-                            ) : (
-                              <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
-                                Aucun token actif.
-                              </p>
-                            )}
+                            ) : null}
                           </div>
                         ) : null}
                         {profileFamilyMember ? (
@@ -1202,12 +1396,12 @@ useEffect(() => {
                     ) : null}
                   </div>
                   <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={collapsibleHeaderRowStyle}>
+                      <p style={collapsibleHeaderTitleStyle}>
                         <IonIcon icon={medicalOutline} />
                         Sante
                       </p>
-                      <IonButton fill="clear" size="small" onClick={() => setIsHealthCollapsed((prev) => !prev)}>
+                      <IonButton fill="clear" color="medium" size="small" onClick={() => setIsHealthCollapsed((prev) => !prev)}>
                         <IonIcon icon={isHealthCollapsed ? chevronDownOutline : chevronUpOutline} />
                       </IonButton>
                     </div>
@@ -1224,35 +1418,75 @@ useEffect(() => {
                 </div>
 
                 <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={collapsibleHeaderRowStyle}>
+                    <p style={collapsibleHeaderTitleStyle}>
                       <IonIcon icon={pulseOutline} />
                       Suivi des signes vitaux
                     </p>
-                    <IonButton fill="clear" size="small" onClick={() => setIsVitalsCollapsed((prev) => !prev)}>
-                      <IonIcon icon={isVitalsCollapsed ? chevronDownOutline : chevronUpOutline} />
-                    </IonButton>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <IonButton
+                        fill="outline"
+                        color="primary"
+                        size="small"
+                        onClick={() => {
+                          resetVitalsForm();
+                          setShowVitalsModal(true);
+                        }}
+                        disabled={!vitalTargetUserId}
+                      >
+                        <IonIcon icon={addOutline} slot="start" />
+                        Ajouter
+                      </IonButton>
+                      <IonButton fill="clear" color="medium" size="small" onClick={() => setIsVitalsCollapsed((prev) => !prev)}>
+                        <IonIcon icon={isVitalsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                      </IonButton>
+                    </div>
                   </div>
                   {!isVitalsCollapsed ? (
                     <>
-                      <p><strong>Tension arterielle:</strong> N/D</p>
-                      <p><strong>Frequence cardiaque:</strong> N/D</p>
-                      <p><strong>Saturation O2:</strong> N/D</p>
-                      <p><strong>Temperature:</strong> N/D</p>
-                      <p style={{ marginBottom: 0, color: '#64748b', fontSize: '0.92rem' }}>
-                        Module en preparation.
-                      </p>
+                      {vitalSignEntries.length > 0 ? (
+                        <IonList inset>
+                          {vitalSignEntries.map((entry, index) => (
+                            <IonItem key={`vital-${entry.id}-${index}`} lines={index === vitalSignEntries.length - 1 ? 'none' : 'full'}>
+                              <IonLabel>
+                                <h3 style={{ marginBottom: '4px' }}>
+                                  Mesure du {formatDateTime(entry.recorded_at)}
+                                </h3>
+                                <p>
+                                  <strong>Tension:</strong> {entry.systolic ?? '-'} / {entry.diastolic ?? '-'} •{' '}
+                                  <strong>FC:</strong> {entry.heart_rate ?? '-'} bpm
+                                </p>
+                                <p>
+                                  <strong>SpO2:</strong> {entry.spo2 ?? '-'}% • <strong>Temperature:</strong> {entry.temperature_c ?? '-'} C
+                                </p>
+                                <p>
+                                  <strong>Glycemie:</strong> {entry.glucose_mg_dl ?? '-'} mg/dL • <strong>Poids:</strong> {entry.weight_kg ?? '-'} kg
+                                </p>
+                                {entry.note ? (
+                                  <p style={{ marginBottom: 0 }}>
+                                    <strong>Note:</strong> {entry.note}
+                                  </p>
+                                ) : null}
+                              </IonLabel>
+                            </IonItem>
+                          ))}
+                        </IonList>
+                      ) : (
+                        <p style={{ marginBottom: 0, color: '#64748b', fontSize: '0.92rem' }}>
+                          Aucune mesure enregistree pour ce patient.
+                        </p>
+                      )}
                     </>
                   ) : null}
                 </div>
 
                 <div style={{ border: '1px solid var(--ion-color-light-shade)', borderRadius: '12px', padding: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={collapsibleHeaderRowStyle}>
+                    <p style={collapsibleHeaderTitleStyle}>
                       <IonIcon icon={barChartOutline} />
                       Statistiques
                     </p>
-                    <IonButton fill="clear" size="small" onClick={() => setIsStatsCollapsed((prev) => !prev)}>
+                    <IonButton fill="clear" color="medium" size="small" onClick={() => setIsStatsCollapsed((prev) => !prev)}>
                       <IonIcon icon={isStatsCollapsed ? chevronDownOutline : chevronUpOutline} />
                     </IonButton>
                   </div>
@@ -1280,7 +1514,7 @@ useEffect(() => {
                   <IonIcon icon={peopleOutline} />
                   Membres de famille
                 </IonCardTitle>
-                <IonButton fill="clear" size="small" onClick={() => setIsFamilyCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsFamilyCollapsed((prev) => !prev)}>
                   <IonIcon icon={isFamilyCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1305,14 +1539,10 @@ useEffect(() => {
                                 gap: '8px'
                               }}
                             >
-                              <p style={{ margin: 0, fontWeight: 600 }}>
+                              <p style={collapsibleHeaderTitleStyle}>
                                 Patient principal · {principalPatientProfile.name}
                               </p>
-                              <IonButton
-                                fill="clear"
-                                size="small"
-                                onClick={() => setIsPrincipalCollapsed((prev) => !prev)}
-                              >
+                              <IonButton fill="clear" color="medium" size="small" onClick={() => setIsPrincipalCollapsed((prev) => !prev)}>
                                 <IonIcon icon={isPrincipalCollapsed ? chevronDownOutline : chevronUpOutline} />
                               </IonButton>
                             </div>
@@ -1393,12 +1623,12 @@ useEffect(() => {
                       params.set('patient', decodedPatientName);
                     }
                     const suffix = params.toString() ? `?${params.toString()}` : '';
-                    ionRouter.push(`/doctor/visits/new${suffix}`, 'forward', 'push');
+                    ionRouter.push(`/doctor/visit-form/new${suffix}`, 'forward', 'push');
                   }}
                 >
                   Ajouter
                 </IonButton>
-                <IonButton fill="clear" size="small" onClick={() => setIsVisitsCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsVisitsCollapsed((prev) => !prev)}>
                   <IonIcon icon={isVisitsCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1488,7 +1718,7 @@ useEffect(() => {
                 <IonIcon icon={medicalOutline} /> Historique medical
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton fill="clear" size="small" onClick={() => setIsHistoryCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsHistoryCollapsed((prev) => !prev)}>
                   <IonIcon icon={isHistoryCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1716,7 +1946,7 @@ useEffect(() => {
                 <IonIcon icon={documentTextOutline} /> Ordonnances
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton fill="clear" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
                   <IonIcon icon={isPrescriptionsCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1790,7 +2020,7 @@ useEffect(() => {
                 <IonIcon icon={pulseOutline} /> Reeducation
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton fill="clear" size="small" onClick={() => setIsRehabCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsRehabCollapsed((prev) => !prev)}>
                   <IonIcon icon={isRehabCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1855,7 +2085,7 @@ useEffect(() => {
                 <IonIcon icon={documentTextOutline} /> Ordonnances
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <IonButton fill="clear" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
+                <IonButton fill="clear" color="medium" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
                   <IonIcon icon={isPrescriptionsCollapsed ? chevronDownOutline : chevronUpOutline} />
                 </IonButton>
               </div>
@@ -1953,7 +2183,7 @@ useEffect(() => {
               <IonCardHeader>
                 <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                   <span>Visibilite</span>
-                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalContextCollapsed((prev) => !prev)}>
+                  <IonButton fill="clear" color="medium" size="small" onClick={() => setIsHistoryModalContextCollapsed((prev) => !prev)}>
                     <IonIcon icon={isHistoryModalContextCollapsed ? chevronDownOutline : chevronUpOutline} />
                   </IonButton>
                 </IonCardTitle>
@@ -1986,7 +2216,7 @@ useEffect(() => {
               <IonCardHeader>
                 <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                   <span>Details cliniques</span>
-                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalDetailsCollapsed((prev) => !prev)}>
+                  <IonButton fill="clear" color="medium" size="small" onClick={() => setIsHistoryModalDetailsCollapsed((prev) => !prev)}>
                     <IonIcon icon={isHistoryModalDetailsCollapsed ? chevronDownOutline : chevronUpOutline} />
                   </IonButton>
                 </IonCardTitle>
@@ -2032,7 +2262,7 @@ useEffect(() => {
               <IonCardHeader>
                 <IonCardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                   <span>Dates et statut</span>
-                  <IonButton fill="clear" size="small" onClick={() => setIsHistoryModalDatesCollapsed((prev) => !prev)}>
+                  <IonButton fill="clear" color="medium" size="small" onClick={() => setIsHistoryModalDatesCollapsed((prev) => !prev)}>
                     <IonIcon icon={isHistoryModalDatesCollapsed ? chevronDownOutline : chevronUpOutline} />
                   </IonButton>
                 </IonCardTitle>
@@ -2324,6 +2554,118 @@ useEffect(() => {
             {rehabError ? (
               <IonText color="danger">
                 <p>{rehabError}</p>
+              </IonText>
+            ) : null}
+          </IonContent>
+        </IonModal>
+
+        <IonModal
+          isOpen={showVitalsModal}
+          onDidDismiss={() => {
+            setShowVitalsModal(false);
+            resetVitalsForm();
+          }}
+        >
+          <IonHeader>
+            <IonToolbar>
+              <IonTitle>Nouveaux signes vitaux</IonTitle>
+              <IonButtons slot="end">
+                <IonButton
+                  fill="clear"
+                  onClick={() => {
+                    setShowVitalsModal(false);
+                    resetVitalsForm();
+                  }}
+                >
+                  <IonIcon icon={closeOutline} />
+                </IonButton>
+              </IonButtons>
+            </IonToolbar>
+          </IonHeader>
+          <IonContent className="ion-padding app-content">
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle>Mesures patient</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent style={{ display: 'grid', gap: '8px' }}>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">Date et heure</IonLabel>
+                  <IonInput
+                    type="datetime-local"
+                    value={vitalsForm.recorded_at}
+                    onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, recorded_at: e.detail.value ?? '' }))}
+                  />
+                </IonItem>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Systolique</IonLabel>
+                    <IonInput value={vitalsForm.systolic} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, systolic: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Diastolique</IonLabel>
+                    <IonInput value={vitalsForm.diastolic} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, diastolic: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Frequence cardiaque</IonLabel>
+                    <IonInput value={vitalsForm.heart_rate} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, heart_rate: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Temperature (C)</IonLabel>
+                    <IonInput value={vitalsForm.temperature_c} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, temperature_c: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">SpO2 (%)</IonLabel>
+                    <IonInput value={vitalsForm.spo2} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, spo2: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Glycemie (mg/dL)</IonLabel>
+                    <IonInput value={vitalsForm.glucose_mg_dl} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, glucose_mg_dl: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem lines="none">
+                    <IonLabel position="stacked">Poids (kg)</IonLabel>
+                    <IonInput value={vitalsForm.weight_kg} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, weight_kg: e.detail.value ?? '' }))} />
+                  </IonItem>
+                </div>
+                <IonItem lines="none">
+                  <IonLabel position="stacked">Note</IonLabel>
+                  <IonTextarea
+                    autoGrow
+                    value={vitalsForm.note}
+                    onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, note: e.detail.value ?? '' }))}
+                  />
+                </IonItem>
+              </IonCardContent>
+            </IonCard>
+
+            <div
+              style={{
+                position: 'sticky',
+                bottom: '-16px',
+                background: '#f0f6fa',
+                borderTop: '1px solid #dbe7ef',
+                padding: '8px',
+                boxShadow: '0 -4px 12px rgba(15, 23, 42, 0.06)',
+                zIndex: 1
+              }}
+            >
+              <IonButton expand="block" onClick={saveVitalsEntry} disabled={!vitalTargetUserId}>
+                Ajouter
+              </IonButton>
+              <IonButton
+                expand="block"
+                color="dark"
+                onClick={() => {
+                  setShowVitalsModal(false);
+                  resetVitalsForm();
+                }}
+              >
+                Annuler
+              </IonButton>
+            </div>
+
+            {vitalsError ? (
+              <IonText color="danger">
+                <p>{vitalsError}</p>
               </IonText>
             ) : null}
           </IonContent>
