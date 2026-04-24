@@ -57,6 +57,7 @@ import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateHaiti, formatDateTime } from '../utils/time';
+import { getVisitTypeLabel } from '../utils/visitType';
 
 const historyTypeLabel: Record<ApiMedicalHistoryEntry['type'], string> = {
   condition: 'Condition',
@@ -722,7 +723,7 @@ useEffect(() => {
 
       const firstHistoryEntry = linkedHistoryEntries[0];
       const visitTypeLabel = visit.visit_type?.trim()
-        ? visit.visit_type
+        ? getVisitTypeLabel(visit.visit_type)
         : firstHistoryEntry
           ? historyTypeLabel[firstHistoryEntry.type] ?? 'Consultation'
           : 'Consultation';

@@ -47,7 +47,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(me);
         localStorage.setItem(USER_KEY, JSON.stringify(me));
       } catch {
+        // Avoid forcing logout on transient refresh/network errors.
+        // If we have cached identity, keep the session and retry on next API call.
+        const cachedUserRaw = localStorage.getItem(USER_KEY);
+        if (cachedUserRaw) {
+          try {
+            const cachedUser = JSON.parse(cachedUserRaw) as ApiUser;
+            if (cachedUser && typeof cachedUser === 'object' && cachedUser.id) {
+              setUser(cachedUser);
+              return;
+            }
+          } catch {
+            // fall through to clean logout when cache is invalid
+          }
+        }
+
         setToken(null);
+        setUser(null);
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
       } finally {

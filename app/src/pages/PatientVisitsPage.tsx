@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type ApiVisit } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
+import { getVisitTypeLabel } from '../utils/visitType';
 
 const PatientVisitsPage: React.FC = () => {
   const { token } = useAuth();
@@ -46,7 +47,7 @@ const PatientVisitsPage: React.FC = () => {
         visit.visit_code ?? '',
         visit.doctor_name ?? '',
         visit.family_member_name ?? '',
-        visit.visit_type ?? '',
+        getVisitTypeLabel(visit.visit_type),
         visit.diagnosis ?? '',
         visit.status ?? '',
       ]
@@ -114,7 +115,7 @@ const PatientVisitsPage: React.FC = () => {
                         {visit.visit_code ?? `VIS-${visit.id}`}
                       </div>
                       <div style={{ fontSize: '0.88rem', color: '#64748b' }}>
-                        {visit.doctor_name ?? 'Docteur N/D'} · {visit.visit_type ?? 'Consultation'}
+                        {visit.doctor_name ?? 'Docteur N/D'} · {getVisitTypeLabel(visit.visit_type)}
                         {visit.family_member_name ? ` · ${visit.family_member_name}` : ''}
                       </div>
                     </div>

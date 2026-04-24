@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type ApiVisit } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
+import { getVisitTypeLabel } from '../utils/visitType';
 
 const DoctorMyVisitsPage: React.FC = () => {
   const { token } = useAuth();
@@ -48,7 +49,7 @@ const DoctorMyVisitsPage: React.FC = () => {
         visit.visit_code ?? '',
         visit.patient_name ?? '',
         visit.family_member_name ?? '',
-        visit.visit_type ?? '',
+        getVisitTypeLabel(visit.visit_type),
         visit.diagnosis ?? '',
         visit.status ?? '',
       ]
@@ -123,7 +124,7 @@ const DoctorMyVisitsPage: React.FC = () => {
                       </div>
                       <div style={{ fontSize: '0.88rem', color: '#64748b' }}>
                         {visit.family_member_name ? `${visit.family_member_name} · ` : ''}
-                        {visit.visit_type ?? 'Consultation'}
+                        {getVisitTypeLabel(visit.visit_type)}
                       </div>
                     </div>
                     <IonBadge color={visit.status === 'open' ? 'warning' : visit.status === 'completed' ? 'success' : 'medium'}>

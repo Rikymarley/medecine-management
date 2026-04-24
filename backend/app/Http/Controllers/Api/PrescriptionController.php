@@ -16,6 +16,14 @@ use Illuminate\Support\Str;
 
 class PrescriptionController extends Controller
 {
+    private function clipText(?string $value, int $max): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        return mb_substr(trim($value), 0, $max);
+    }
+
     private function generateClaimToken(): string
     {
         do {
@@ -193,7 +201,7 @@ class PrescriptionController extends Controller
             }
 
             foreach ($latestBySignatureAndPharmacy as $pairKey => $row) {
-                if (!str_starts_with($pairKey, $signature . '|')) {
+                if (!Str::startsWith($pairKey, $signature . '|')) {
                     continue;
                 }
 
@@ -422,8 +430,8 @@ class PrescriptionController extends Controller
                 'missing_fields' => $missingFields,
             ], 422);
         }
-        $resolvedPatientName = $patientUser->name;
-        $resolvedPatientPhone = $patientUser->phone ?? ($data['patient_phone'] ?? null);
+        $resolvedPatientName = $this->clipText($patientUser->name, 255);
+        $resolvedPatientPhone = $this->clipText($patientUser->phone ?? ($data['patient_phone'] ?? null), 14);
 
         $prescription = Prescription::create([
             'patient_user_id' => $patientUser->id,
@@ -448,13 +456,21 @@ class PrescriptionController extends Controller
             'changed_at' => now(),
         ]);
 
-        $medicinePayload = array_map(static function (array $item) {
+        $medicinePayload = array_map(function (array $item) {
+            $item['name'] = $this->clipText((string) ($item['name'] ?? ''), 255) ?? '';
+            $item['strength'] = $this->clipText($item['strength'] ?? null, 50);
+            $item['form'] = $this->clipText($item['form'] ?? null, 50);
+            $item['notes'] = $this->clipText($item['notes'] ?? null, 3000);
             $item['quantity'] = $item['quantity'] ?? 1;
             return $item;
         }, $data['medicine_requests']);
 
         $prescription->medicineRequests()->createMany($medicinePayload);
-        $this->autoAssignRecentPharmacyApprovals($prescription);
+        try {
+            $this->autoAssignRecentPharmacyApprovals($prescription);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
         $prescription->load(['medicineRequests', 'responses']);
         $prescription->refreshStatusFromResponses($this->expireHours());
 

@@ -27,6 +27,7 @@ import { api, ApiVisitDetail } from '../services/api';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
 import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 import { formatDateTime } from '../utils/time';
+import { getVisitTypeLabel } from '../utils/visitType';
 import { useAuth } from '../state/AuthState';
 
 const DoctorVisitDetailPage: React.FC = () => {
@@ -226,7 +227,7 @@ const DoctorVisitDetailPage: React.FC = () => {
                   <strong>Date:</strong> {visit.visit_date ? formatDateTime(visit.visit_date) : 'N/D'}
                 </p>
                 <p>
-                  <strong>Type:</strong> {visit.visit_type ?? 'Consultation'}
+                  <strong>Type:</strong> {getVisitTypeLabel(visit.visit_type)}
                 </p>
                 <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                   <IonBadge color={visit.status === 'open' ? 'warning' : visit.status === 'completed' ? 'success' : 'medium'}>

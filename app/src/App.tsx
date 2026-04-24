@@ -245,17 +245,80 @@ const RoutePreloader: React.FC = () => {
   return null;
 };
 
+const RuntimeRecovery: React.FC = () => {
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const shouldReloadForChunkError = (message: string) => {
+      const lower = message.toLowerCase();
+      return (
+        lower.includes('loading chunk') ||
+        lower.includes('failed to fetch dynamically imported module') ||
+        lower.includes('importing a module script failed') ||
+        lower.includes('chunkloaderror')
+      );
+    };
+
+    const tryRecover = (reason: string) => {
+      const key = 'app-runtime-reloaded-once';
+      if (window.sessionStorage.getItem(key) === '1') {
+        return;
+      }
+      if (!navigator.onLine) {
+        return;
+      }
+      window.sessionStorage.setItem(key, '1');
+      // Keep a small trace for debugging when users report black-screen reloads.
+      window.sessionStorage.setItem('app-runtime-reload-reason', reason);
+      window.location.reload();
+    };
+
+    const onError = (event: ErrorEvent) => {
+      const message = event.message || event.error?.message || '';
+      if (message && shouldReloadForChunkError(message)) {
+        tryRecover(message);
+      }
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const message =
+        typeof reason === 'string'
+          ? reason
+          : reason?.message
+            ? String(reason.message)
+            : '';
+      if (message && shouldReloadForChunkError(message)) {
+        tryRecover(message);
+      }
+    };
+
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    };
+  }, []);
+
+  return null;
+};
+
 const App: React.FC = () => (
   <IonApp>
     <AuthProvider>
       <IonReactRouter>
+        <RuntimeRecovery />
         <RoutePreloader />
         <Suspense
           fallback={(
             <IonPage>
               <IonContent
                 style={{
-                  '--background': 'var(--ion-background-color)',
+                  '--background': '#ffffff',
+                  background: '#ffffff',
                 }}
               >
                 <div

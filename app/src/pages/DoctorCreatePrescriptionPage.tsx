@@ -53,6 +53,12 @@ const emptyMedicine = () => ({
 type DraftMedicine = ReturnType<typeof emptyMedicine>;
 
 const FORM_OPTIONS = ['Comprime', 'Capsule', 'Sirop', 'Injection', 'Pommade', 'Spray', 'Sachet', 'Gouttes'];
+const MAX_PATIENT_NAME_LENGTH = 255;
+const MAX_MEDICINE_NAME_LENGTH = 255;
+const MAX_MEDICINE_STRENGTH_LENGTH = 50;
+const MAX_MEDICINE_FORM_LENGTH = 50;
+const MAX_MEDICINE_NOTES_LENGTH = 3000;
+const MAX_PATIENT_PHONE_LENGTH = 14;
 
 const toPositiveInt = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -61,6 +67,8 @@ const toPositiveInt = (value: unknown): number | null => {
   }
   return Math.floor(parsed);
 };
+
+const clipText = (value: string, max: number): string => value.slice(0, max).trim();
 
 const escapeHtml = (value: string): string =>
   value
@@ -409,18 +417,18 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     try {
       const resolvedPatientUserId = selectedPatientUserId ?? undefined;
       const payload = {
-        patient_name: patientName.trim(),
+        patient_name: clipText(patientName, MAX_PATIENT_NAME_LENGTH),
         patient_phone: maskHaitiPhone(patientPhone).trim() || null,
         patient_user_id: resolvedPatientUserId,
         family_member_id: selectedFamilyMemberId ?? undefined,
         medicine_requests: filtered.map((med) => ({
-          name: med.name,
-          strength: med.strength || null,
-          form: med.form || null,
+          name: clipText(med.name, MAX_MEDICINE_NAME_LENGTH),
+          strength: med.strength ? clipText(med.strength, MAX_MEDICINE_STRENGTH_LENGTH) : null,
+          form: med.form ? clipText(med.form, MAX_MEDICINE_FORM_LENGTH) : null,
           quantity: toPositiveInt(med.quantity) ?? 1,
           duration_days: toPositiveInt(med.durationDays),
           daily_dosage: toPositiveInt(med.dailyDosage),
-          notes: med.notes.trim() || null,
+          notes: med.notes ? clipText(med.notes, MAX_MEDICINE_NOTES_LENGTH) : null,
           generic_allowed: med.genericAllowed,
           conversion_allowed: med.conversionAllowed
         }))
@@ -665,6 +673,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
               <IonInput
                 value={patientName}
                 placeholder="Marie Jean"
+                maxlength={MAX_PATIENT_NAME_LENGTH}
                 onIonInput={(event) => {
                   const nextValue = event.detail.value ?? '';
                   setPatientName(nextValue);
@@ -716,7 +725,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                   <IonInput
                     value={patientPhone}
                     placeholder="+509-xxxx-xxxx"
-                    maxlength={14}
+                    maxlength={MAX_PATIENT_PHONE_LENGTH}
                     inputmode="tel"
                     onIonInput={(event) => setPatientPhone(maskHaitiPhone(event.detail.value ?? ''))}
                   />
@@ -857,6 +866,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                       <IonInput
                         value={med.name}
                         placeholder="ex: Amoxicilline"
+                        maxlength={MAX_MEDICINE_NAME_LENGTH}
                         onIonInput={(event) => updateMedicineName(index, event.detail.value ?? '')}
                       />
                     </IonItem>
@@ -893,6 +903,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                       <IonInput
                         value={med.strength}
                         placeholder="ex: 500mg"
+                        maxlength={MAX_MEDICINE_STRENGTH_LENGTH}
                         onIonInput={(event) => updateMedicine(index, { strength: event.detail.value ?? '' })}
                       />
                     </IonItem>
@@ -979,6 +990,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                       <IonTextarea
                         autoGrow
                         value={med.notes}
+                        maxlength={MAX_MEDICINE_NOTES_LENGTH}
                         placeholder="Notes specifiques pour ce medicament..."
                         onIonInput={(event) => updateMedicine(index, { notes: event.detail.value ?? '' })}
                       />

@@ -146,8 +146,7 @@ class MedicalHistoryController extends Controller
             ? $entry->rehabEntries
             : collect();
 
-        return [
-            ...$entry->toArray(),
+        return array_merge($entry->toArray(), [
             'visit_id' => $entry->visit_id,
             'doctor_name' => $entry->doctor?->name,
             'family_member_name' => $entry->familyMember?->name,
@@ -180,7 +179,7 @@ class MedicalHistoryController extends Controller
                 ])->values(),
             'can_edit_by_patient' => $canEditByPatient,
             'can_delete_by_patient' => $canEditByPatient,
-        ];
+        ]);
     }
 
     private function syncEntryPrescriptionLinks(MedicalHistoryEntry $entry, ?int $prescriptionId): void
@@ -213,10 +212,10 @@ class MedicalHistoryController extends Controller
             ->values()
             ->all();
 
-        $allowedPatientUserIds = array_values(array_unique([
-            (int) $patient->id,
-            ...$linkedUserIds,
-        ]));
+        $allowedPatientUserIds = array_values(array_unique(array_merge(
+            [(int) $patient->id],
+            $linkedUserIds
+        )));
 
         $query = MedicalHistoryEntry::query()
             ->whereIn('patient_user_id', $allowedPatientUserIds)
@@ -271,11 +270,13 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
 
-        $entry = MedicalHistoryEntry::create([
-            ...$data,
-            'patient_user_id' => $patient->id,
-            'doctor_user_id' => null,
-        ])->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
+        $entry = MedicalHistoryEntry::create(array_merge(
+            $data,
+            [
+                'patient_user_id' => $patient->id,
+                'doctor_user_id' => null,
+            ]
+        ))->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
         $this->ensureEntryCode($entry);
         $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
@@ -375,11 +376,13 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
-        $entry = MedicalHistoryEntry::create([
-            ...$data,
-            'patient_user_id' => $patient->id,
-            'doctor_user_id' => $doctor->id,
-        ])->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
+        $entry = MedicalHistoryEntry::create(array_merge(
+            $data,
+            [
+                'patient_user_id' => $patient->id,
+                'doctor_user_id' => $doctor->id,
+            ]
+        ))->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
         $this->ensureEntryCode($entry);
         $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
@@ -417,10 +420,12 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
-        $entry->update([
-            ...$data,
-            'doctor_user_id' => $doctor->id,
-        ]);
+        $entry->update(array_merge(
+            $data,
+            [
+                'doctor_user_id' => $doctor->id,
+            ]
+        ));
         $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
 
         return response()->json($this->formatEntry($entry->fresh([
