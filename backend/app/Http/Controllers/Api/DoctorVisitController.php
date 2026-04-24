@@ -12,10 +12,32 @@ use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class DoctorVisitController extends Controller
 {
+    private function normalizeNullableId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
+            return null;
+        }
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $id = (int) $value;
+        return $id > 0 ? $id : null;
+    }
+
+    private function normalizeVisitDate(string $value): ?string
+    {
+        try {
+            return Carbon::parse(trim($value))->format('Y-m-d H:i:s');
+        } catch (Throwable $exception) {
+            return null;
+        }
+    }
+
     private function visitReference(Visit $visit): string
     {
         $referenceDate = optional($visit->visit_date ?? $visit->created_at)->toDateString() ?? now()->toDateString();
@@ -167,7 +189,7 @@ class DoctorVisitController extends Controller
             }
 
             if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId ?? null, $patientUserId)) {
-                return response()->json(['message' => 'Membre de famille invalide.'], 422);
+                return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
             }
         }
 
@@ -208,7 +230,7 @@ class DoctorVisitController extends Controller
         $patientUserId = $request->user()->id;
 
         if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId, $patientUserId)) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
 
         $visits = Visit::query()
@@ -225,44 +247,53 @@ class DoctorVisitController extends Controller
 
     public function store(Request $request)
     {
-        $familyMemberRaw = $request->input('family_member_id');
-        if (
-            $familyMemberRaw === '' ||
-            $familyMemberRaw === 'undefined' ||
-            $familyMemberRaw === 'null' ||
-            (is_numeric($familyMemberRaw) && (int) $familyMemberRaw <= 0)
-        ) {
-            $request->merge(['family_member_id' => null]);
-        }
+        $request->merge([
+            'family_member_id' => $this->normalizeNullableId($request->input('family_member_id')),
+        ]);
 
         $data = $this->validatePayload($request);
+        $doctor = $request->user();
 
-        if (!$this->doctorHasPatientLink($request->user()->id, $data['patient_user_id'])) {
+        $patient = User::query()
+            ->where('id', (int) $data['patient_user_id'])
+            ->where('role', 'patient')
+            ->first();
+        if (!$patient) {
+            return response()->json(['message' => 'Patient introuvable.'], 404);
+        }
+
+        if (!$this->doctorHasPatientLink($doctor->id, $patient->id)) {
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
-        if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $data['patient_user_id'])) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+        $familyMemberId = $this->normalizeNullableId($data['family_member_id'] ?? null);
+        if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId, $patient->id)) {
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
 
-        try {
-            $normalizedVisitDate = Carbon::parse((string) $data['visit_date'])->format('Y-m-d H:i:s');
-        } catch (Throwable $exception) {
+        $normalizedVisitDate = $this->normalizeVisitDate((string) $data['visit_date']);
+        if (!$normalizedVisitDate) {
             return response()->json(['message' => 'Date de visite invalide.'], 422);
         }
 
         try {
-            $visit = Visit::create(array_merge(
-                $data,
-                [
+            $visit = DB::transaction(function () use ($data, $doctor, $patient, $familyMemberId, $normalizedVisitDate) {
+                return Visit::query()->create([
+                    'patient_user_id' => $patient->id,
+                    'family_member_id' => $familyMemberId,
+                    'doctor_user_id' => $doctor->id,
                     'visit_date' => $normalizedVisitDate,
-                    'doctor_user_id' => $request->user()->id,
+                    'visit_type' => $data['visit_type'] ?? null,
+                    'chief_complaint' => $data['chief_complaint'] ?? null,
+                    'diagnosis' => $data['diagnosis'] ?? null,
+                    'clinical_notes' => $data['clinical_notes'] ?? null,
+                    'treatment_plan' => $data['treatment_plan'] ?? null,
                     'status' => $data['status'] ?? 'open',
-                ]
-            ));
+                ]);
+            });
         } catch (Throwable $exception) {
             report($exception);
-            return response()->json(['message' => 'Impossible de creer la visite pour le moment.'], 422);
+            return response()->json(['message' => 'Impossible de creer la visite pour le moment. Veuillez reessayer.'], 422);
         }
 
         return response()->json($this->formatVisit($visit), 201);
@@ -274,22 +305,40 @@ class DoctorVisitController extends Controller
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
+        $request->merge([
+            'family_member_id' => $this->normalizeNullableId($request->input('family_member_id')),
+        ]);
         $data = $this->validatePayload($request);
 
         if ($visit->patient_user_id !== $data['patient_user_id']) {
             return response()->json(['message' => 'Modification du patient impossible.'], 422);
         }
 
-        if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $data['patient_user_id'])) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+        $familyMemberId = $this->normalizeNullableId($data['family_member_id'] ?? null);
+        if (!$this->ensureFamilyMemberBelongsToPatient($familyMemberId, (int) $data['patient_user_id'])) {
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
 
-        $visit->update(array_merge(
-            $data,
-            [
+        $normalizedVisitDate = $this->normalizeVisitDate((string) $data['visit_date']);
+        if (!$normalizedVisitDate) {
+            return response()->json(['message' => 'Date de visite invalide.'], 422);
+        }
+
+        try {
+            $visit->update([
+                'family_member_id' => $familyMemberId,
+                'visit_date' => $normalizedVisitDate,
+                'visit_type' => $data['visit_type'] ?? null,
+                'chief_complaint' => $data['chief_complaint'] ?? null,
+                'diagnosis' => $data['diagnosis'] ?? null,
+                'clinical_notes' => $data['clinical_notes'] ?? null,
+                'treatment_plan' => $data['treatment_plan'] ?? null,
                 'status' => $data['status'] ?? $visit->status,
-            ]
-        ));
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => 'Impossible de mettre a jour la visite pour le moment. Veuillez reessayer.'], 422);
+        }
 
         return response()->json($this->formatVisitDetail($visit->refresh()));
     }

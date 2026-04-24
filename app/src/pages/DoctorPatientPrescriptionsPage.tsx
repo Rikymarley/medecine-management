@@ -119,6 +119,27 @@ const parseVitalNumber = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const parsePositiveId = (value: string | null | undefined): number | null => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
+};
+
+const normalizeHistoryDateInput = (value: string | null | undefined): string | null => {
+  const normalized = toDateInputValue(value);
+  return normalized || null;
+};
+
+const normalizeRehabDateInput = (value: string | null | undefined): string | null => {
+  const normalized = toDateInputValue(value);
+  return normalized || null;
+};
+
 const collapsibleHeaderRowStyle = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -1112,7 +1133,17 @@ useEffect(() => {
   ]);
 
   const saveHistory = async () => {
-    if (!token || !historyForm.title.trim()) {
+    if (savingHistory) {
+      return;
+    }
+    if (!token) {
+      setHistoryError('Veuillez vous reconnecter.');
+      return;
+    }
+
+    const normalizedTitle = historyForm.title.trim();
+    if (!normalizedTitle) {
+      setHistoryError("Titre de l'historique requis.");
       return;
     }
 
@@ -1121,25 +1152,27 @@ useEffect(() => {
       return;
     }
 
+    const parsedFamilyMemberId = parsePositiveId(historyForm.family_member_id);
+    const safeFamilyMemberId =
+      parsedFamilyMemberId && validFamilyMemberIds.has(parsedFamilyMemberId) ? parsedFamilyMemberId : null;
+    const parsedPrescriptionId = parsePositiveId(historyForm.prescription_id);
+    const parsedVisitId = parsePositiveId(historyForm.visit_id);
+    const payload = {
+      family_member_id: safeFamilyMemberId,
+      prescription_id: isVisitContext ? null : parsedPrescriptionId,
+      visit_id: parsedVisitId,
+      type: historyForm.type,
+      title: normalizedTitle,
+      details: historyForm.details.trim() || null,
+      started_at: normalizeHistoryDateInput(historyForm.started_at),
+      ended_at: normalizeHistoryDateInput(historyForm.ended_at),
+      status: historyForm.status,
+      visibility: historyForm.visibility
+    };
+
     setSavingHistory(true);
     setHistoryError(null);
     try {
-      const parsedFamilyMemberId = historyForm.family_member_id ? Number(historyForm.family_member_id) : null;
-      const safeFamilyMemberId =
-        parsedFamilyMemberId && validFamilyMemberIds.has(parsedFamilyMemberId) ? parsedFamilyMemberId : null;
-      const payload = {
-        family_member_id: safeFamilyMemberId,
-        prescription_id: isVisitContext ? null : historyForm.prescription_id ? Number(historyForm.prescription_id) : null,
-        visit_id: historyForm.visit_id ? Number(historyForm.visit_id) : null,
-        type: historyForm.type,
-        title: historyForm.title.trim(),
-        details: historyForm.details.trim() || null,
-        started_at: historyForm.started_at || null,
-        ended_at: historyForm.ended_at || null,
-        status: historyForm.status,
-        visibility: historyForm.visibility
-      };
-
       let updatedRows: ApiMedicalHistoryEntry[] = [];
       if (editingHistoryId === null) {
         await api.createDoctorPatientMedicalHistory(token, patientUserId, payload);
@@ -1167,24 +1200,29 @@ useEffect(() => {
         navigateToHistoryDetail(editingHistoryId);
       }
     } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : "Echec d'enregistrement de l'historique.");
+      setHistoryError(err instanceof Error ? err.message : "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer.");
     } finally {
       setSavingHistory(false);
     }
   };
 
   const saveRehab = async () => {
-    if (!token || !patientUserId) {
+    if (savingRehab) {
+      return;
+    }
+    if (!token) {
+      setRehabError('Veuillez vous reconnecter.');
+      return;
+    }
+    if (!patientUserId) {
+      setRehabError('Patient introuvable.');
       return;
     }
 
-    setSavingRehab(true);
-    setRehabError(null);
-
     const payload = {
-      medical_history_entry_id: rehabForm.visit_id ? null : (rehabForm.medical_history_entry_id ? Number(rehabForm.medical_history_entry_id) : null),
-      prescription_id: rehabForm.visit_id ? null : (rehabForm.prescription_id ? Number(rehabForm.prescription_id) : null),
-      visit_id: rehabForm.visit_id ? Number(rehabForm.visit_id) : null,
+      medical_history_entry_id: rehabForm.visit_id ? null : parsePositiveId(rehabForm.medical_history_entry_id),
+      prescription_id: rehabForm.visit_id ? null : parsePositiveId(rehabForm.prescription_id),
+      visit_id: parsePositiveId(rehabForm.visit_id),
       sessions_per_week: rehabForm.sessions_per_week.trim() ? Number(rehabForm.sessions_per_week) : null,
       duration_weeks: rehabForm.duration_weeks.trim() ? Number(rehabForm.duration_weeks) : null,
       goals: rehabForm.goals.trim() || null,
@@ -1195,8 +1233,11 @@ useEffect(() => {
       pain_score: rehabForm.pain_score.trim() ? Number(rehabForm.pain_score) : null,
       mobility_score: rehabForm.mobility_score.trim() || null,
       progress_notes: rehabForm.progress_notes.trim() || null,
-      follow_up_date: rehabForm.follow_up_date || null
+      follow_up_date: normalizeRehabDateInput(rehabForm.follow_up_date)
     };
+
+    setSavingRehab(true);
+    setRehabError(null);
 
     try {
       if (editingRehabId === null) {
@@ -1215,7 +1256,7 @@ useEffect(() => {
       setShowRehabModal(false);
       resetRehabForm();
     } catch (err) {
-      setRehabError(err instanceof Error ? err.message : "Echec d'enregistrement du suivi de reeducation.");
+      setRehabError(err instanceof Error ? err.message : "Impossible de creer la reeducation pour le moment. Veuillez reessayer.");
     } finally {
       setSavingRehab(false);
     }

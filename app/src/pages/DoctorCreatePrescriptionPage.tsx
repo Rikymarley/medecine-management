@@ -52,7 +52,7 @@ const emptyMedicine = () => ({
 
 type DraftMedicine = ReturnType<typeof emptyMedicine>;
 
-const FORM_OPTIONS = ['Comprime', 'Capsule', 'Sirop', 'Injection', 'Pommade', 'Spray', 'Sachet', 'Gouttes'];
+const FORM_OPTIONS = ['Capsule', 'Comprime', 'Gelule', 'Gouttes', 'Injection', 'Pommade', 'Sachet', 'Sirop', 'Spray'];
 const MAX_PATIENT_NAME_LENGTH = 255;
 const MAX_MEDICINE_NAME_LENGTH = 255;
 const MAX_MEDICINE_STRENGTH_LENGTH = 50;
@@ -93,6 +93,17 @@ const formatPrintDate = (value: string | null): string => {
     hour: '2-digit',
     minute: '2-digit'
   });
+};
+
+const parsePositiveId = (value: string | null): number | null => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
 };
 
 const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
@@ -208,6 +219,10 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const patientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
+  const routeVisitId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return parsePositiveId(params.get('visitId'));
+  }, [location.search]);
   const doctorHasGps = Boolean(
     String(user?.latitude ?? '').trim() && String(user?.longitude ?? '').trim()
   );
@@ -217,13 +232,11 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     const prefilledPatient = params.get('patient');
     const prefilledPatientUserIdRaw = params.get('patientUserId');
     const prefilledPatientUserId = prefilledPatientUserIdRaw ? Number(prefilledPatientUserIdRaw) : null;
-    const prefilledVisitIdRaw = params.get('visitId');
-    const prefilledVisitId = prefilledVisitIdRaw ? Number(prefilledVisitIdRaw) : null;
     const prefilledFamilyMemberName = params.get('familyMemberName');
     const prefilledFamilyMemberIdRaw = params.get('familyMemberId');
-    const prefilledFamilyMemberId = prefilledFamilyMemberIdRaw ? Number(prefilledFamilyMemberIdRaw) : null;
-    if (prefilledVisitId && Number.isFinite(prefilledVisitId)) {
-      setSelectedVisitId(prefilledVisitId);
+    const prefilledFamilyMemberId = parsePositiveId(prefilledFamilyMemberIdRaw);
+    if (routeVisitId) {
+      setSelectedVisitId(routeVisitId);
     } else {
       setSelectedVisitId(null);
     }
@@ -239,11 +252,11 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       if (prefilledFamilyMemberName) {
         setFamilyMemberName(prefilledFamilyMemberName);
       }
-      if (prefilledFamilyMemberId && Number.isFinite(prefilledFamilyMemberId)) {
+      if (prefilledFamilyMemberId) {
         setSelectedFamilyMemberId(prefilledFamilyMemberId);
       }
     }
-  }, [location.search, prescriptions]);
+  }, [location.search, prescriptions, routeVisitId]);
 
   const loadPrescriptionsFromApi = useCallback(async () => {
     if (!token) {
@@ -400,83 +413,62 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   }, [selectedPatientUserId, token]);
 
   const submitPrescription = async () => {
-    const filtered = medicines.filter((med) => med.name.trim());
-    if (!patientName.trim() || filtered.length === 0) {
+    const normalizedPatientName = clipText(patientName, MAX_PATIENT_NAME_LENGTH);
+    if (!normalizedPatientName) {
+      setError('Nom du patient requis.');
       return;
     }
-
     if (!selectedPatientUserId) {
       setError("Selectionnez un patient existant ou creez d'abord un patient.");
       return;
     }
-
     if (!token) {
       setError('Veuillez vous reconnecter.');
       return;
     }
 
+    const medicineRequests = medicines
+      .map((med) => ({
+        name: clipText(med.name, MAX_MEDICINE_NAME_LENGTH),
+        strength: med.strength ? clipText(med.strength, MAX_MEDICINE_STRENGTH_LENGTH) : null,
+        form: med.form ? clipText(med.form, MAX_MEDICINE_FORM_LENGTH) : null,
+        quantity: toPositiveInt(med.quantity) ?? 1,
+        duration_days: toPositiveInt(med.durationDays),
+        daily_dosage: toPositiveInt(med.dailyDosage),
+        notes: med.notes ? clipText(med.notes, MAX_MEDICINE_NOTES_LENGTH) : null,
+        generic_allowed: Boolean(med.genericAllowed),
+        conversion_allowed: Boolean(med.conversionAllowed)
+      }))
+      .filter((med) => med.name);
+
+    if (medicineRequests.length === 0) {
+      setError('Ajoutez au moins un medicament valide.');
+      return;
+    }
+
+    const effectiveVisitId = (selectedVisitId && selectedVisitId > 0 ? selectedVisitId : routeVisitId) ?? null;
+
     setLoading(true);
     setError(null);
+    setPrintMessage(null);
     try {
-      const resolvedPatientUserId = selectedPatientUserId ?? undefined;
-      const params = new URLSearchParams(location.search);
-      const queryVisitIdRaw = params.get('visitId');
-      const queryVisitId =
-        queryVisitIdRaw && Number.isFinite(Number(queryVisitIdRaw))
-          ? Number(queryVisitIdRaw)
-          : null;
-      const safeVisitId =
-        ((selectedVisitId && Number.isFinite(selectedVisitId) && selectedVisitId > 0
-          ? selectedVisitId
-          : null) ??
-          (queryVisitId && queryVisitId > 0 ? queryVisitId : null)) &&
-        Number.isFinite(
-          ((selectedVisitId && Number.isFinite(selectedVisitId) && selectedVisitId > 0
-            ? selectedVisitId
-            : null) ??
-            (queryVisitId && queryVisitId > 0 ? queryVisitId : null)) as number
-        )
-          ? (((selectedVisitId && Number.isFinite(selectedVisitId) && selectedVisitId > 0
-              ? selectedVisitId
-              : null) ??
-              (queryVisitId && queryVisitId > 0 ? queryVisitId : null)) as number)
-          : undefined;
       const payload = {
-        patient_name: clipText(patientName, MAX_PATIENT_NAME_LENGTH),
+        patient_name: normalizedPatientName,
         patient_phone: maskHaitiPhone(patientPhone).trim() || null,
-        patient_user_id: resolvedPatientUserId,
+        patient_user_id: selectedPatientUserId,
         family_member_id: selectedFamilyMemberId ?? undefined,
-        visit_id: safeVisitId,
-        medicine_requests: filtered.map((med) => ({
-          name: clipText(med.name, MAX_MEDICINE_NAME_LENGTH),
-          strength: med.strength ? clipText(med.strength, MAX_MEDICINE_STRENGTH_LENGTH) : null,
-          form: med.form ? clipText(med.form, MAX_MEDICINE_FORM_LENGTH) : null,
-          quantity: toPositiveInt(med.quantity) ?? 1,
-          duration_days: toPositiveInt(med.durationDays),
-          daily_dosage: toPositiveInt(med.dailyDosage),
-          notes: med.notes ? clipText(med.notes, MAX_MEDICINE_NOTES_LENGTH) : null,
-          generic_allowed: med.genericAllowed,
-          conversion_allowed: med.conversionAllowed
-        }))
+        visit_id: effectiveVisitId,
+        medicine_requests: medicineRequests
       };
       console.log('[CREATE PRESCRIPTION] payload', payload);
-      const created = await api.createPrescription(token, {
-        patient_name: payload.patient_name,
-        patient_phone: payload.patient_phone,
-        patient_user_id: payload.patient_user_id,
-        family_member_id: payload.family_member_id,
-        visit_id: payload.visit_id,
-        medicine_requests: payload.medicine_requests
-      });
+      const created = await api.createPrescription(token, payload);
       console.log('[CREATE PRESCRIPTION] success');
       setLatestPrescriptionId(created.id);
       await printPrescription(created.id);
       await loadPrescriptionsFromApi();
 
       const searchParams = new URLSearchParams(location.search);
-      const visitIdRaw = searchParams.get('visitId');
-      const visitId = visitIdRaw ? Number(visitIdRaw) : null;
-      if (visitId && Number.isFinite(visitId)) {
+      if (effectiveVisitId) {
         const context = new URLSearchParams();
         const patientUserIdRaw = searchParams.get('patientUserId');
         const patientRaw = searchParams.get('patient');
@@ -487,7 +479,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         if (familyMemberIdRaw) context.set('familyMemberId', familyMemberIdRaw);
         if (familyMemberNameRaw) context.set('familyMemberName', familyMemberNameRaw);
         const suffix = context.toString() ? `?${context.toString()}` : '';
-        ionRouter.push(`/doctor/visits/${visitId}${suffix}`, 'back', 'pop');
+        ionRouter.push(`/doctor/visits/${effectiveVisitId}${suffix}`, 'back', 'pop');
         return;
       }
 
@@ -507,7 +499,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       setPrintMessage(`Ordonnance ${created.print_code ?? created.id} publiee et prete a imprimer.`);
     } catch (err) {
       console.error('[CREATE PRESCRIPTION] failed', err);
-      setError(err instanceof Error ? err.message : "Echec de creation de l'ordonnance");
+      setError(err instanceof Error ? err.message : "Impossible de creer l'ordonnance pour le moment. Veuillez reessayer.");
     } finally {
       setLoading(false);
     }

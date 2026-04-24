@@ -40,14 +40,36 @@ const visitStatusOptions = [
   { value: 'cancelled', label: 'Annulée' }
 ];
 
+const parsePositiveId = (value: string | null): number | null => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
+};
+
+const normalizeVisitDate = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.includes('T')) {
+    return trimmed.replace('T', ' ');
+  }
+  return trimmed;
+};
+
 const DoctorVisitFormPage: React.FC = () => {
   const { token } = useAuth();
   const location = useLocation();
   const history = useHistory();
   const ionRouter = useIonRouter();
   const search = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const patientUserIdFromQuery = search.get('patientUserId') ? Number(search.get('patientUserId')) : null;
-  const familyMemberIdFromQuery = search.get('familyMemberId') ? Number(search.get('familyMemberId')) : null;
+  const patientUserIdFromQuery = parsePositiveId(search.get('patientUserId'));
+  const familyMemberIdFromQuery = parsePositiveId(search.get('familyMemberId'));
   const familyMemberNameParam = search.get('familyMemberName');
   const familyMemberName = familyMemberNameParam ? decodeURIComponent(familyMemberNameParam) : null;
   const patientNameParam = search.get('patient');
@@ -76,9 +98,7 @@ const DoctorVisitFormPage: React.FC = () => {
       .catch(() => setPatientProfile(null));
   }, [token, patientUserIdFromQuery]);
 
-  const canSubmit = useMemo(() => {
-    return Boolean(token && patientUserIdFromQuery && form.visit_date.trim());
-  }, [token, patientUserIdFromQuery, form.visit_date]);
+  const canSubmit = useMemo(() => Boolean(token && patientUserIdFromQuery && form.visit_date.trim()), [token, patientUserIdFromQuery, form.visit_date]);
 
   const handleChange = useCallback((field: keyof typeof form, value: string) => {
     setForm((prev) => ({
@@ -105,28 +125,38 @@ const DoctorVisitFormPage: React.FC = () => {
   }, [patientUserIdFromQuery, familyMemberIdFromQuery, familyMemberName, patientName]);
 
   const handleSubmit = useCallback(async () => {
+    if (saving) {
+      return;
+    }
     if (!canSubmit || !token || !patientUserIdFromQuery) {
       return;
     }
+
+    const visitDate = normalizeVisitDate(form.visit_date);
+    if (!visitDate) {
+      setError('Date de visite requise.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
-      const normalizedVisitDate = form.visit_date.trim().replace('T', ' ');
-
-      await api.createDoctorVisit(token, {
+      const payload = {
         patient_user_id: patientUserIdFromQuery,
         family_member_id: familyMemberIdFromQuery ?? null,
-        visit_date: normalizedVisitDate,
+        visit_date: visitDate,
         visit_type: form.visit_type || null,
         chief_complaint: form.chief_complaint.trim() || null,
         diagnosis: form.diagnosis.trim() || null,
         clinical_notes: form.clinical_notes.trim() || null,
         treatment_plan: form.treatment_plan.trim() || null,
         status: form.status || null
-      });
+      };
+
+      await api.createDoctorVisit(token, payload);
       ionRouter.push(`/doctor/patients/${encodeURIComponent(patientName)}${contextBack}`, 'forward', 'push');
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : 'Impossible de creer la visite pour le moment. Veuillez reessayer.');
     } finally {
       setSaving(false);
     }
@@ -138,7 +168,8 @@ const DoctorVisitFormPage: React.FC = () => {
     patientName,
     contextBack,
     form,
-    ionRouter
+    ionRouter,
+    saving
   ]);
 
   return (

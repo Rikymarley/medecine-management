@@ -10,11 +10,53 @@ use App\Models\RehabEntry;
 use App\Models\User;
 use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 class MedicalHistoryController extends Controller
 {
+    private function normalizeNullableId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
+            return null;
+        }
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $id = (int) $value;
+        return $id > 0 ? $id : null;
+    }
+
+    private function normalizeDateInput(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+        if ($trimmed === '' || $trimmed === 'undefined' || $trimmed === 'null') {
+            return null;
+        }
+        try {
+            return Carbon::parse($trimmed)->toDateString();
+        } catch (Throwable $exception) {
+            return $trimmed;
+        }
+    }
+
+    private function normalizePayloadInputs(Request $request): void
+    {
+        $request->merge([
+            'family_member_id' => $this->normalizeNullableId($request->input('family_member_id')),
+            'prescription_id' => $this->normalizeNullableId($request->input('prescription_id')),
+            'visit_id' => $this->normalizeNullableId($request->input('visit_id')),
+            'started_at' => $this->normalizeDateInput($request->input('started_at')),
+            'ended_at' => $this->normalizeDateInput($request->input('ended_at')),
+        ]);
+    }
+
     private function generateEntryCode(MedicalHistoryEntry $entry): string
     {
         $date = optional($entry->created_at)->format('Ymd') ?? now()->format('Ymd');
@@ -44,8 +86,29 @@ class MedicalHistoryController extends Controller
             return;
         }
 
-        $entry->update(['entry_code' => $this->generateEntryCode($entry)]);
-        $entry->refresh();
+        // Retry a few times to avoid transient unique-key collisions under concurrent creates.
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                $entryCode = $this->generateEntryCode($entry);
+                $updated = MedicalHistoryEntry::query()
+                    ->where('id', $entry->id)
+                    ->whereNull('entry_code')
+                    ->update(['entry_code' => $entryCode]);
+
+                if ($updated > 0) {
+                    $entry->refresh();
+                    return;
+                }
+
+                $entry->refresh();
+                if (!empty($entry->entry_code)) {
+                    return;
+                }
+            } catch (Throwable $exception) {
+                report($exception);
+                usleep(100000);
+            }
+        }
     }
 
     private function validatePayload(Request $request): array
@@ -279,24 +342,33 @@ class MedicalHistoryController extends Controller
     public function patientStore(Request $request)
     {
         $patient = $request->user();
+        $this->normalizePayloadInputs($request);
         $data = $this->validatePayload($request);
 
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
         if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
 
-        $entry = MedicalHistoryEntry::create(array_merge(
-            $data,
-            [
-                'patient_user_id' => $patient->id,
-                'doctor_user_id' => null,
-            ]
-        ))->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
-        $this->ensureEntryCode($entry);
-        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+        try {
+            $entry = DB::transaction(function () use ($data, $patient) {
+                $created = MedicalHistoryEntry::query()->create(array_merge(
+                    $data,
+                    [
+                        'patient_user_id' => $patient->id,
+                        'doctor_user_id' => null,
+                    ]
+                ));
+                $this->syncEntryPrescriptionLinks($created, $data['prescription_id'] ?? null);
+                return $created;
+            });
+            $this->ensureEntryCode($entry);
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer."], 422);
+        }
 
         return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at'])), 201);
     }
@@ -312,9 +384,10 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Cette entree est geree par un docteur.'], 403);
         }
 
+        $this->normalizePayloadInputs($request);
         $data = $this->validatePayload($request);
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
         if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id)) {
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
@@ -323,8 +396,15 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
-        $entry->update($data);
-        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+        try {
+            DB::transaction(function () use ($entry, $data) {
+                $entry->update($data);
+                $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+            });
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => "Impossible de mettre a jour l'historique pour le moment. Veuillez reessayer."], 422);
+        }
 
         return response()->json($this->formatEntry($entry->fresh([
             'doctor:id,name',
@@ -383,9 +463,10 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
+        $this->normalizePayloadInputs($request);
         $data = $this->validatePayload($request);
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
         if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id, $doctor->id)) {
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
@@ -394,15 +475,23 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
-        $entry = MedicalHistoryEntry::create(array_merge(
-            $data,
-            [
-                'patient_user_id' => $patient->id,
-                'doctor_user_id' => $doctor->id,
-            ]
-        ))->load(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at']);
-        $this->ensureEntryCode($entry);
-        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+        try {
+            $entry = DB::transaction(function () use ($data, $patient, $doctor) {
+                $created = MedicalHistoryEntry::query()->create(array_merge(
+                    $data,
+                    [
+                        'patient_user_id' => $patient->id,
+                        'doctor_user_id' => $doctor->id,
+                    ]
+                ));
+                $this->syncEntryPrescriptionLinks($created, $data['prescription_id'] ?? null);
+                return $created;
+            });
+            $this->ensureEntryCode($entry);
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer."], 422);
+        }
 
         return response()->json($this->formatEntry($entry->fresh([
             'doctor:id,name',
@@ -427,9 +516,10 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Acces interdit a cette entree doctor_only.'], 403);
         }
 
+        $this->normalizePayloadInputs($request);
         $data = $this->validatePayload($request);
         if (!$this->ensureFamilyMemberBelongsToPatient($data['family_member_id'] ?? null, $patient->id)) {
-            return response()->json(['message' => 'Membre de famille invalide.'], 422);
+            return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
         }
         if (!$this->ensureVisitBelongsToPatient($data['visit_id'] ?? null, $patient->id, $doctor->id)) {
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
@@ -438,13 +528,20 @@ class MedicalHistoryController extends Controller
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
         }
 
-        $entry->update(array_merge(
-            $data,
-            [
-                'doctor_user_id' => $doctor->id,
-            ]
-        ));
-        $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+        try {
+            DB::transaction(function () use ($entry, $data, $doctor) {
+                $entry->update(array_merge(
+                    $data,
+                    [
+                        'doctor_user_id' => $doctor->id,
+                    ]
+                ));
+                $this->syncEntryPrescriptionLinks($entry, $data['prescription_id'] ?? null);
+            });
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => "Impossible de mettre a jour l'historique pour le moment. Veuillez reessayer."], 422);
+        }
 
         return response()->json($this->formatEntry($entry->fresh([
             'doctor:id,name',

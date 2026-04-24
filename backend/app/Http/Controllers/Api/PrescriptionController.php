@@ -11,6 +11,7 @@ use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
 use App\Services\PrescriptionAccessEvaluator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
@@ -106,17 +107,39 @@ class PrescriptionController extends Controller
 
     private function ensurePrintArtifacts(Prescription $prescription): void
     {
-        $updates = [];
-        if (empty($prescription->qr_token)) {
-            $updates['qr_token'] = Str::random(64);
-        }
-        if (empty($prescription->print_code)) {
-            $updates['print_code'] = $this->generatePrintCode($prescription);
-        }
+        // Retry a few times to avoid transient unique-key collisions on print_code.
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $updates = [];
+            if (empty($prescription->qr_token)) {
+                $updates['qr_token'] = Str::random(64);
+            }
+            if (empty($prescription->print_code)) {
+                $updates['print_code'] = $this->generatePrintCode($prescription);
+            }
 
-        if (!empty($updates)) {
-            $prescription->update($updates);
-            $prescription->refresh();
+            if (empty($updates)) {
+                return;
+            }
+
+            try {
+                $updated = Prescription::query()
+                    ->where('id', $prescription->id)
+                    ->when(array_key_exists('print_code', $updates), fn ($q) => $q->whereNull('print_code'))
+                    ->update($updates);
+
+                if ($updated > 0) {
+                    $prescription->refresh();
+                    return;
+                }
+
+                $prescription->refresh();
+                if (!empty($prescription->qr_token) && !empty($prescription->print_code)) {
+                    return;
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
+                usleep(100000);
+            }
         }
     }
 
@@ -378,32 +401,28 @@ class PrescriptionController extends Controller
 
     public function store(Request $request)
     {
-        $visitIdRaw = $request->input('visit_id');
-        if (
-            $visitIdRaw === '' ||
-            $visitIdRaw === 'undefined' ||
-            $visitIdRaw === 'null' ||
-            (is_numeric($visitIdRaw) && (int) $visitIdRaw <= 0)
-        ) {
-            $request->merge(['visit_id' => null]);
-        }
+        $normalizeNullableId = static function ($value): ?int {
+            if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
+                return null;
+            }
+            if (!is_numeric($value)) {
+                return null;
+            }
+            $id = (int) $value;
+            return $id > 0 ? $id : null;
+        };
 
-        $familyMemberIdRaw = $request->input('family_member_id');
-        if (
-            $familyMemberIdRaw === '' ||
-            $familyMemberIdRaw === 'undefined' ||
-            $familyMemberIdRaw === 'null' ||
-            (is_numeric($familyMemberIdRaw) && (int) $familyMemberIdRaw <= 0)
-        ) {
-            $request->merge(['family_member_id' => null]);
-        }
+        $request->merge([
+            'visit_id' => $normalizeNullableId($request->input('visit_id')),
+            'family_member_id' => $normalizeNullableId($request->input('family_member_id')),
+        ]);
 
         $data = $request->validate([
             'patient_name' => ['required', 'string', 'max:255'],
             'patient_phone' => ['nullable', 'string', 'max:14', 'regex:/^\\+509-\\d{4}-\\d{4}$/'],
             'patient_user_id' => ['required', 'integer', 'exists:users,id'],
             'family_member_id' => ['nullable', 'integer', 'exists:family_members,id'],
-            'visit_id' => ['nullable', 'integer', 'min:1'],
+            'visit_id' => ['nullable', 'integer', 'exists:visits,id'],
             'medicine_requests' => ['required', 'array', 'min:1'],
             'medicine_requests.*.name' => ['required', 'string', 'max:255'],
             'medicine_requests.*.strength' => ['nullable', 'string', 'max:50'],
@@ -414,46 +433,8 @@ class PrescriptionController extends Controller
             'medicine_requests.*.daily_dosage' => ['nullable', 'integer', 'min:1', 'max:24'],
             'medicine_requests.*.notes' => ['nullable', 'string', 'max:3000'],
             'medicine_requests.*.generic_allowed' => ['boolean'],
-            'medicine_requests.*.conversion_allowed' => ['boolean']
+            'medicine_requests.*.conversion_allowed' => ['boolean'],
         ]);
-
-        $patientUser = User::query()
-            ->where('id', $data['patient_user_id'])
-            ->where('role', 'patient')
-            ->first();
-
-        if (!$patientUser) {
-            return response()->json(['message' => 'Patient invalide.'], 422);
-        }
-
-        if (!empty($data['family_member_id'])) {
-            if ($patientUser === null) {
-                return response()->json([
-                    'message' => 'Vous devez selectionner un patient existant pour associer un membre de famille.'
-                ], 422);
-            }
-
-            $belongsToPatient = FamilyMember::query()
-                ->where('id', $data['family_member_id'])
-                ->where('patient_user_id', $patientUser->id)
-                ->exists();
-
-            if (!$belongsToPatient) {
-                return response()->json([
-                    'message' => 'Le membre de famille ne correspond pas a ce patient.'
-                ], 422);
-            }
-        }
-
-        $resolvedVisitId = null;
-        if (!empty($data['visit_id'])) {
-            $visit = Visit::query()
-                ->where('id', $data['visit_id'])
-                ->where('patient_user_id', $patientUser->id)
-                ->where('doctor_user_id', $request->user()->id)
-                ->first();
-            $resolvedVisitId = $visit?->id;
-        }
 
         $doctor = $request->user();
         $missingFields = $this->missingDoctorProfileFields($doctor);
@@ -463,54 +444,115 @@ class PrescriptionController extends Controller
                 'missing_fields' => $missingFields,
             ], 422);
         }
+
+        $patientUser = User::query()
+            ->where('id', (int) $data['patient_user_id'])
+            ->where('role', 'patient')
+            ->first();
+        if (!$patientUser) {
+            return response()->json(['message' => 'Patient introuvable.'], 422);
+        }
+
+        $resolvedFamilyMemberId = null;
+        if (!empty($data['family_member_id'])) {
+            $familyMember = FamilyMember::query()
+                ->where('id', (int) $data['family_member_id'])
+                ->where('patient_user_id', $patientUser->id)
+                ->first();
+            if (!$familyMember) {
+                return response()->json(['message' => 'Le membre de famille ne correspond pas a ce patient.'], 422);
+            }
+            $resolvedFamilyMemberId = $familyMember->id;
+        }
+
+        $resolvedVisitId = null;
+        if (!empty($data['visit_id'])) {
+            $visit = Visit::query()
+                ->where('id', (int) $data['visit_id'])
+                ->where('patient_user_id', $patientUser->id)
+                ->where('doctor_user_id', $doctor->id)
+                ->first();
+            if (!$visit) {
+                return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
+            }
+            if ($resolvedFamilyMemberId !== null && (int) ($visit->family_member_id ?? 0) !== $resolvedFamilyMemberId) {
+                return response()->json(['message' => 'La visite ne correspond pas au membre de famille selectionne.'], 422);
+            }
+            $resolvedVisitId = $visit->id;
+        }
+
         $resolvedPatientName = $this->clipText($patientUser->name, 255);
         $resolvedPatientPhone = $this->clipText($patientUser->phone ?? ($data['patient_phone'] ?? null), 14);
 
-        $prescription = Prescription::create([
-            'patient_user_id' => $patientUser->id,
-            'doctor_user_id' => $doctor->id,
-            'patient_name' => $resolvedPatientName,
-            'patient_phone' => $resolvedPatientPhone,
-            'doctor_name' => $doctor->name,
-            'source' => $patientUser ? 'app' : 'paper',
-            'family_member_id' => $data['family_member_id'] ?? null,
-            'visit_id' => $resolvedVisitId,
-            'status' => 'sent_to_pharmacies',
-            'print_code' => null,
-            'qr_token' => Str::random(64),
-        ]);
-        $this->ensurePrintArtifacts($prescription);
-        $prescription->statusLogs()->create([
-            'old_status' => null,
-            'new_status' => 'sent_to_pharmacies',
-            'changed_by_user_id' => $doctor->id,
-            'reason' => 'created',
-            'metadata' => null,
-            'changed_at' => now(),
-        ]);
-
         $medicinePayload = array_map(function (array $item) {
-            $item['name'] = $this->clipText((string) ($item['name'] ?? ''), 255) ?? '';
-            $item['strength'] = $this->clipText($item['strength'] ?? null, 50);
-            $item['form'] = $this->clipText($item['form'] ?? null, 50);
-            $item['notes'] = $this->clipText($item['notes'] ?? null, 3000);
-            $item['quantity'] = $item['quantity'] ?? 1;
-            return $item;
+            return [
+                'name' => $this->clipText((string) ($item['name'] ?? ''), 255) ?? '',
+                'strength' => $this->clipText($item['strength'] ?? null, 50),
+                'form' => $this->clipText($item['form'] ?? null, 50),
+                'quantity' => max(1, (int) ($item['quantity'] ?? 1)),
+                'expiry_date' => $item['expiry_date'] ?? null,
+                'duration_days' => $item['duration_days'] ?? null,
+                'daily_dosage' => $item['daily_dosage'] ?? null,
+                'notes' => $this->clipText($item['notes'] ?? null, 3000),
+                'generic_allowed' => (bool) ($item['generic_allowed'] ?? false),
+                'conversion_allowed' => (bool) ($item['conversion_allowed'] ?? false),
+            ];
         }, $data['medicine_requests']);
 
-        $prescription->medicineRequests()->createMany($medicinePayload);
         try {
-            $this->autoAssignRecentPharmacyApprovals($prescription);
+            $prescription = DB::transaction(function () use (
+                $patientUser,
+                $doctor,
+                $resolvedPatientName,
+                $resolvedPatientPhone,
+                $resolvedFamilyMemberId,
+                $resolvedVisitId,
+                $medicinePayload
+            ) {
+                $created = Prescription::query()->create([
+                    'patient_user_id' => $patientUser->id,
+                    'doctor_user_id' => $doctor->id,
+                    'patient_name' => $resolvedPatientName,
+                    'patient_phone' => $resolvedPatientPhone,
+                    'doctor_name' => $doctor->name,
+                    'source' => 'app',
+                    'family_member_id' => $resolvedFamilyMemberId,
+                    'visit_id' => $resolvedVisitId,
+                    'status' => 'sent_to_pharmacies',
+                    'print_code' => null,
+                    'qr_token' => Str::random(64),
+                ]);
+
+                $created->statusLogs()->create([
+                    'old_status' => null,
+                    'new_status' => 'sent_to_pharmacies',
+                    'changed_by_user_id' => $doctor->id,
+                    'reason' => 'created',
+                    'metadata' => null,
+                    'changed_at' => now(),
+                ]);
+
+                $created->medicineRequests()->createMany($medicinePayload);
+                return $created;
+            });
+
+            $this->ensurePrintArtifacts($prescription);
+            try {
+                $this->autoAssignRecentPharmacyApprovals($prescription);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+
+            $prescription->load(['medicineRequests', 'responses']);
+            $prescription->refreshStatusFromResponses($this->expireHours());
+
+            return response()->json($prescription->load($this->baseRelations()), 201);
         } catch (\Throwable $exception) {
             report($exception);
+            return response()->json([
+                'message' => "Impossible de creer l'ordonnance pour le moment. Veuillez reessayer.",
+            ], 422);
         }
-        $prescription->load(['medicineRequests', 'responses']);
-        $prescription->refreshStatusFromResponses($this->expireHours());
-
-        return response()->json(
-            $prescription->load($this->baseRelations()),
-            201
-        );
     }
 
     public function show(Request $request, Prescription $prescription)
@@ -669,7 +711,7 @@ class PrescriptionController extends Controller
     public function doctorPatientProfile(Request $request, User $patient)
     {
         if ($patient->role !== 'patient') {
-            return response()->json(['message' => 'Patient invalide.'], 422);
+            return response()->json(['message' => 'Patient introuvable.'], 422);
         }
 
         $doctor = $request->user();
@@ -740,7 +782,7 @@ class PrescriptionController extends Controller
         if (!empty($data['family_member_id'])) {
             $member = FamilyMember::query()->find($data['family_member_id']);
             if (!$member || (int) $member->patient_user_id !== (int) $request->user()->id) {
-                return response()->json(['message' => 'Membre de famille invalide.'], 422);
+                return response()->json(['message' => 'Membre de famille invalide pour ce patient.'], 422);
             }
         }
 

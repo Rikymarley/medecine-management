@@ -9,10 +9,51 @@ use App\Models\RehabEntry;
 use App\Models\User;
 use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class DoctorRehabController extends Controller
 {
+    private function normalizeNullableId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 'undefined' || $value === 'null') {
+            return null;
+        }
+        if (!is_numeric($value)) {
+            return null;
+        }
+        $id = (int) $value;
+        return $id > 0 ? $id : null;
+    }
+
+    private function normalizeDateInput(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+        if ($trimmed === '' || $trimmed === 'undefined' || $trimmed === 'null') {
+            return null;
+        }
+        try {
+            return Carbon::parse($trimmed)->toDateString();
+        } catch (Throwable $exception) {
+            return $trimmed;
+        }
+    }
+
+    private function normalizePayloadInputs(Request $request): void
+    {
+        $request->merge([
+            'medical_history_entry_id' => $this->normalizeNullableId($request->input('medical_history_entry_id')),
+            'prescription_id' => $this->normalizeNullableId($request->input('prescription_id')),
+            'visit_id' => $this->normalizeNullableId($request->input('visit_id')),
+            'follow_up_date' => $this->normalizeDateInput($request->input('follow_up_date')),
+        ]);
+    }
+
     private function doctorHasPatientLink(int $doctorUserId, int $patientUserId): bool
     {
         return DoctorPatientAccessEvaluator::hasLink($doctorUserId, $patientUserId);
@@ -124,6 +165,7 @@ class DoctorRehabController extends Controller
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
+        $this->normalizePayloadInputs($request);
         $data = $this->validatePayload($request);
         if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
@@ -135,15 +177,22 @@ class DoctorRehabController extends Controller
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
 
-        $row = RehabEntry::create([
-            ...$data,
-            'patient_user_id' => $patient->id,
-            'doctor_user_id' => $doctor->id,
-        ])->load([
-            'doctor:id,name',
-            'prescription:id,print_code,requested_at',
-            'medicalHistoryEntry:id,entry_code,title',
-        ]);
+        try {
+            $row = DB::transaction(function () use ($data, $patient, $doctor) {
+                return RehabEntry::query()->create([
+                    ...$data,
+                    'patient_user_id' => $patient->id,
+                    'doctor_user_id' => $doctor->id,
+                ]);
+            })->load([
+                'doctor:id,name',
+                'prescription:id,print_code,requested_at',
+                'medicalHistoryEntry:id,entry_code,title',
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => 'Impossible de creer la reeducation pour le moment. Veuillez reessayer.'], 422);
+        }
 
         return response()->json($this->formatRow($row), 201);
     }
@@ -158,6 +207,7 @@ class DoctorRehabController extends Controller
             return response()->json(['message' => 'Acces interdit.'], 403);
         }
 
+        $this->normalizePayloadInputs($request);
         $data = $this->validatePayload($request);
         if (!$this->ensurePrescriptionLinkForDoctor($data['prescription_id'] ?? null, $doctor->id, $patient->id)) {
             return response()->json(['message' => 'Ordonnance invalide pour ce patient.'], 422);
@@ -169,7 +219,14 @@ class DoctorRehabController extends Controller
             return response()->json(['message' => 'Visite invalide pour ce patient.'], 422);
         }
 
-        $entry->update($data);
+        try {
+            DB::transaction(function () use ($entry, $data) {
+                $entry->update($data);
+            });
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => 'Impossible de mettre a jour la reeducation pour le moment. Veuillez reessayer.'], 422);
+        }
 
         return response()->json($this->formatRow($entry->fresh([
             'doctor:id,name',

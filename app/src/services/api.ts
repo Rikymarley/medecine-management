@@ -1856,6 +1856,7 @@ export const api = {
     payload: {
       family_member_id?: number | null;
       prescription_id?: number | null;
+      visit_id?: number | null;
       type: ApiMedicalHistoryEntry['type'];
       title: string;
       details?: string | null;
@@ -1877,6 +1878,7 @@ export const api = {
     payload: {
       family_member_id?: number | null;
       prescription_id?: number | null;
+      visit_id?: number | null;
       type: ApiMedicalHistoryEntry['type'];
       title: string;
       details?: string | null;
