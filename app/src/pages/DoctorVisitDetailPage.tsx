@@ -290,9 +290,14 @@ const DoctorVisitDetailPage: React.FC = () => {
 
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>
-                  <IonIcon icon={listOutline} /> Ordonnances liées
-                </IonCardTitle>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <IonCardTitle>
+                    <IonIcon icon={listOutline} /> Ordonnances liées
+                  </IonCardTitle>
+                  <IonButton size="small" color="primary" onClick={goToCreatePrescriptionFromVisit}>
+                    Ajouter
+                  </IonButton>
+                </div>
               </IonCardHeader>
               <IonCardContent>
                 {prescriptions.length === 0 ? (
@@ -324,9 +329,14 @@ const DoctorVisitDetailPage: React.FC = () => {
 
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>
-                  <IonIcon icon={medicalOutline} /> Historiques liés
-                </IonCardTitle>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <IonCardTitle>
+                    <IonIcon icon={medicalOutline} /> Historiques liés
+                  </IonCardTitle>
+                  <IonButton size="small" color="primary" onClick={goToCreateHistoryFromVisit}>
+                    Ajouter
+                  </IonButton>
+                </div>
               </IonCardHeader>
               <IonCardContent>
                 {historyEntries.length === 0 ? (
@@ -354,9 +364,14 @@ const DoctorVisitDetailPage: React.FC = () => {
 
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>
-                  <IonIcon icon={pulseOutline} /> Rééducations liées
-                </IonCardTitle>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <IonCardTitle>
+                    <IonIcon icon={pulseOutline} /> Rééducations liées
+                  </IonCardTitle>
+                  <IonButton size="small" color="primary" onClick={goToCreateRehabFromVisit}>
+                    Ajouter
+                  </IonButton>
+                </div>
               </IonCardHeader>
               <IonCardContent>
                 {rehabEntries.length === 0 ? (
@@ -375,23 +390,6 @@ const DoctorVisitDetailPage: React.FC = () => {
                     ))}
                   </IonList>
                 )}
-              </IonCardContent>
-            </IonCard>
-
-            <IonCard className="surface-card">
-              <IonCardHeader>
-                <IonCardTitle>Actions</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent style={{ display: 'grid', gap: '8px' }}>
-                <IonButton expand="block" color="primary" onClick={goToCreatePrescriptionFromVisit}>
-                  Ordonnance +
-                </IonButton>
-                <IonButton expand="block" color="primary" onClick={goToCreateHistoryFromVisit}>
-                  Historique +
-                </IonButton>
-                <IonButton expand="block" color="primary" onClick={goToCreateRehabFromVisit}>
-                  Reeducation +
-                </IonButton>
               </IonCardContent>
             </IonCard>
           </>
