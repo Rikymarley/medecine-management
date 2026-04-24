@@ -1481,7 +1481,7 @@ useEffect(() => {
                   <div style={collapsibleHeaderRowStyle}>
                     <p style={collapsibleHeaderTitleStyle}>
                       <IonIcon icon={pulseOutline} />
-                      Suivi des signes vitaux
+                      Suivi des signes vitaux ({vitalSignEntries.length})
                     </p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <IonButton
@@ -1572,7 +1572,7 @@ useEffect(() => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                 <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <IonIcon icon={peopleOutline} />
-                  Membres de famille
+                  Membres de famille ({displayedFamilyMembers.length + (principalPatientProfile && principalPatientProfile.id !== patientUserId ? 1 : 0)})
                 </IonCardTitle>
                 <IonButton fill="clear" color="medium" size="small" onClick={() => setIsFamilyCollapsed((prev) => !prev)}>
                   <IonIcon icon={isFamilyCollapsed ? chevronDownOutline : chevronUpOutline} />
@@ -1663,7 +1663,7 @@ useEffect(() => {
           <IonCardHeader>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <IonIcon icon={documentTextOutline} /> Visites
+                <IonIcon icon={documentTextOutline} /> Visites ({patientVisitTimeline.length})
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <IonButton
@@ -1783,7 +1783,7 @@ useEffect(() => {
           <IonCardHeader>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <IonIcon icon={medicalOutline} /> Historique medical
+                <IonIcon icon={medicalOutline} /> Historique medical ({scopedMedicalHistory.length})
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <IonButton fill="clear" color="medium" size="small" onClick={() => setIsHistoryCollapsed((prev) => !prev)}>
@@ -1983,11 +1983,11 @@ useEffect(() => {
                                   <p style={{ margin: '2px 0' }}>
                                     Exercice: {rehab.exercise_type || 'N/D'} · Frequence: {rehab.exercise_frequency || 'N/D'} · Reps: {rehab.exercise_reps || 'N/D'}
                                   </p>
-                                  <p style={{ margin: '2px 0' }}>
-                                    Suivi: {rehab.follow_up_date ? formatDateHaiti(rehab.follow_up_date) : 'N/D'}
-                                  </p>
                                   {rehab.goals ? <p style={{ margin: '2px 0' }}><strong>Objectifs:</strong> {rehab.goals}</p> : null}
                                   {rehab.progress_notes ? <p style={{ margin: '2px 0' }}><strong>Progression:</strong> {rehab.progress_notes}</p> : null}
+                                  <p style={{ margin: '2px 0' }}>
+                                    <strong>Rendez-vous pour suivi:</strong> {rehab.follow_up_date ? formatDateHaiti(rehab.follow_up_date) : 'N/D'}
+                                  </p>
                                   {rehab.exercise_notes ? <p style={{ margin: '2px 0' }}><strong>Notes:</strong> {rehab.exercise_notes}</p> : null}
                                 </div>
                               ))}
@@ -2011,7 +2011,7 @@ useEffect(() => {
           <IonCardHeader>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <IonIcon icon={documentTextOutline} /> Ordonnances
+                <IonIcon icon={documentTextOutline} /> Ordonnances ({patientPrescriptions.length})
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <IonButton fill="clear" color="medium" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
@@ -2093,7 +2093,7 @@ useEffect(() => {
             <IonCardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <IonIcon icon={pulseOutline} /> Reeducation
+                <IonIcon icon={pulseOutline} /> Reeducation ({rehabEntries.length})
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <IonButton fill="clear" color="medium" size="small" onClick={() => setIsRehabCollapsed((prev) => !prev)}>
@@ -2124,9 +2124,6 @@ useEffect(() => {
                       }}
                     >
                       <IonLabel>
-                        <h3 style={{ marginBottom: '4px' }}>
-                          Suivi {formatDateHaiti(entry.follow_up_date || entry.created_at)}
-                        </h3>
                         {entry.prescription_print_code ? (
                           <p>
                             <strong>Ordonnance:</strong> {entry.prescription_print_code}
@@ -2151,6 +2148,9 @@ useEffect(() => {
                           </p>
                         ) : null}
                         {entry.progress_notes ? <p><strong>Progression:</strong> {entry.progress_notes}</p> : null}
+                        <p>
+                          <strong>Rendez-vous pour suivi:</strong> {entry.follow_up_date ? formatDateHaiti(entry.follow_up_date) : 'N/D'}
+                        </p>
                       </IonLabel>
                       <IonButton fill="clear" size="small" onClick={() => startRehabEdit(entry)}>
                         <IonIcon icon={createOutline} />
@@ -2169,7 +2169,7 @@ useEffect(() => {
           <IonCardHeader>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
               <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <IonIcon icon={documentTextOutline} /> Ordonnances
+                <IonIcon icon={documentTextOutline} /> Ordonnances ({patientPrescriptions.length})
               </IonCardTitle>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <IonButton fill="clear" color="medium" size="small" onClick={() => setIsPrescriptionsCollapsed((prev) => !prev)}>
