@@ -172,6 +172,10 @@ class Prescription extends Model
 
     public function getPrescriptionCodeAttribute(): string
     {
+        if (!empty($this->print_code)) {
+            return (string) $this->print_code;
+        }
+
         $date = optional($this->requested_at ?? $this->created_at)->format('Ymd') ?? now()->format('Ymd');
 
         return 'RX-' . $date . '-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);

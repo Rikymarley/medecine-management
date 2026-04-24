@@ -73,6 +73,10 @@ class MedicalHistoryEntry extends Model
 
     public function getHistoryCodeAttribute(): string
     {
+        if (!empty($this->entry_code)) {
+            return (string) $this->entry_code;
+        }
+
         $date = optional($this->created_at)->format('Ymd') ?? now()->format('Ymd');
 
         return 'MH-' . $date . '-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);

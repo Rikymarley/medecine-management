@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class RehabEntry extends Model
 {
@@ -41,8 +42,21 @@ class RehabEntry extends Model
             }
 
             $date = optional($entry->created_at)->format('Ymd') ?? now()->format('Ymd');
+            $prefix = 'REH-' . $date . '-';
+            $maxForDay = RehabEntry::query()
+                ->where('reference', 'like', $prefix . '%')
+                ->get(['reference'])
+                ->reduce(static function (int $carry, RehabEntry $row) use ($prefix): int {
+                    $code = (string) ($row->reference ?? '');
+                    if ($code === '' || !Str::startsWith($code, $prefix)) {
+                        return $carry;
+                    }
+                    $suffix = substr($code, strlen($prefix));
+                    $numeric = ctype_digit($suffix) ? (int) $suffix : 0;
+                    return max($carry, $numeric);
+                }, 0);
             $entry->forceFill([
-                'reference' => 'REH-' . $date . '-' . str_pad((string) $entry->id, 6, '0', STR_PAD_LEFT),
+                'reference' => $prefix . str_pad((string) ($maxForDay + 1), 6, '0', STR_PAD_LEFT),
             ])->saveQuietly();
         });
     }

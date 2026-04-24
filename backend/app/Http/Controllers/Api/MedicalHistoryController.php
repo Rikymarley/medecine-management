@@ -11,13 +11,31 @@ use App\Models\User;
 use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class MedicalHistoryController extends Controller
 {
     private function generateEntryCode(MedicalHistoryEntry $entry): string
     {
         $date = optional($entry->created_at)->format('Ymd') ?? now()->format('Ymd');
-        return 'MH-' . $date . '-' . str_pad((string) $entry->id, 6, '0', STR_PAD_LEFT);
+        $prefix = 'MH-' . $date . '-';
+
+        $maxForDay = MedicalHistoryEntry::query()
+            ->where('entry_code', 'like', $prefix . '%')
+            ->get(['entry_code'])
+            ->reduce(static function (int $carry, MedicalHistoryEntry $row) use ($prefix): int {
+                $code = (string) ($row->entry_code ?? '');
+                if ($code === '' || !Str::startsWith($code, $prefix)) {
+                    return $carry;
+                }
+                $suffix = substr($code, strlen($prefix));
+                $numeric = ctype_digit($suffix) ? (int) $suffix : 0;
+                return max($carry, $numeric);
+            }, 0);
+
+        $next = $maxForDay + 1;
+
+        return $prefix . str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 
     private function ensureEntryCode(MedicalHistoryEntry $entry): void

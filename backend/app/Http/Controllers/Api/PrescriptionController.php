@@ -84,7 +84,24 @@ class PrescriptionController extends Controller
     private function generatePrintCode(Prescription $prescription): string
     {
         $date = optional($prescription->requested_at ?? $prescription->created_at)->format('Ymd') ?? now()->format('Ymd');
-        return 'RX-' . $date . '-' . str_pad((string) $prescription->id, 6, '0', STR_PAD_LEFT);
+        $prefix = 'RX-' . $date . '-';
+
+        $maxForDay = Prescription::query()
+            ->where('print_code', 'like', $prefix . '%')
+            ->get(['print_code'])
+            ->reduce(static function (int $carry, Prescription $row) use ($prefix): int {
+                $code = (string) ($row->print_code ?? '');
+                if ($code === '' || !Str::startsWith($code, $prefix)) {
+                    return $carry;
+                }
+                $suffix = substr($code, strlen($prefix));
+                $numeric = ctype_digit($suffix) ? (int) $suffix : 0;
+                return max($carry, $numeric);
+            }, 0);
+
+        $next = $maxForDay + 1;
+
+        return $prefix . str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 
     private function ensurePrintArtifacts(Prescription $prescription): void
