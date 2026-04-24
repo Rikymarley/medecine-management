@@ -283,7 +283,16 @@ class MedicalHistoryController extends Controller
     private function syncEntryPrescriptionLinks(MedicalHistoryEntry $entry, ?int $prescriptionId): void
     {
         if ($prescriptionId) {
-            $entry->prescriptions()->syncWithoutDetaching([$prescriptionId]);
+            DB::table('medical_history_prescriptions')->updateOrInsert(
+                [
+                    'medical_history_entry_id' => $entry->id,
+                    'prescription_id' => $prescriptionId,
+                ],
+                [
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
             if (!$entry->prescription_id) {
                 $entry->update(['prescription_id' => $prescriptionId]);
             }
@@ -383,9 +392,14 @@ class MedicalHistoryController extends Controller
                     return $created;
                 });
             });
-            $this->ensureEntryCode($entry);
         } catch (Throwable $exception) {
             return response()->json(['message' => "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer."], 422);
+        }
+
+        try {
+            $this->ensureEntryCode($entry);
+        } catch (Throwable $exception) {
+            report($exception);
         }
 
         return response()->json($this->formatEntry($entry->fresh(['doctor:id,name', 'familyMember:id,name', 'prescriptions:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'prescription:id,patient_user_id,doctor_user_id,patient_name,requested_at,print_code', 'rehabEntries:id,medical_history_entry_id,doctor_user_id,sessions_per_week,duration_weeks,goals,exercise_type,exercise_reps,exercise_frequency,exercise_notes,pain_score,mobility_score,progress_notes,follow_up_date,created_at'])), 201);
@@ -509,9 +523,14 @@ class MedicalHistoryController extends Controller
                     return $created;
                 });
             });
-            $this->ensureEntryCode($entry);
         } catch (Throwable $exception) {
             return response()->json(['message' => "Impossible d'enregistrer l'historique pour le moment. Veuillez reessayer."], 422);
+        }
+
+        try {
+            $this->ensureEntryCode($entry);
+        } catch (Throwable $exception) {
+            report($exception);
         }
 
         return response()->json($this->formatEntry($entry->fresh([

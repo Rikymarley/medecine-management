@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
 use App\Services\PrescriptionAccessEvaluator;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -31,6 +32,61 @@ class PrescriptionController extends Controller
                 goto start;
             }
             throw $exception;
+        }
+    }
+
+    private function isPrintCodeConflict(\Throwable $exception): bool
+    {
+        if ($exception instanceof QueryException) {
+            $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode() ?? '');
+            $message = Str::lower($exception->getMessage());
+            if ($sqlState === '23505') {
+                return true;
+            }
+            if (str_contains($message, 'print_code') && str_contains($message, 'unique')) {
+                return true;
+            }
+        }
+
+        $fallbackMessage = Str::lower($exception->getMessage());
+        return str_contains($fallbackMessage, 'print_code') && str_contains($fallbackMessage, 'unique');
+    }
+
+    private function insertMedicineRowsWithRetry(int $prescriptionId, array $medicinePayload, int $maxAttempts = 2): void
+    {
+        $attempt = 0;
+        $now = now();
+        while ($attempt < $maxAttempts) {
+            try {
+                $rows = array_map(function (array $item) use ($prescriptionId, $now): array {
+                    return [
+                        'prescription_id' => $prescriptionId,
+                        'name' => (string) $item['name'],
+                        'strength' => $item['strength'] ?? null,
+                        'form' => $item['form'] ?? null,
+                        'quantity' => $item['quantity'] ?? 1,
+                        'expiry_date' => $item['expiry_date'] ?? null,
+                        'duration_days' => $item['duration_days'] ?? null,
+                        'daily_dosage' => $item['daily_dosage'] ?? null,
+                        'notes' => $item['notes'] ?? null,
+                        'generic_allowed' => (bool) ($item['generic_allowed'] ?? false),
+                        'conversion_allowed' => (bool) ($item['conversion_allowed'] ?? false),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }, $medicinePayload);
+
+                DB::table('medicine_requests')->where('prescription_id', $prescriptionId)->delete();
+                DB::table('medicine_requests')->insert($rows);
+                return;
+            } catch (\Throwable $exception) {
+                $attempt++;
+                report($exception);
+                if ($attempt >= $maxAttempts) {
+                    throw $exception;
+                }
+                usleep(150000);
+            }
         }
     }
 
@@ -99,9 +155,8 @@ class PrescriptionController extends Controller
         return $missing;
     }
 
-    private function generatePrintCode(Prescription $prescription): string
+    private function generateNextPrintCodeForDate(string $date): string
     {
-        $date = optional($prescription->requested_at ?? $prescription->created_at)->format('Ymd') ?? now()->format('Ymd');
         $prefix = 'RX-' . $date . '-';
 
         $maxForDay = Prescription::query()
@@ -120,6 +175,12 @@ class PrescriptionController extends Controller
         $next = $maxForDay + 1;
 
         return $prefix . str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function generatePrintCode(Prescription $prescription): string
+    {
+        $date = optional($prescription->requested_at ?? $prescription->created_at)->format('Ymd') ?? now()->format('Ymd');
+        return $this->generateNextPrintCodeForDate($date);
     }
 
     private function ensurePrintArtifacts(Prescription $prescription): void
@@ -517,51 +578,81 @@ class PrescriptionController extends Controller
         }, $data['medicine_requests']);
 
         try {
-            $prescription = $this->runWithRetry(function () use (
-                $patientUser,
-                $doctor,
-                $resolvedPatientName,
-                $resolvedPatientPhone,
-                $resolvedFamilyMemberId,
-                $resolvedVisitId,
-                $medicinePayload
-            ) {
-                return DB::transaction(function () use (
-                    $patientUser,
-                    $doctor,
-                    $resolvedPatientName,
-                    $resolvedPatientPhone,
-                    $resolvedFamilyMemberId,
-                    $resolvedVisitId,
-                    $medicinePayload
-                ) {
-                    $created = Prescription::query()->create([
-                        'patient_user_id' => $patientUser->id,
-                        'doctor_user_id' => $doctor->id,
-                        'patient_name' => $resolvedPatientName,
-                        'patient_phone' => $resolvedPatientPhone,
-                        'doctor_name' => $doctor->name,
-                        'source' => 'app',
-                        'family_member_id' => $resolvedFamilyMemberId,
-                        'visit_id' => $resolvedVisitId,
-                        'status' => 'sent_to_pharmacies',
-                        'print_code' => null,
-                        'qr_token' => Str::random(64),
-                    ]);
+            $prescription = null;
+            $lastException = null;
 
-                    $created->statusLogs()->create([
-                        'old_status' => null,
-                        'new_status' => 'sent_to_pharmacies',
-                        'changed_by_user_id' => $doctor->id,
-                        'reason' => 'created',
-                        'metadata' => null,
-                        'changed_at' => now(),
-                    ]);
+            for ($codeAttempt = 0; $codeAttempt < 5; $codeAttempt++) {
+                $requestedAt = now();
+                $reservedPrintCode = $this->generateNextPrintCodeForDate($requestedAt->format('Ymd'));
 
-                    $created->medicineRequests()->createMany($medicinePayload);
-                    return $created;
-                });
-            });
+                try {
+                    $prescription = $this->runWithRetry(function () use (
+                        $patientUser,
+                        $doctor,
+                        $resolvedPatientName,
+                        $resolvedPatientPhone,
+                        $resolvedFamilyMemberId,
+                        $resolvedVisitId,
+                        $reservedPrintCode,
+                        $requestedAt,
+                        $medicinePayload
+                    ) {
+                        return DB::transaction(function () use (
+                            $patientUser,
+                            $doctor,
+                            $resolvedPatientName,
+                            $resolvedPatientPhone,
+                            $resolvedFamilyMemberId,
+                            $resolvedVisitId,
+                            $reservedPrintCode,
+                            $requestedAt,
+                            $medicinePayload
+                        ) {
+                            $created = Prescription::query()->create([
+                                'patient_user_id' => $patientUser->id,
+                                'doctor_user_id' => $doctor->id,
+                                'patient_name' => $resolvedPatientName,
+                                'patient_phone' => $resolvedPatientPhone,
+                                'doctor_name' => $doctor->name,
+                                'source' => 'app',
+                                'family_member_id' => $resolvedFamilyMemberId,
+                                'visit_id' => $resolvedVisitId,
+                                'status' => 'sent_to_pharmacies',
+                                'print_code' => $reservedPrintCode,
+                                'qr_token' => Str::random(64),
+                                'requested_at' => $requestedAt,
+                            ]);
+
+                            $created->statusLogs()->create([
+                                'old_status' => null,
+                                'new_status' => 'sent_to_pharmacies',
+                                'changed_by_user_id' => $doctor->id,
+                                'reason' => 'created',
+                                'metadata' => null,
+                                'changed_at' => now(),
+                            ]);
+
+                            $this->insertMedicineRowsWithRetry($created->id, $medicinePayload, 2);
+                            return $created;
+                        });
+                    }, 2);
+                    break;
+                } catch (\Throwable $exception) {
+                    $lastException = $exception;
+                    if ($this->isPrintCodeConflict($exception)) {
+                        usleep(120000);
+                        continue;
+                    }
+                    throw $exception;
+                }
+            }
+
+            if (!$prescription) {
+                if ($lastException) {
+                    throw $lastException;
+                }
+                throw new \RuntimeException('Prescription create failed without exception.');
+            }
 
             $this->ensurePrintArtifacts($prescription);
             try {
