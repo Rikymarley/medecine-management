@@ -111,10 +111,7 @@ const DoctorVisitFormPage: React.FC = () => {
     setSaving(true);
     setError(null);
     try {
-      const parsedVisitDate = new Date(form.visit_date);
-      const normalizedVisitDate = Number.isNaN(parsedVisitDate.getTime())
-        ? form.visit_date
-        : parsedVisitDate.toISOString();
+      const normalizedVisitDate = form.visit_date.trim().replace('T', ' ');
 
       await api.createDoctorVisit(token, {
         patient_user_id: patientUserIdFromQuery,

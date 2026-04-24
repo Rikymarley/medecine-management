@@ -10,7 +10,9 @@ use App\Models\RehabEntry;
 use App\Models\User;
 use App\Models\Visit;
 use App\Services\DoctorPatientAccessEvaluator;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\Request;
+use Throwable;
 
 class DoctorVisitController extends Controller
 {
@@ -223,6 +225,16 @@ class DoctorVisitController extends Controller
 
     public function store(Request $request)
     {
+        $familyMemberRaw = $request->input('family_member_id');
+        if (
+            $familyMemberRaw === '' ||
+            $familyMemberRaw === 'undefined' ||
+            $familyMemberRaw === 'null' ||
+            (is_numeric($familyMemberRaw) && (int) $familyMemberRaw <= 0)
+        ) {
+            $request->merge(['family_member_id' => null]);
+        }
+
         $data = $this->validatePayload($request);
 
         if (!$this->doctorHasPatientLink($request->user()->id, $data['patient_user_id'])) {
@@ -233,13 +245,25 @@ class DoctorVisitController extends Controller
             return response()->json(['message' => 'Membre de famille invalide.'], 422);
         }
 
-        $visit = Visit::create(array_merge(
-            $data,
-            [
-                'doctor_user_id' => $request->user()->id,
-                'status' => $data['status'] ?? 'open',
-            ]
-        ));
+        try {
+            $normalizedVisitDate = Carbon::parse((string) $data['visit_date'])->format('Y-m-d H:i:s');
+        } catch (Throwable $exception) {
+            return response()->json(['message' => 'Date de visite invalide.'], 422);
+        }
+
+        try {
+            $visit = Visit::create(array_merge(
+                $data,
+                [
+                    'visit_date' => $normalizedVisitDate,
+                    'doctor_user_id' => $request->user()->id,
+                    'status' => $data['status'] ?? 'open',
+                ]
+            ));
+        } catch (Throwable $exception) {
+            report($exception);
+            return response()->json(['message' => 'Impossible de creer la visite pour le moment.'], 422);
+        }
 
         return response()->json($this->formatVisit($visit), 201);
     }
