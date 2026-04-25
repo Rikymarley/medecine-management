@@ -49,6 +49,7 @@ import { api, ApiPatientMedicineCabinetItem, ApiUser } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
 import { getPasswordStrength } from '../utils/passwordStrength';
+import { formatDateHaiti } from '../utils/time';
 
 const PatientDashboard: React.FC = () => {
   const ionRouter = useIonRouter();
@@ -103,6 +104,13 @@ const PatientDashboard: React.FC = () => {
     if (!raw) return '';
     return raw.includes('T') ? raw.split('T')[0] : raw;
   }, [normalizeText]);
+  const formatDobDisplay = useCallback((value: string) => {
+    const raw = normalizeDate(value);
+    if (!raw) {
+      return '';
+    }
+    return formatDateHaiti(raw);
+  }, [normalizeDate]);
 
   const applyProfile = useCallback((profile: Partial<ApiUser> | null | undefined) => {
     if (!profile) {
@@ -640,8 +648,8 @@ const PatientDashboard: React.FC = () => {
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Date de naissance</IonLabel>
                     <IonInput
                       disabled={!editMode}
-                      type="date"
-                      value={dateOfBirth}
+                      type={editMode ? 'date' : 'text'}
+                      value={editMode ? dateOfBirth : formatDobDisplay(dateOfBirth)}
                       onIonInput={(e) => setDateOfBirth(e.detail.value ?? '')}
                     />
                   </IonItem>

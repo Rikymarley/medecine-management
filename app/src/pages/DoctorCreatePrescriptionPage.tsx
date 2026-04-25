@@ -19,8 +19,7 @@ import {
   IonText,
   IonTitle,
   IonToggle,
-  IonToolbar,
-  useIonRouter
+  IonToolbar
 } from '@ionic/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
@@ -28,6 +27,7 @@ import InstallBanner from '../components/InstallBanner';
 import {
   api,
   ApiFamilyMember,
+  ApiDoctorPatientAvailability,
   ApiDoctorPatient,
   ApiMedicine,
   ApiPatientLookup,
@@ -36,7 +36,7 @@ import {
 } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
-import { formatDateHaiti } from '../utils/time';
+import { formatDateHaiti, formatDateTime } from '../utils/time';
 
 const emptyMedicine = () => ({
   name: '',
@@ -82,17 +82,8 @@ const formatPrintDate = (value: string | null): string => {
   if (!value) {
     return 'N/A';
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleString('fr-HT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  const formatted = formatDateTime(value);
+  return formatted || 'N/A';
 };
 
 const parsePositiveId = (value: string | null): number | null => {
@@ -201,7 +192,6 @@ const buildPrintHtml = (data: ApiPrescriptionPrintData): string => {
 
 const DoctorCreatePrescriptionPage: React.FC = () => {
   const location = useLocation();
-  const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [doctorPatients, setDoctorPatients] = useState<ApiDoctorPatient[]>([]);
@@ -224,6 +214,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [patientCreateMessage, setPatientCreateMessage] = useState<string | null>(null);
   const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
+  const [availabilityMatches, setAvailabilityMatches] = useState<ApiDoctorPatientAvailability['matches']>([]);
   const [loading, setLoading] = useState(false);
   const [latestPrescriptionId, setLatestPrescriptionId] = useState<number | null>(null);
   const [printMessage, setPrintMessage] = useState<string | null>(null);
@@ -380,7 +371,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
 
   useEffect(() => {
     const query = patientName.trim();
-    if (!token || query.length < 2) {
+    if (query.length < 2) {
       setDbPatientSuggestions([]);
       return;
     }
@@ -390,12 +381,10 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
 
     patientDebounceRef.current = setTimeout(() => {
-      api
-        .searchDoctorPatients(token, query, 8)
-        .then((rows) => setDbPatientSuggestions(rows))
-        .catch(() => setDbPatientSuggestions([]));
+      // Restrict search suggestions to doctor-accessible patients only.
+      setDbPatientSuggestions([]);
     }, 250);
-  }, [patientName, token]);
+  }, [patientName]);
 
   useEffect(() => {
     if (selectedPatientUserId !== null) {
@@ -478,37 +467,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
       setLatestPrescriptionId(created.id);
       await printPrescription(created.id);
       await loadPrescriptionsFromApi();
-
-      const searchParams = new URLSearchParams(location.search);
-      if (effectiveVisitId) {
-        const context = new URLSearchParams();
-        const patientUserIdRaw = searchParams.get('patientUserId');
-        const patientRaw = searchParams.get('patient');
-        const familyMemberIdRaw = searchParams.get('familyMemberId');
-        const familyMemberNameRaw = searchParams.get('familyMemberName');
-        if (patientUserIdRaw) context.set('patientUserId', patientUserIdRaw);
-        if (patientRaw) context.set('patient', patientRaw);
-        if (familyMemberIdRaw) context.set('familyMemberId', familyMemberIdRaw);
-        if (familyMemberNameRaw) context.set('familyMemberName', familyMemberNameRaw);
-        const suffix = context.toString() ? `?${context.toString()}` : '';
-        ionRouter.push(`/doctor/visits/${effectiveVisitId}${suffix}`, 'back', 'pop');
-        return;
-      }
-
-      setPatientName('');
-      setPatientPhone('');
-      setPatientNinu('');
-      setPatientDob('');
-      setPatientAddress('');
-      setPatientAge('');
-      setPatientGender('');
-      setPatientNotes('');
-      setSelectedPatientUserId(null);
-      setFamilyMembers([]);
-      setFamilyMemberName('');
-      setSelectedFamilyMemberId(null);
-      setMedicines([emptyMedicine()]);
-      setPrintMessage(`Ordonnance ${created.print_code ?? created.id} publiee et prete a imprimer.`);
+      setPrintMessage(`Ordonnance ${created.print_code ?? created.id} publiee et imprimee.`);
     } catch (err) {
       console.error('[CREATE PRESCRIPTION] failed', err);
       setError(err instanceof Error ? err.message : "Impossible de creer l'ordonnance pour le moment. Veuillez reessayer.");
@@ -589,6 +548,7 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
     }
     if (!patientName.trim() && !patientPhone.trim() && !patientNinu.trim() && !patientDob) {
       setAvailabilityMessage('Ajoutez au moins un critere (nom, telephone, NINU ou date de naissance).');
+      setAvailabilityMatches([]);
       return;
     }
 
@@ -603,19 +563,15 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
         date_of_birth: patientDob || undefined,
         limit: 5
       });
+      setAvailabilityMatches(result.matches);
 
       if (result.available) {
         setAvailabilityMessage('Aucun patient similaire trouve. Vous pouvez creer le nouveau patient.');
       } else {
-        const sample = result.matches
-          .slice(0, 3)
-          .map((row) => `${row.name}${row.ninu ? ` (NINU ${row.ninu})` : ''}`)
-          .join(', ');
-        setAvailabilityMessage(
-          `${result.count} patient(s) similaire(s) trouve(s): ${sample}. Selectionnez un patient existant si possible.`
-        );
+        setAvailabilityMessage(`${result.count} patient(s) similaire(s) trouve(s).`);
       }
     } catch (err) {
+      setAvailabilityMatches([]);
       setError(err instanceof Error ? err.message : 'Verification indisponible.');
     } finally {
       setLoading(false);
@@ -856,6 +812,91 @@ const DoctorCreatePrescriptionPage: React.FC = () => {
                   <IonText color="medium">
                     <p>{availabilityMessage}</p>
                   </IonText>
+                ) : null}
+                {availabilityMatches.length > 0 ? (
+                  <>
+                    <IonText color="medium">
+                      <p>{availabilityMatches.length} patient(s) trouve(s)</p>
+                    </IonText>
+                    <IonList inset>
+                      {availabilityMatches.slice(0, 5).map((match) => {
+                        const statusLabel =
+                          match.account_status === 'active'
+                            ? 'Actif'
+                            : match.account_status === 'blocked'
+                              ? 'Bloque'
+                              : 'Provisoire';
+                        const statusColor =
+                          match.account_status === 'active'
+                            ? 'success'
+                            : match.account_status === 'blocked'
+                              ? 'danger'
+                              : 'warning';
+                        return (
+                          <IonItem
+                            key={`availability-${match.id}`}
+                            button
+                            detail={false}
+                            lines="none"
+                            onClick={() => {
+                              const linked = doctorPatients.find((p) => p.id === match.id);
+                              setPatientName(match.name);
+                              setSelectedPatientUserId(match.id);
+                              setPatientPhone(maskHaitiPhone(match.phone ?? ''));
+                              setPatientNinu(match.ninu ?? '');
+                              setPatientDob(match.date_of_birth ?? '');
+                              setPatientAddress(linked?.address ?? '');
+                              setPatientAge(linked?.age != null ? String(linked.age) : '');
+                              setPatientGender(linked?.gender ?? '');
+                              setPatientNotes(linked?.notes ?? '');
+                              setFamilyMemberName('');
+                              setSelectedFamilyMemberId(null);
+                              setAvailabilityMessage(null);
+                              setAvailabilityMatches([]);
+                            }}
+                            style={{
+                              border: '1px solid #dbe7ef',
+                              borderLeft: '4px solid #8fb3c9',
+                              borderRadius: '12px',
+                              marginBottom: '10px',
+                              padding: '10px',
+                              background: '#fff'
+                            }}
+                          >
+                            <IonLabel style={{ width: '100%', display: 'grid', rowGap: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <span style={{ fontWeight: 700, fontSize: '1rem' }}>{match.name}</span>
+                                <span
+                                  style={{
+                                    fontSize: '0.82rem',
+                                    fontWeight: 700,
+                                    color: statusColor === 'success' ? '#166534' : statusColor === 'danger' ? '#991b1b' : '#92400e',
+                                    background: statusColor === 'success' ? '#dcfce7' : statusColor === 'danger' ? '#fee2e2' : '#fef3c7',
+                                    borderRadius: '999px',
+                                    padding: '2px 8px'
+                                  }}
+                                >
+                                  {statusLabel}
+                                </span>
+                              </div>
+                              {match.ninu ? <p style={{ margin: 0, fontSize: '0.92rem' }}><strong>NINU:</strong> {match.ninu}</p> : null}
+                              <p style={{ margin: 0, fontSize: '0.92rem' }}>
+                                <strong>Tel:</strong> {match.phone ?? 'N/D'} · <strong>Naissance:</strong>{' '}
+                                {match.date_of_birth ? formatDateHaiti(match.date_of_birth) : 'N/D'}
+                              </p>
+                            </IonLabel>
+                          </IonItem>
+                        );
+                      })}
+                    </IonList>
+                    {availabilityMatches.length > 5 ? (
+                      <IonText color="medium">
+                        <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                          Plus de 5 patients ont ete trouves. Utilisez plus d'information pour verifier l'existence du patient.
+                        </p>
+                      </IonText>
+                    ) : null}
+                  </>
                 ) : null}
                 {!selectedPatientUserId ? (
                   <IonButton

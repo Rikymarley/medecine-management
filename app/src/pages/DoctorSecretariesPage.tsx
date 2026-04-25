@@ -28,6 +28,7 @@ import {
   type ApiSecretaryLookup,
 } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { formatDateTime as formatDateTimeLabel } from '../utils/time';
 
 const statusLabel = (status: ApiDoctorSecretaryAccessRequest['status']) => {
   if (status === 'pending') return 'En attente';
@@ -45,15 +46,7 @@ const statusColor = (status: ApiDoctorSecretaryAccessRequest['status']) => {
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return 'N/D';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'N/D';
-  return date.toLocaleString('fr-HT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return formatDateTimeLabel(value);
 };
 
 const DoctorSecretariesPage: React.FC = () => {

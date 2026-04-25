@@ -23,6 +23,7 @@ import { pulseOutline, trashOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { useAuth } from '../state/AuthState';
+import { formatDateTime } from '../utils/time';
 
 type VitalSignEntry = {
   id: number;
@@ -297,7 +298,7 @@ const PatientVitalSignsPage: React.FC = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                         <div>
                           <div style={{ fontWeight: 700 }}>
-                            {new Date(entry.recorded_at).toLocaleString('fr-HT')}
+                            {formatDateTime(entry.recorded_at)}
                           </div>
                           <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
                             TA {entry.systolic ?? '-'} / {entry.diastolic ?? '-'} · FC {entry.heart_rate ?? '-'} · Temp {entry.temperature_c ?? '-'} C
@@ -328,4 +329,3 @@ const PatientVitalSignsPage: React.FC = () => {
 };
 
 export default PatientVitalSignsPage;
-

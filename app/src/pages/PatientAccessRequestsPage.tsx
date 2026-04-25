@@ -20,18 +20,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, type ApiDoctorPatientAccessRequest } from '../services/api';
 import { useAuth } from '../state/AuthState';
+import { formatDateTime as formatDateTimeLabel } from '../utils/time';
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return 'N/D';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'N/D';
-  return date.toLocaleString('fr-HT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return formatDateTimeLabel(value);
 };
 
 const statusLabel = (status: ApiDoctorPatientAccessRequest['status']) => {

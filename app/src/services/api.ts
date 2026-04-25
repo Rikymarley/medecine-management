@@ -463,7 +463,7 @@ export type ApiDoctorPatientAvailability = {
     phone: string | null;
     ninu: string | null;
     date_of_birth: string | null;
-    account_status: 'active' | 'provisional';
+    account_status: 'active' | 'provisional' | 'blocked';
     created_by_doctor_id: number | null;
   }>;
 };

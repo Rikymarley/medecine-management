@@ -41,6 +41,7 @@ import InstallBanner from '../components/InstallBanner';
 import { ApiMedicine, ApiPharmacy, ApiPrescription, api } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
+import { formatDateTime } from '../utils/time';
 import './PharmacyPosHomePage.css';
 
 type PosCartItem = {
@@ -361,8 +362,8 @@ const PharmacyPosHomePage: React.FC = () => {
           <h1>Rapport de fin de shift POS</h1>
           <p class="muted">${pageTitle}</p>
           <p><span class="strong">Ouvert par:</span> ${shiftState.openerName ?? 'N/D'}</p>
-          <p><span class="strong">Heure ouverture:</span> ${shiftState.openedAt ? new Date(shiftState.openedAt).toLocaleString() : 'N/D'}</p>
-          <p><span class="strong">Heure fermeture:</span> ${new Date(closedAtIso).toLocaleString()}</p>
+          <p><span class="strong">Heure ouverture:</span> ${shiftState.openedAt ? formatDateTime(shiftState.openedAt) : 'N/D'}</p>
+          <p><span class="strong">Heure fermeture:</span> ${formatDateTime(closedAtIso)}</p>
           <p><span class="strong">Nombre de ventes:</span> ${shiftState.salesCount}</p>
 
           <h2>Fond de caisse initial</h2>
@@ -662,7 +663,7 @@ const PharmacyPosHomePage: React.FC = () => {
                       <h3>Shift POS</h3>
                       <p>
                         {shiftState.isOpen
-                          ? `Ouvert${shiftState.openedAt ? `: ${new Date(shiftState.openedAt).toLocaleString()}` : ''}`
+                          ? `Ouvert${shiftState.openedAt ? `: ${formatDateTime(shiftState.openedAt)}` : ''}`
                           : 'Aucun shift ouvert'}
                         {shiftState.salesCount > 0 ? ` • Ventes: ${shiftState.salesCount}` : ''}
                       </p>

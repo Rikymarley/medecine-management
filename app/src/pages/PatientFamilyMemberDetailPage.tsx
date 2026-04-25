@@ -33,7 +33,7 @@ import InstallBanner from '../components/InstallBanner';
 import { ApiFamilyMember, ApiMedicalHistoryEntry, ApiPrescription, api } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
-import { formatDateTime } from '../utils/time';
+import { formatDateHaiti, formatDateTime } from '../utils/time';
 import { getMedicalHistoryCode } from '../utils/medicalHistoryCode';
 
 type RouteParams = {
@@ -421,7 +421,7 @@ const PatientFamilyMemberDetailPage: React.FC = () => {
                   {!isProfileIdentityCollapsed ? (
                     <div style={{ padding: '0 12px 8px' }}>
                       <p><strong>Nom:</strong> {member.name}</p>
-                      <p><strong>Date de naissance:</strong> {member.date_of_birth || 'N/D'}</p>
+                      <p><strong>Date de naissance:</strong> {member.date_of_birth ? formatDateHaiti(member.date_of_birth) : 'N/D'}</p>
                       <p><strong>Age:</strong> {member.age ?? 'N/D'}</p>
                       <p><strong>Relation:</strong> {member.relationship ? relationshipLabel[member.relationship] : 'N/D'}</p>
                       <p><strong>Genre:</strong> {member.gender === 'male' ? 'M' : member.gender === 'female' ? 'F' : 'N/D'}</p>
