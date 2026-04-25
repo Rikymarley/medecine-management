@@ -9,6 +9,12 @@ use Illuminate\Http\Request;
 
 class DoctorSecretaryAccessRequestController extends Controller
 {
+    private function formatReferenceCode(DoctorSecretaryAccessRequest $requestRow): string
+    {
+        $date = $requestRow->created_at?->format('Ymd') ?? now()->format('Ymd');
+        return 'DAS-' . $date . '-' . str_pad((string) $requestRow->id, 6, '0', STR_PAD_LEFT);
+    }
+
     private function ensureSecretary(User $secretary): void
     {
         if ($secretary->role !== 'secretaire') {
@@ -34,8 +40,10 @@ class DoctorSecretaryAccessRequestController extends Controller
     {
         return [
             'id' => $requestRow->id,
+            'reference_code' => $this->formatReferenceCode($requestRow),
             'doctor_id' => $requestRow->doctor_user_id,
             'doctor_name' => $requestRow->doctor?->name,
+            'doctor_specialty' => $requestRow->doctor?->specialty,
             'secretary_id' => $requestRow->secretary_user_id,
             'secretary_name' => $requestRow->secretary?->name,
             'status' => $requestRow->status,
@@ -124,7 +132,7 @@ class DoctorSecretaryAccessRequestController extends Controller
             $whatsappUrl = $this->buildWhatsappUrl($targetWhatsapp, $text);
 
             return response()->json([
-                ...$this->formatRequest($pendingRequest->loadMissing(['doctor:id,name', 'secretary:id,name'])),
+                ...$this->formatRequest($pendingRequest->loadMissing(['doctor:id,name,specialty', 'secretary:id,name'])),
                 'message' => 'Une demande est deja en attente.',
                 'whatsapp_url' => $whatsappUrl,
             ]);
@@ -152,7 +160,7 @@ class DoctorSecretaryAccessRequestController extends Controller
         $whatsappUrl = $this->buildWhatsappUrl($targetWhatsapp, $text);
 
         return response()->json([
-            ...$this->formatRequest($accessRequest->loadMissing(['doctor:id,name', 'secretary:id,name'])),
+            ...$this->formatRequest($accessRequest->loadMissing(['doctor:id,name,specialty', 'secretary:id,name'])),
             'whatsapp_url' => $whatsappUrl,
         ], 201);
     }
@@ -162,7 +170,7 @@ class DoctorSecretaryAccessRequestController extends Controller
         $doctor = $request->user();
         $rows = DoctorSecretaryAccessRequest::query()
             ->where('doctor_user_id', $doctor->id)
-            ->with('secretary:id,name')
+            ->with(['doctor:id,name,specialty', 'secretary:id,name'])
             ->orderByDesc('created_at')
             ->get();
 
@@ -174,7 +182,7 @@ class DoctorSecretaryAccessRequestController extends Controller
         $secretary = $request->user();
         $rows = DoctorSecretaryAccessRequest::query()
             ->where('secretary_user_id', $secretary->id)
-            ->with('doctor:id,name')
+            ->with('doctor:id,name,specialty')
             ->orderByDesc('created_at')
             ->get();
 
@@ -202,6 +210,6 @@ class DoctorSecretaryAccessRequestController extends Controller
             'responded_at' => now(),
         ]);
 
-        return response()->json($this->formatRequest($accessRequest->loadMissing(['doctor:id,name', 'secretary:id,name'])));
+        return response()->json($this->formatRequest($accessRequest->loadMissing(['doctor:id,name,specialty', 'secretary:id,name'])));
     }
 }

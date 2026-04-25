@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { useAuth } from '../state/AuthState';
 
 const DoctorHospitalDetailPage: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   return (
     <FacilityDetailView
       title="Detail hopital"
@@ -14,9 +14,9 @@ const DoctorHospitalDetailPage: React.FC = () => {
       loadPublic={api.getHospitals}
       loadPrivate={api.getHospitalsForDoctor}
       token={token}
+      showVerificationBadges={!!user?.can_verify_accounts}
     />
   );
 };
 
 export default DoctorHospitalDetailPage;
-

@@ -23,24 +23,27 @@ import { chevronForwardOutline, flaskOutline } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { useAuth } from '../state/AuthState';
 import { isFacilityOpenNow } from '../utils/businessHours';
 
 const DoctorLaboratoriesDirectoryPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
+  const { token, user } = useAuth();
   const [laboratories, setLaboratories] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'>('all');
-  const [token, setToken] = useState<string | null>(null);
   const lastLoadedAtRef = useRef(0);
+  const canManageAccountVerification = !!user?.can_verify_accounts;
 
   useEffect(() => {
-    try {
-      setToken(localStorage.getItem('token'));
-    } catch {
-      setToken(null);
+    if (
+      !canManageAccountVerification &&
+      (statusFilter === 'approved' || statusFilter === 'pending' || statusFilter === 'licensed' || statusFilter === 'unlicensed')
+    ) {
+      setStatusFilter('all');
     }
-  }, []);
+  }, [canManageAccountVerification, statusFilter]);
 
   const loadLaboratories = useCallback(async (force = false) => {
     if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
@@ -76,16 +79,16 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
     const rows = searched.filter((laboratory) => {
       if (statusFilter === 'open') return isFacilityOpenNow(laboratory);
       if (statusFilter === 'closed') return !isFacilityOpenNow(laboratory);
-      if (statusFilter === 'approved') return laboratory.account_verification_status === 'approved';
-      if (statusFilter === 'pending') return laboratory.account_verification_status !== 'approved';
-      if (statusFilter === 'licensed') return !!laboratory.license_verified;
-      if (statusFilter === 'unlicensed') return !laboratory.license_verified;
+      if (statusFilter === 'approved' && canManageAccountVerification) return laboratory.account_verification_status === 'approved';
+      if (statusFilter === 'pending' && canManageAccountVerification) return laboratory.account_verification_status !== 'approved';
+      if (statusFilter === 'licensed' && canManageAccountVerification) return !!laboratory.license_verified;
+      if (statusFilter === 'unlicensed' && canManageAccountVerification) return !laboratory.license_verified;
       if (statusFilter === 'emergency') return !!laboratory.emergency_available;
       return true;
     });
 
     return [...rows].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [laboratories, query, statusFilter]);
+  }, [canManageAccountVerification, laboratories, query, statusFilter]);
 
   return (
     <IonPage>
@@ -111,10 +114,14 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'open' ? 'solid' : 'outline'} onClick={() => setStatusFilter('open')}>Ouvert</IonButton>
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'closed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('closed')}>Ferme</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                {canManageAccountVerification ? (
+                  <>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                  </>
+                ) : null}
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'emergency' ? 'solid' : 'outline'} onClick={() => setStatusFilter('emergency')}>Urgence</IonButton>
               </div>
               <div
@@ -171,12 +178,16 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
                         <IonBadge color={laboratory.temporary_closed ? 'danger' : isFacilityOpenNow(laboratory) ? 'success' : 'medium'}>
                           {laboratory.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(laboratory) ? 'Ouvert' : 'Ferme'}
                         </IonBadge>
-                        <IonBadge color={laboratory.account_verification_status === 'approved' ? 'success' : 'warning'}>
-                          {laboratory.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
-                        </IonBadge>
-                        <IonBadge color={laboratory.license_verified ? 'success' : 'warning'}>
-                          {laboratory.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                        </IonBadge>
+                        {canManageAccountVerification ? (
+                          <>
+                            <IonBadge color={laboratory.account_verification_status === 'approved' ? 'success' : 'warning'}>
+                              {laboratory.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                            </IonBadge>
+                            <IonBadge color={laboratory.license_verified ? 'success' : 'warning'}>
+                              {laboratory.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                            </IonBadge>
+                          </>
+                        ) : null}
                         {laboratory.emergency_available ? <IonBadge color="warning">Urgence</IonBadge> : null}
                       </div>
                     </IonLabel>

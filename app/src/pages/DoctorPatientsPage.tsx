@@ -34,10 +34,17 @@ import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorPatient, ApiFamilyMember, ApiPatientLookup, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { maskHaitiPhone } from '../utils/phoneMask';
-import { formatDateHaiti } from '../utils/time';
 
 const DoctorPatientsPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
+  const compactItemStyle = {
+    '--background': 'transparent',
+    '--border-color': '#d7e4ee',
+    '--padding-start': '8px',
+    '--padding-end': '8px',
+    '--inner-padding-end': '0',
+    height: '60px',
+  } as const;
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
@@ -346,6 +353,7 @@ const DoctorPatientsPage: React.FC = () => {
                         lines="full"
                         button
                         detail
+                        style={compactItemStyle}
                         onClick={() =>
                           ionRouter.push(
                             `/doctor/patients/${encodeURIComponent(row.name)}?patientUserId=${row.id}`,
@@ -360,24 +368,26 @@ const DoctorPatientsPage: React.FC = () => {
                             src={row.profile_photo_url}
                             alt={row.name}
                             style={{
-                              width: '34px',
-                              height: '34px',
+                              width: '50px',
+                              height: '50px',
                               objectFit: 'cover',
                               borderRadius: '50%',
-                              border: '1px solid #dbe7ef'
+                              border: '1px solid #dbe7ef',
+                              marginBottom: '5px'
                             }}
                           />
                         ) : (
                           <div
                             slot="start"
                             style={{
-                              width: '34px',
-                              height: '34px',
+                              width: '50px',
+                              height: '50px',
                               borderRadius: '50%',
                               display: 'grid',
                               placeItems: 'center',
                               background: '#dbeafe',
-                              color: '#1e40af'
+                              color: '#1e40af',
+                              marginBottom: '5px'
                             }}
                           >
                             <IonIcon icon={personOutline} />
@@ -385,11 +395,6 @@ const DoctorPatientsPage: React.FC = () => {
                         )}
                         <IonLabel>
                           <h3>{row.name}</h3>
-                          <p>
-                            {row.phone ? `Tel: ${row.phone}` : 'Tel: non renseigne'} ·{' '}
-                            {row.ninu ? `NINU: ${row.ninu}` : 'NINU: non renseigne'}
-                            {row.date_of_birth ? ` · Nais: ${formatDateHaiti(row.date_of_birth)}` : ''}
-                          </p>
                         </IonLabel>
                       </IonItem>
                     ))}
@@ -431,6 +436,7 @@ const DoctorPatientsPage: React.FC = () => {
                     lines="full"
                     button
                     detail
+                    style={compactItemStyle}
                     onClick={() =>
                       ionRouter.push(
                         `/doctor/patients/${encodeURIComponent(entry.patientName)}${
@@ -453,24 +459,26 @@ const DoctorPatientsPage: React.FC = () => {
                         src={entry.photoUrl}
                         alt={entry.label}
                         style={{
-                          width: '34px',
-                          height: '34px',
+                          width: '50px',
+                          height: '50px',
                           objectFit: 'cover',
                           borderRadius: '50%',
-                          border: '1px solid #dbe7ef'
+                          border: '1px solid #dbe7ef',
+                          marginBottom: '5px'
                         }}
                       />
                     ) : (
                       <div
                         slot="start"
                         style={{
-                          width: '34px',
-                          height: '34px',
+                          width: '50px',
+                          height: '50px',
                           borderRadius: '50%',
                           display: 'grid',
                           placeItems: 'center',
                           background: '#dbeafe',
-                          color: '#1e40af'
+                          color: '#1e40af',
+                          marginBottom: '5px'
                         }}
                       >
                         <IonIcon icon={personOutline} />
@@ -478,7 +486,6 @@ const DoctorPatientsPage: React.FC = () => {
                     )}
                     <IonLabel>
                       <h3>{entry.label}</h3>
-                      <p>{entry.subtitle}</p>
                     </IonLabel>
                   </IonItem>
                 ))}

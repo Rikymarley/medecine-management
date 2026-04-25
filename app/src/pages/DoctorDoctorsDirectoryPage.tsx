@@ -28,11 +28,21 @@ import { useAuth } from '../state/AuthState';
 const DoctorDoctorsDirectoryPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [doctors, setDoctors] = useState<ApiDoctorDirectory[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'tele'>('all');
   const lastLoadedAtRef = useRef(0);
+  const canManageAccountVerification = !!user?.can_verify_accounts;
+
+  useEffect(() => {
+    if (
+      !canManageAccountVerification &&
+      (statusFilter === 'approved' || statusFilter === 'pending' || statusFilter === 'licensed' || statusFilter === 'unlicensed')
+    ) {
+      setStatusFilter('all');
+    }
+  }, [canManageAccountVerification, statusFilter]);
 
   const loadDoctors = useCallback(async (force = false) => {
     if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
@@ -78,16 +88,16 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
 
     const rows = searched.filter((doctor) => {
       const accountStatus = accountStatusOf(doctor);
-      if (statusFilter === 'approved') return accountStatus === 'approved';
-      if (statusFilter === 'pending') return accountStatus !== 'approved';
-      if (statusFilter === 'licensed') return !!doctor.license_verified;
-      if (statusFilter === 'unlicensed') return !doctor.license_verified;
+      if (statusFilter === 'approved' && canManageAccountVerification) return accountStatus === 'approved';
+      if (statusFilter === 'pending' && canManageAccountVerification) return accountStatus !== 'approved';
+      if (statusFilter === 'licensed' && canManageAccountVerification) return !!doctor.license_verified;
+      if (statusFilter === 'unlicensed' && canManageAccountVerification) return !doctor.license_verified;
       if (statusFilter === 'tele') return !!doctor.teleconsultation_available;
       return true;
     });
 
     return [...rows].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [doctors, query, statusFilter]);
+  }, [canManageAccountVerification, doctors, query, statusFilter]);
 
   return (
     <IonPage>
@@ -111,10 +121,14 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
             <div style={{ position: 'relative' }}>
               <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 28px 8px 0' }}>
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                {canManageAccountVerification ? (
+                  <>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                  </>
+                ) : null}
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'tele' ? 'solid' : 'outline'} onClick={() => setStatusFilter('tele')}>Teleconsultation</IonButton>
               </div>
               <div
@@ -182,12 +196,16 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
                       </p>
                       <p>{doctor.address || 'Adresse non renseignee'}</p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                        <IonBadge color={accountStatus === 'approved' ? 'success' : 'warning'}>
-                          {accountStatus === 'approved' ? 'Compte approuve' : 'Compte en attente'}
-                        </IonBadge>
-                        <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
-                          {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                        </IonBadge>
+                        {canManageAccountVerification ? (
+                          <>
+                            <IonBadge color={accountStatus === 'approved' ? 'success' : 'warning'}>
+                              {accountStatus === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                            </IonBadge>
+                            <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
+                              {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                            </IonBadge>
+                          </>
+                        ) : null}
                         {doctor.teleconsultation_available ? <IonBadge color="tertiary">Teleconsultation</IonBadge> : null}
                       </div>
                     </IonLabel>

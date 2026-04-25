@@ -23,24 +23,27 @@ import { businessOutline, chevronForwardOutline } from 'ionicons/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiPharmacy } from '../services/api';
+import { useAuth } from '../state/AuthState';
 import { isFacilityOpenNow } from '../utils/businessHours';
 
 const DoctorHospitalsDirectoryPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
+  const { token, user } = useAuth();
   const [hospitals, setHospitals] = useState<ApiPharmacy[]>([]);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'>('all');
-  const [token, setToken] = useState<string | null>(null);
   const lastLoadedAtRef = useRef(0);
+  const canManageAccountVerification = !!user?.can_verify_accounts;
 
   useEffect(() => {
-    try {
-      setToken(localStorage.getItem('token'));
-    } catch {
-      setToken(null);
+    if (
+      !canManageAccountVerification &&
+      (statusFilter === 'approved' || statusFilter === 'pending' || statusFilter === 'licensed' || statusFilter === 'unlicensed')
+    ) {
+      setStatusFilter('all');
     }
-  }, []);
+  }, [canManageAccountVerification, statusFilter]);
 
   const loadHospitals = useCallback(async (force = false) => {
     if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
@@ -72,16 +75,16 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
     const rows = searched.filter((hospital) => {
       if (statusFilter === 'open') return isFacilityOpenNow(hospital);
       if (statusFilter === 'closed') return !isFacilityOpenNow(hospital);
-      if (statusFilter === 'approved') return hospital.account_verification_status === 'approved';
-      if (statusFilter === 'pending') return hospital.account_verification_status !== 'approved';
-      if (statusFilter === 'licensed') return !!hospital.license_verified;
-      if (statusFilter === 'unlicensed') return !hospital.license_verified;
+      if (statusFilter === 'approved' && canManageAccountVerification) return hospital.account_verification_status === 'approved';
+      if (statusFilter === 'pending' && canManageAccountVerification) return hospital.account_verification_status !== 'approved';
+      if (statusFilter === 'licensed' && canManageAccountVerification) return !!hospital.license_verified;
+      if (statusFilter === 'unlicensed' && canManageAccountVerification) return !hospital.license_verified;
       if (statusFilter === 'emergency') return !!hospital.emergency_available;
       return true;
     });
 
     return [...rows].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-  }, [hospitals, query, statusFilter]);
+  }, [canManageAccountVerification, hospitals, query, statusFilter]);
 
   return (
     <IonPage>
@@ -107,10 +110,14 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'open' ? 'solid' : 'outline'} onClick={() => setStatusFilter('open')}>Ouvert</IonButton>
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'closed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('closed')}>Ferme</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
-                <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                {canManageAccountVerification ? (
+                  <>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'approved' ? 'solid' : 'outline'} onClick={() => setStatusFilter('approved')}>Compte approuve</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'pending' ? 'solid' : 'outline'} onClick={() => setStatusFilter('pending')}>Compte en attente</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
+                    <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
+                  </>
+                ) : null}
                 <IonButton size="small" style={{ height: '30px', whiteSpace: 'nowrap' }} fill={statusFilter === 'emergency' ? 'solid' : 'outline'} onClick={() => setStatusFilter('emergency')}>Urgence</IonButton>
               </div>
               <div
@@ -167,12 +174,16 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
                         <IonBadge color={hospital.temporary_closed ? 'danger' : isFacilityOpenNow(hospital) ? 'success' : 'medium'}>
                           {hospital.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(hospital) ? 'Ouvert' : 'Ferme'}
                         </IonBadge>
-                        <IonBadge color={hospital.account_verification_status === 'approved' ? 'success' : 'warning'}>
-                          {hospital.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
-                        </IonBadge>
-                        <IonBadge color={hospital.license_verified ? 'success' : 'warning'}>
-                          {hospital.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                        </IonBadge>
+                        {canManageAccountVerification ? (
+                          <>
+                            <IonBadge color={hospital.account_verification_status === 'approved' ? 'success' : 'warning'}>
+                              {hospital.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                            </IonBadge>
+                            <IonBadge color={hospital.license_verified ? 'success' : 'warning'}>
+                              {hospital.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                            </IonBadge>
+                          </>
+                        ) : null}
                         {hospital.emergency_available ? <IonBadge color="warning">Urgence</IonBadge> : null}
                       </div>
                     </IonLabel>

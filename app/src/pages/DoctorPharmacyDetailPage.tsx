@@ -202,29 +202,35 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                   <IonLabel>
                     <h2>{pharmacy.name}</h2>
                   </IonLabel>
-                  <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.9rem', color: '#475569' }}>Approbation :</span>
-                    <IonToggle
-                      checked={pharmacy.account_verification_status === 'approved'}
-                      disabled={!canVerify || approvingAccount || updating || !pharmacy.pharmacy_user_id}
-                      onIonChange={(event) => {
-                        const enabled = !!event.detail.checked;
-                        if (enabled) {
-                          void approveAccount();
-                        } else {
-                          void unapproveAccount();
-                        }
-                      }}
-                    />
-                  </div>
+                  {canVerify ? (
+                    <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#475569' }}>Approbation :</span>
+                      <IonToggle
+                        checked={pharmacy.account_verification_status === 'approved'}
+                        disabled={approvingAccount || updating || !pharmacy.pharmacy_user_id}
+                        onIonChange={(event) => {
+                          const enabled = !!event.detail.checked;
+                          if (enabled) {
+                            void approveAccount();
+                          } else {
+                            void unapproveAccount();
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </IonItem>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '4px 0 8px' }}>
-                  <IonBadge color={pharmacy.account_verification_status === 'approved' ? 'success' : 'warning'}>
-                    {pharmacy.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
-                  </IonBadge>
-                  <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
-                    {pharmacy.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                  </IonBadge>
+                  {canVerify ? (
+                    <>
+                      <IonBadge color={pharmacy.account_verification_status === 'approved' ? 'success' : 'warning'}>
+                        {pharmacy.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                      </IonBadge>
+                      <IonBadge color={pharmacy.license_verified ? 'success' : 'warning'}>
+                        {pharmacy.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                      </IonBadge>
+                    </>
+                  ) : null}
                   <IonBadge color={isFacilityOpenNow(pharmacy) ? 'success' : 'medium'}>
                     {isFacilityOpenNow(pharmacy) ? 'Ouverte' : 'Fermee'}
                   </IonBadge>
@@ -315,7 +321,7 @@ const DoctorPharmacyDetailPage: React.FC = () => {
                           }}
                         />
                       </div>
-                    ) : pharmacy.license_number ? (
+                    ) : pharmacy.license_number && canVerify ? (
                       <div
                         slot="end"
                         style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '220px', textAlign: 'right', width: '50%' }}

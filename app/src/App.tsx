@@ -59,6 +59,7 @@ const DoctorPrescriptionsPage = lazy(() => import('./pages/DoctorPrescriptionsPa
 const DoctorDoctorsDirectoryPage = lazy(() => import('./pages/DoctorDoctorsDirectoryPage'));
 const DoctorDoctorDetailPage = lazy(() => import('./pages/DoctorDoctorDetailPage'));
 const DoctorSecretariesPage = lazy(() => import('./pages/DoctorSecretariesPage'));
+const DoctorSecretaryDetailPage = lazy(() => import('./pages/DoctorSecretaryDetailPage'));
 const DoctorLaboratoriesDirectoryPage = lazy(() => import('./pages/DoctorLaboratoriesDirectoryPage'));
 const DoctorHospitalsDirectoryPage = lazy(() => import('./pages/DoctorHospitalsDirectoryPage'));
 const DoctorLaboratoryDetailPage = lazy(() => import('./pages/DoctorLaboratoryDetailPage'));
@@ -181,6 +182,7 @@ const RoutePreloader: React.FC = () => {
         import('./pages/DoctorPharmacyDetailPage'),
         import('./pages/DoctorMedicalHistoryEntryPage'),
         import('./pages/DoctorSecretariesPage'),
+        import('./pages/DoctorSecretaryDetailPage'),
         import('./pages/PharmacyDashboard'),
         import('./pages/PharmacyPosHomePage'),
         import('./pages/PatientPrescriptionsPage'),
@@ -427,6 +429,11 @@ const App: React.FC = () => (
           <Route exact path="/doctor/secretaires">
             <RequireRole role="doctor">
               <DoctorSecretariesPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/doctor/secretaires/:secretaryId">
+            <RequireRole role="doctor">
+              <DoctorSecretaryDetailPage />
             </RequireRole>
           </Route>
           <Route exact path="/doctor/pharmacies">

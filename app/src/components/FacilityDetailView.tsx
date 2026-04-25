@@ -32,6 +32,7 @@ type FacilityDetailViewProps = {
   loadPublic: () => Promise<ApiPharmacy[]>;
   loadPrivate?: (token: string) => Promise<ApiPharmacy[]>;
   token?: string | null;
+  showVerificationBadges?: boolean;
 };
 
 type RouteParams = {
@@ -47,7 +48,8 @@ const FacilityDetailView: React.FC<FacilityDetailViewProps> = ({
   icon,
   loadPublic,
   loadPrivate,
-  token
+  token,
+  showVerificationBadges = true
 }) => {
   const { facilityId } = useParams<RouteParams>();
   const [facility, setFacility] = useState<ApiPharmacy | null>(null);
@@ -145,9 +147,11 @@ const FacilityDetailView: React.FC<FacilityDetailViewProps> = ({
                   <IonBadge color={facility.temporary_closed ? 'danger' : isFacilityOpenNow(facility) ? 'success' : 'medium'}>
                     {facility.temporary_closed ? 'Fermeture temporaire' : isFacilityOpenNow(facility) ? 'Ouvert' : 'Ferme'}
                   </IonBadge>
-                  <IonBadge color={facility.license_verified ? 'success' : 'warning'}>
-                    {facility.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                  </IonBadge>
+                  {showVerificationBadges ? (
+                    <IonBadge color={facility.license_verified ? 'success' : 'warning'}>
+                      {facility.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                    </IonBadge>
+                  ) : null}
                   {facility.emergency_available ? <IonBadge color="warning">Urgence</IonBadge> : null}
                 </div>
 

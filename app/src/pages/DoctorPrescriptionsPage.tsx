@@ -15,6 +15,7 @@ import {
   IonLabel,
   IonList,
   IonPage,
+  IonSearchbar,
   IonText,
   IonTitle,
   IonToolbar,
@@ -34,6 +35,7 @@ const DoctorPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
+  const [patientSearch, setPatientSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showNotVerifiedAlert, setShowNotVerifiedAlert] = useState(false);
   const pageSize = 12;
@@ -74,11 +76,27 @@ const DoctorPrescriptionsPage: React.FC = () => {
     loadPrescriptions().catch(() => undefined);
   });
 
+  const filteredPrescriptions = useMemo(() => {
+    const query = patientSearch.trim().toLowerCase();
+    if (!query) {
+      return prescriptions;
+    }
+    return prescriptions.filter((prescription) => {
+      const patientName = (
+        prescription.familyMember?.name
+        || prescription.family_member?.name
+        || prescription.patient_name
+        || ''
+      ).toLowerCase();
+      return patientName.includes(query);
+    });
+  }, [patientSearch, prescriptions]);
+
   const sortedPrescriptions = useMemo(() => {
-    return [...prescriptions].sort(
+    return [...filteredPrescriptions].sort(
       (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime()
     );
-  }, [prescriptions]);
+  }, [filteredPrescriptions]);
   const totalPages = Math.max(1, Math.ceil(sortedPrescriptions.length / pageSize));
   const pagedPrescriptions = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -90,6 +108,10 @@ const DoctorPrescriptionsPage: React.FC = () => {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [patientSearch]);
 
   return (
     <IonPage>
@@ -105,9 +127,14 @@ const DoctorPrescriptionsPage: React.FC = () => {
         <InstallBanner />
         <IonCard className="surface-card">
           <IonCardContent>
+            <IonSearchbar
+              value={patientSearch}
+              placeholder="Rechercher par nom du patient"
+              onIonInput={(event) => setPatientSearch(event.detail.value ?? '')}
+            />
             {sortedPrescriptions.length === 0 ? (
               <IonText color="medium">
-                <p>Aucune ordonnance pour le moment.</p>
+                <p>{patientSearch.trim() ? 'Aucun resultat pour cette recherche.' : 'Aucune ordonnance pour le moment.'}</p>
               </IonText>
             ) : (
               <IonList>

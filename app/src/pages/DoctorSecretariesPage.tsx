@@ -17,6 +17,7 @@ import {
   IonText,
   IonTitle,
   IonToolbar,
+  useIonRouter,
   useIonViewWillEnter,
 } from '@ionic/react';
 import { personOutline } from 'ionicons/icons';
@@ -28,30 +29,19 @@ import {
   type ApiSecretaryLookup,
 } from '../services/api';
 import { useAuth } from '../state/AuthState';
-import { formatDateTime as formatDateTimeLabel } from '../utils/time';
-
-const statusLabel = (status: ApiDoctorSecretaryAccessRequest['status']) => {
-  if (status === 'pending') return 'En attente';
-  if (status === 'approved') return 'Approuvee';
-  if (status === 'denied') return 'Refusee';
-  return status;
-};
-
-const statusColor = (status: ApiDoctorSecretaryAccessRequest['status']) => {
-  if (status === 'pending') return 'warning';
-  if (status === 'approved') return 'success';
-  if (status === 'denied') return 'danger';
-  return 'medium';
-};
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) return 'N/D';
-  return formatDateTimeLabel(value);
-};
 
 const DoctorSecretariesPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
+  const compactItemStyle = {
+    '--background': 'transparent',
+    '--border-color': '#d7e4ee',
+    '--padding-start': '8px',
+    '--padding-end': '8px',
+    '--inner-padding-end': '0',
+    height: '60px',
+  } as const;
   const { token } = useAuth();
+  const ionRouter = useIonRouter();
   const [query, setQuery] = useState('');
   const [directory, setDirectory] = useState<ApiSecretaryLookup[]>([]);
   const [requests, setRequests] = useState<ApiDoctorSecretaryAccessRequest[]>([]);
@@ -226,27 +216,37 @@ const DoctorSecretariesPage: React.FC = () => {
                     const hasPending = latestRequest?.status === 'pending';
 
                     return (
-                      <IonItem key={`db-${row.id}`} lines="full">
+                      <IonItem
+                        key={`db-${row.id}`}
+                        lines="full"
+                        button
+                        detail
+                        style={compactItemStyle}
+                        onClick={() =>
+                          ionRouter.push(
+                            `/doctor/secretaires/${row.id}?name=${encodeURIComponent(row.name)}${row.email ? `&email=${encodeURIComponent(row.email)}` : ''}${row.phone ? `&phone=${encodeURIComponent(row.phone)}` : ''}${row.whatsapp ? `&whatsapp=${encodeURIComponent(row.whatsapp)}` : ''}`,
+                            'forward',
+                            'push'
+                          )
+                        }
+                      >
                         <div
                           slot="start"
                           style={{
-                            width: '34px',
-                            height: '34px',
+                            width: '50px',
+                            height: '50px',
                             borderRadius: '50%',
                             display: 'grid',
                             placeItems: 'center',
                             background: '#dbeafe',
-                            color: '#1e40af'
+                            color: '#1e40af',
+                            marginBottom: '5px'
                           }}
                         >
                           <IonIcon icon={personOutline} />
                         </div>
                         <IonLabel>
                           <h3>{row.name}</h3>
-                          <p>
-                            {row.phone ? `Tel: ${row.phone}` : 'Tel: non renseigne'}
-                            {row.email ? ` · Email: ${row.email}` : ''}
-                          </p>
                         </IonLabel>
                         {hasApproved ? (
                           <IonBadge color="success">Acces approuve</IonBadge>
@@ -254,7 +254,8 @@ const DoctorSecretariesPage: React.FC = () => {
                           <IonButton
                             size="small"
                             disabled={actionKey === `request:${row.id}`}
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               void requestAccess(row);
                             }}
                           >
@@ -279,30 +280,37 @@ const DoctorSecretariesPage: React.FC = () => {
             ) : (
               <IonList>
                 {secretaryEntries.map((entry) => (
-                  <IonItem key={`secretary-${entry.id}`} lines="full">
+                  <IonItem
+                    key={`secretary-${entry.id}`}
+                    lines="full"
+                    button
+                    detail
+                    style={compactItemStyle}
+                    onClick={() =>
+                      ionRouter.push(
+                        `/doctor/secretaires/${entry.id}?name=${encodeURIComponent(entry.name)}`,
+                        'forward',
+                        'push'
+                      )
+                    }
+                  >
                     <div
                       slot="start"
                       style={{
-                        width: '34px',
-                        height: '34px',
+                        width: '50px',
+                        height: '50px',
                         borderRadius: '50%',
                         display: 'grid',
                         placeItems: 'center',
                         background: '#dbeafe',
-                        color: '#1e40af'
+                        color: '#1e40af',
+                        marginBottom: '5px'
                       }}
                     >
                       <IonIcon icon={personOutline} />
                     </div>
                     <IonLabel>
                       <h3>{entry.name}</h3>
-                      <p>
-                        <strong>Statut:</strong>{' '}
-                        <IonText color={statusColor(entry.status)}>{statusLabel(entry.status)}</IonText>
-                      </p>
-                      <p><strong>Envoyee le:</strong> {formatDateTime(entry.created_at)}</p>
-                      {entry.responded_at ? <p><strong>Traitee le:</strong> {formatDateTime(entry.responded_at)}</p> : null}
-                      {entry.response_message ? <p><strong>Reponse:</strong> {entry.response_message}</p> : null}
                     </IonLabel>
                   </IonItem>
                 ))}

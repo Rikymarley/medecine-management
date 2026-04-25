@@ -221,7 +221,7 @@ const DoctorDoctorDetailPage: React.FC = () => {
                     <h2>{doctor.name}</h2>
                     <p>{doctor.specialty || 'Specialite non renseignee'}</p>
                   </IonLabel>
-                  {!isOwnDoctorProfile ? (
+                  {!isOwnDoctorProfile && canVerify ? (
                     <div slot="end" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '0.9rem', color: '#475569' }}>Approbation :</span>
                       <IonToggle
@@ -239,14 +239,16 @@ const DoctorDoctorDetailPage: React.FC = () => {
                     </div>
                   ) : null}
                 </IonItem>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '4px 0 8px' }}>
-                  <IonBadge color={doctor.account_verification_status === 'approved' ? 'success' : 'warning'}>
-                    {doctor.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
-                  </IonBadge>
-                  <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
-                    {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                  </IonBadge>
-                </div>
+                {canVerify ? (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '4px 0 8px' }}>
+                    <IonBadge color={doctor.account_verification_status === 'approved' ? 'success' : 'warning'}>
+                      {doctor.account_verification_status === 'approved' ? 'Compte approuve' : 'Compte en attente'}
+                    </IonBadge>
+                    <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
+                      {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
+                    </IonBadge>
+                  </div>
+                ) : null}
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '8px 0 12px' }}>
                   {doctor.account_verification_status === 'approved' && doctor.approved_by ? (
@@ -338,7 +340,7 @@ const DoctorDoctorDetailPage: React.FC = () => {
                           }}
                         />
                       </div>
-                    ) : doctor.license_number ? (
+                    ) : doctor.license_number && canVerify ? (
                       <div
                         slot="end"
                         style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '220px', textAlign: 'right', width: '50%' }}

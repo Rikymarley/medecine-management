@@ -89,7 +89,6 @@ const DoctorDashboard: React.FC = () => {
   const [profileCardExpanded, setProfileCardExpanded] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [networkExpanded, setNetworkExpanded] = useState(false);
-  const [accountExpanded, setAccountExpanded] = useState(false);
   const [contactExpanded, setContactExpanded] = useState(false);
   const [professionalExpanded, setProfessionalExpanded] = useState(false);
   const [verificationExpanded, setVerificationExpanded] = useState(false);
@@ -879,23 +878,25 @@ const DoctorDashboard: React.FC = () => {
 
         <IonCard className="surface-card">
           <IonCardHeader>
-            <IonCardTitle>Reseau & compte</IonCardTitle>
+            <IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={medkitOutline} />
+                  Reseau professionnel
+                </span>
+                <IonButton
+                  fill="clear"
+                  size="small"
+                  onClick={() => setNetworkExpanded((prev) => !prev)}
+                >
+                  <IonIcon icon={networkExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+            </IonCardTitle>
           </IonCardHeader>
-          <IonCardContent style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
-              <IonButton
-                expand="block"
-                fill="clear"
-                color="dark"
-                onClick={() => setNetworkExpanded((prev) => !prev)}
-                style={{ margin: 0 }}
-              >
-                <IonIcon icon={medkitOutline} slot="start" />
-                Reseau professionnel
-                {networkExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
-              </IonButton>
-              {networkExpanded ? (
-                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
+          {networkExpanded ? (
+            <IonCardContent style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="dashboard-grid">
                   <IonCard
                     button
                     className="surface-card"
@@ -976,61 +977,9 @@ const DoctorDashboard: React.FC = () => {
                       <p className="muted-note">Voir les hopitaux disponibles.</p>
                     </IonCardContent>
                   </IonCard>
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
-              <IonButton
-                expand="block"
-                fill="clear"
-                color="dark"
-                onClick={() => setAccountExpanded((prev) => !prev)}
-                style={{ margin: 0 }}
-              >
-                <IonIcon icon={shieldCheckmarkOutline} slot="start" />
-                Compte
-                {accountExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
-              </IonButton>
-              {accountExpanded ? (
-                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
-                  <IonCard
-                    button
-                    className="surface-card"
-                    style={{ margin: 0 }}
-                    onClick={() => {
-                      setProfileCardExpanded(true);
-                    }}
-                  >
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-blue">
-                        <IonIcon icon={personCircleOutline} />
-                      </div>
-                      <h3>Mon profil</h3>
-                      <p className="muted-note">Completer et mettre a jour vos informations.</p>
-                    </IonCardContent>
-                  </IonCard>
-                  <IonCard
-                    button
-                    className="surface-card"
-                    style={{ margin: 0 }}
-                    onClick={() => {
-                      setProfileCardExpanded(true);
-                      setPasswordExpanded(true);
-                    }}
-                  >
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-gold">
-                        <IonIcon icon={shieldCheckmarkOutline} />
-                      </div>
-                      <h3>Securite</h3>
-                      <p className="muted-note">Modifier votre mot de passe et vos acces.</p>
-                    </IonCardContent>
-                  </IonCard>
-                </div>
-              ) : null}
-            </div>
-          </IonCardContent>
+              </div>
+            </IonCardContent>
+          ) : null}
         </IonCard>
 
       </IonContent>

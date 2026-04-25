@@ -504,8 +504,10 @@ export type ApiDoctorSecretaryAccessStatus = {
 
 export type ApiDoctorSecretaryAccessRequest = {
   id: number;
+  reference_code?: string | null;
   doctor_id: number;
   doctor_name: string | null;
+  doctor_specialty?: string | null;
   secretary_id: number;
   secretary_name: string | null;
   status: 'pending' | 'approved' | 'denied';
