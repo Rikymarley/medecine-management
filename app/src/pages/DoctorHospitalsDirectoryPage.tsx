@@ -34,7 +34,9 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'>('all');
   const lastLoadedAtRef = useRef(0);
-  const canManageAccountVerification = !!user?.can_verify_accounts;
+  const isDoctorContext = user?.role === 'doctor';
+  const basePath = isDoctorContext ? '/doctor' : '/secretaire';
+  const canManageAccountVerification = isDoctorContext && !!user?.can_verify_accounts;
 
   useEffect(() => {
     if (
@@ -49,14 +51,14 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
     if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
       return;
     }
-    if (!token) {
+    if (!token || !isDoctorContext) {
       await api.getHospitals().then(setHospitals).catch(() => undefined);
       lastLoadedAtRef.current = Date.now();
       return;
     }
     await api.getHospitalsForDoctor(token).then(setHospitals).catch(() => undefined);
     lastLoadedAtRef.current = Date.now();
-  }, [LOAD_TTL_MS, token]);
+  }, [LOAD_TTL_MS, isDoctorContext, token]);
 
   useEffect(() => {
     loadHospitals(true).catch(() => undefined);
@@ -91,7 +93,7 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
-            <IonBackButton defaultHref="/doctor" />
+            <IonBackButton defaultHref={basePath} />
           </IonButtons>
           <IonTitle>Annuaire hopitaux</IonTitle>
         </IonToolbar>
@@ -148,7 +150,7 @@ const DoctorHospitalsDirectoryPage: React.FC = () => {
                     key={hospital.id}
                     lines="full"
                     button
-                    onClick={() => ionRouter.push(`/doctor/hopitaux/${hospital.id}`, 'forward', 'push')}
+                    onClick={() => ionRouter.push(`${basePath}/hopitaux/${hospital.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
                       {hospital.logo_url ? (

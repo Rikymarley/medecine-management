@@ -43,6 +43,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useHistory } from 'react-router';
 import { useParams } from 'react-router';
+import AppointmentFormModal from '../components/AppointmentFormModal';
 import InstallBanner from '../components/InstallBanner';
 import {
   api,
@@ -175,11 +176,22 @@ type VitalSignEntry = {
   note: string;
 };
 
+type AppointmentEntry = {
+  id: string;
+  patient_id: number;
+  created_by_secretary_id: number | null;
+  doctor_user_id: number;
+  doctor_name: string;
+  scheduled_at: string;
+  note: string | null;
+  created_at: string;
+};
+
 const DoctorPatientPrescriptionsPage: React.FC = () => {
   const LOAD_TTL_MS = 30_000;
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
-  const { patientName } = useParams<{ patientName: string }>();
+  const { patientName: patientRouteParam } = useParams<{ patientName: string }>();
   const location = useLocation();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [visits, setVisits] = useState<ApiVisit[]>([]);
@@ -212,7 +224,17 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [isIdentityCollapsed, setIsIdentityCollapsed] = useState(true);
   const [isHealthCollapsed, setIsHealthCollapsed] = useState(true);
   const [isVitalsCollapsed, setIsVitalsCollapsed] = useState(true);
+  const [isAppointmentsCollapsed, setIsAppointmentsCollapsed] = useState(true);
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(true);
+  const [appointments, setAppointments] = useState<AppointmentEntry[]>([]);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
+  const [appointmentError, setAppointmentError] = useState<string | null>(null);
+  const [appointmentForm, setAppointmentForm] = useState({
+    scheduled_date: '',
+    scheduled_time: '',
+    note: ''
+  });
   const [isHistoryModalContextCollapsed, setIsHistoryModalContextCollapsed] = useState(false);
   const [isHistoryModalDetailsCollapsed, setIsHistoryModalDetailsCollapsed] = useState(false);
   const [isHistoryModalDatesCollapsed, setIsHistoryModalDatesCollapsed] = useState(false);
@@ -295,7 +317,9 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   });
 
   const cacheKey = user ? `doctor-prescriptions-${user.id}` : null;
-  const decodedPatientName = decodeURIComponent(patientName);
+  const patientUserIdFromPath =
+    /^\d+$/.test(patientRouteParam) && Number(patientRouteParam) > 0 ? Number(patientRouteParam) : null;
+  const decodedPatientName = patientUserIdFromPath ? '' : decodeURIComponent(patientRouteParam);
   const search = new URLSearchParams(location.search);
   const familyMemberId = search.get('familyMemberId') ? Number(search.get('familyMemberId')) : null;
   const patientUserIdFromQuery = search.get('patientUserId') ? Number(search.get('patientUserId')) : null;
@@ -322,7 +346,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     prescriptions.find(
       (p) => p.patient_name.trim().toLowerCase() === decodedPatientName.trim().toLowerCase() && p.patient_user_id
     )?.patient_user_id ?? null;
-  const patientUserId = patientUserIdFromQuery ?? derivedPatientUserId;
+  const patientUserId = patientUserIdFromQuery ?? patientUserIdFromPath ?? derivedPatientUserId;
   const visitCacheKey = useMemo(() => {
     if (!user || !patientUserId) {
       return null;
@@ -346,6 +370,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     }
     return patientUserId;
   }, [effectiveFamilyMemberId, familyMembers, patientUserId, visitContextFamilyMemberId]);
+  const latestVitalSign = vitalSignEntries[0] ?? null;
 
   useEffect(() => {
     if (!vitalTargetUserId) {
@@ -373,6 +398,31 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     }
   }, [vitalTargetUserId]);
 
+  useEffect(() => {
+    if (!patientUserId || !user?.id) {
+      setAppointments([]);
+      return;
+    }
+    const storageKey = `secretary-appointments-${patientUserId}`;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) {
+        setAppointments([]);
+        return;
+      }
+      const parsed = JSON.parse(raw) as AppointmentEntry[];
+      if (!Array.isArray(parsed)) {
+        setAppointments([]);
+        return;
+      }
+      const filtered = parsed.filter((entry) => entry.doctor_user_id === user.id);
+      const sorted = [...filtered].sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+      setAppointments(sorted);
+    } catch {
+      setAppointments([]);
+    }
+  }, [patientUserId, user?.id]);
+
   const resetVitalsForm = useCallback(() => {
     setVitalsForm({
       recorded_at: new Date().toISOString().slice(0, 16),
@@ -387,6 +437,98 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     });
     setVitalsError(null);
   }, []);
+
+  const resetAppointmentForm = useCallback(() => {
+    const now = new Date();
+    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    const nextDate = localNow.toISOString().slice(0, 10);
+    const nextTime = localNow.toISOString().slice(11, 16);
+    setAppointmentForm({
+      scheduled_date: nextDate,
+      scheduled_time: nextTime,
+      note: ''
+    });
+    setEditingAppointmentId(null);
+    setAppointmentError(null);
+  }, []);
+
+  const openCreateAppointmentModal = useCallback(() => {
+    resetAppointmentForm();
+    setShowAppointmentModal(true);
+  }, [resetAppointmentForm]);
+
+  const openEditAppointmentModal = useCallback((entry: AppointmentEntry) => {
+    const localDate = new Date(entry.scheduled_at);
+    const hasValidDate = !Number.isNaN(localDate.getTime());
+    const year = hasValidDate ? localDate.getFullYear() : new Date().getFullYear();
+    const month = hasValidDate ? String(localDate.getMonth() + 1).padStart(2, '0') : '01';
+    const day = hasValidDate ? String(localDate.getDate()).padStart(2, '0') : '01';
+    const hour = hasValidDate ? String(localDate.getHours()).padStart(2, '0') : '08';
+    const minute = hasValidDate ? String(localDate.getMinutes()).padStart(2, '0') : '00';
+    setAppointmentForm({
+      scheduled_date: `${year}-${month}-${day}`,
+      scheduled_time: `${hour}:${minute}`,
+      note: entry.note ?? ''
+    });
+    setEditingAppointmentId(entry.id);
+    setAppointmentError(null);
+    setShowAppointmentModal(true);
+  }, []);
+
+  const saveAppointment = useCallback(() => {
+    if (!patientUserId || !user?.id) {
+      setAppointmentError('Patient introuvable.');
+      return;
+    }
+    if (!appointmentForm.scheduled_date || !appointmentForm.scheduled_time) {
+      setAppointmentError('Date et heure requises.');
+      return;
+    }
+
+    const localDateTime = `${appointmentForm.scheduled_date}T${appointmentForm.scheduled_time}:00`;
+    const isoDateTime = new Date(localDateTime).toISOString();
+    if (Number.isNaN(new Date(isoDateTime).getTime())) {
+      setAppointmentError('Date/heure invalide.');
+      return;
+    }
+
+    const storageKey = `secretary-appointments-${patientUserId}`;
+    let existing: AppointmentEntry[] = [];
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as AppointmentEntry[];
+        if (Array.isArray(parsed)) {
+          existing = parsed;
+        }
+      } catch {
+        existing = [];
+      }
+    }
+
+    const nextEntry: AppointmentEntry = {
+      id: editingAppointmentId ?? `rdv-${Date.now()}`,
+      patient_id: patientUserId,
+      created_by_secretary_id: null,
+      doctor_user_id: user.id,
+      doctor_name: user.name ?? 'Docteur',
+      scheduled_at: isoDateTime,
+      note: appointmentForm.note.trim() || null,
+      created_at: new Date().toISOString()
+    };
+
+    const nextRows = editingAppointmentId
+      ? existing.map((row) => (row.id === editingAppointmentId ? nextEntry : row))
+      : [...existing, nextEntry];
+
+    localStorage.setItem(storageKey, JSON.stringify(nextRows));
+    const forDoctor = nextRows
+      .filter((entry) => entry.doctor_user_id === user.id)
+      .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+    setAppointments(forDoctor);
+    setShowAppointmentModal(false);
+    resetAppointmentForm();
+  }, [appointmentForm, editingAppointmentId, patientUserId, resetAppointmentForm, user?.id, user?.name]);
 
   const saveVitalsEntry = useCallback(() => {
     if (!vitalTargetUserId) {
@@ -758,7 +900,7 @@ useEffect(() => {
 
       const visitContextLabel = effectiveFamilyMemberId && profileFamilyMember
         ? `${profileFamilyMember.name}${profileFamilyMember.relationship ? ` (${profileFamilyMember.relationship})` : ''}`
-        : familyMemberName ?? decodedPatientName;
+        : familyMemberName ?? patientProfile?.name ?? decodedPatientName;
 
       const firstHistoryEntry = linkedHistoryEntries[0];
       const visitTypeLabel = visit.visit_type?.trim()
@@ -785,7 +927,8 @@ useEffect(() => {
     effectiveFamilyMemberId,
     profileFamilyMember,
     decodedPatientName,
-    familyMemberName
+    familyMemberName,
+    patientProfile?.name
   ]);
 
   const contextQuerySuffix = useMemo(() => {
@@ -799,11 +942,12 @@ useEffect(() => {
     if (familyMemberName) {
       params.set('familyMemberName', familyMemberName);
     }
-    if (decodedPatientName) {
-      params.set('patient', decodedPatientName);
+    const contextPatientName = patientProfile?.name ?? decodedPatientName;
+    if (contextPatientName) {
+      params.set('patient', contextPatientName);
     }
     return params.toString() ? `?${params.toString()}` : '';
-  }, [patientUserId, effectiveFamilyMemberId, familyMemberName, decodedPatientName]);
+  }, [patientUserId, effectiveFamilyMemberId, familyMemberName, patientProfile?.name, decodedPatientName]);
   const navigateToHistoryDetail = useCallback(
     (entryId: number | null | undefined) => {
       if (!entryId || entryId <= 0) {
@@ -833,7 +977,12 @@ useEffect(() => {
     },
     [visits]
   );
-  const activePatientName = profileFamilyMember?.name ?? familyMemberName ?? decodedPatientName;
+  const activePatientName =
+    profileFamilyMember?.name ??
+    familyMemberName ??
+    patientProfile?.name ??
+    decodedPatientName ??
+    (patientUserId ? `Patient #${patientUserId}` : 'Patient');
   const activeProfilePhotoUrl = profileFamilyMember?.photo_url ?? patientProfile?.profile_photo_url ?? null;
   const activeDateOfBirth = profileFamilyMember?.date_of_birth ?? patientProfile?.date_of_birth ?? null;
   const computedActiveAge = useMemo(() => {
@@ -1269,7 +1418,7 @@ useEffect(() => {
           <IonButtons slot="start">
             <IonBackButton defaultHref="/doctor/patients" />
           </IonButtons>
-          <IonTitle>{familyMemberName ?? decodedPatientName}</IonTitle>
+          <IonTitle>{activePatientName}</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding app-content">
@@ -1450,7 +1599,7 @@ useEffect(() => {
                           <p><strong>Relation:</strong> {profileFamilyMember.relationship ?? 'Non precisee'}</p>
                         ) : null}
                         {profileFamilyMember ? (
-                          <p><strong>Patient principal:</strong> {decodedPatientName}</p>
+                          <p><strong>Patient principal:</strong> {patientProfile?.name ?? decodedPatientName ?? 'Patient'}</p>
                         ) : null}
                       </>
                     ) : null}
@@ -1652,6 +1801,75 @@ useEffect(() => {
                       </IonCard>
                     ) : null}
                   </>
+                )}
+              </IonCardContent>
+            ) : null}
+          </IonCard>
+        ) : null}
+
+        {showClinicalCards ? (
+          <IonCard className="surface-card">
+            <IonCardHeader>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={calendarOutline} />
+                  Rendez-vous ({appointments.length})
+                </IonCardTitle>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <IonButton
+                    size="small"
+                    onClick={openCreateAppointmentModal}
+                    disabled={!patientUserId}
+                  >
+                    Ajouter
+                  </IonButton>
+                  <IonButton fill="clear" color="medium" size="small" onClick={() => setIsAppointmentsCollapsed((prev) => !prev)}>
+                    <IonIcon icon={isAppointmentsCollapsed ? chevronDownOutline : chevronUpOutline} />
+                  </IonButton>
+                </div>
+              </div>
+            </IonCardHeader>
+            {!isAppointmentsCollapsed ? (
+              <IonCardContent>
+                {appointments.length > 0 ? (
+                  <IonList inset>
+                    {appointments.map((entry, index) => (
+                      (() => {
+                        const isPastAppointment = new Date(entry.scheduled_at).getTime() < Date.now();
+                        return (
+                          <IonItem
+                            key={`${entry.id}-${index}`}
+                            button
+                            detail
+                            lines={index === appointments.length - 1 ? 'none' : 'full'}
+                            onClick={() => openEditAppointmentModal(entry)}
+                          >
+                            <IonLabel>
+                              <h3 style={{ marginBottom: '4px' }}>
+                                {formatDateTime(entry.scheduled_at)}
+                              </h3>
+                              {isPastAppointment ? (
+                                <div style={{ marginBottom: '4px' }}>
+                                  <IonBadge color="warning">Rendez-vous passe</IonBadge>
+                                </div>
+                              ) : null}
+                              {entry.note ? (
+                                <p style={{ marginBottom: 0 }}>
+                                  <strong>Note:</strong> {entry.note}
+                                </p>
+                              ) : (
+                                <p style={{ marginBottom: 0 }}>Aucune note</p>
+                              )}
+                            </IonLabel>
+                          </IonItem>
+                        );
+                      })()
+                    ))}
+                  </IonList>
+                ) : (
+                  <p style={{ marginBottom: 0, color: '#64748b', fontSize: '0.92rem' }}>
+                    Aucun rendez-vous pour ce patient.
+                  </p>
                 )}
               </IonCardContent>
             ) : null}
@@ -2744,7 +2962,7 @@ useEffect(() => {
         >
           <IonHeader>
             <IonToolbar>
-              <IonTitle>Nouveaux signes vitaux</IonTitle>
+              <IonTitle>Ajouter signes vitaux</IonTitle>
               <IonButtons slot="end">
                 <IonButton
                   fill="clear"
@@ -2761,10 +2979,41 @@ useEffect(() => {
           <IonContent className="ion-padding app-content">
             <IonCard className="surface-card">
               <IonCardHeader>
-                <IonCardTitle>Mesures patient</IonCardTitle>
+                <IonCardTitle style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={pulseOutline} />
+                  Apercu rapide
+                </IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                {latestVitalSign ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px' }}>
+                    <p style={{ margin: 0 }}>
+                      <strong>Derniere tension:</strong> {latestVitalSign.systolic ?? '-'} / {latestVitalSign.diastolic ?? '-'}
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <strong>Pouls:</strong> {latestVitalSign.heart_rate ?? '-'} bpm
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <strong>Temperature:</strong> {latestVitalSign.temperature_c ?? '-'} C
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <strong>SpO2:</strong> {latestVitalSign.spo2 ?? '-'} %
+                    </p>
+                  </div>
+                ) : (
+                  <IonText color="medium">
+                    <p style={{ margin: 0 }}>Aucune mesure pour le moment.</p>
+                  </IonText>
+                )}
+              </IonCardContent>
+            </IonCard>
+
+            <IonCard className="surface-card">
+              <IonCardHeader>
+                <IonCardTitle>Nouvelle mesure</IonCardTitle>
               </IonCardHeader>
               <IonCardContent style={{ display: 'grid', gap: '8px' }}>
-                <IonItem lines="none">
+                <IonItem>
                   <IonLabel position="stacked">Date et heure</IonLabel>
                   <IonInput
                     type="datetime-local"
@@ -2772,37 +3021,37 @@ useEffect(() => {
                     onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, recorded_at: e.detail.value ?? '' }))}
                   />
                 </IonItem>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <IonItem lines="none">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', marginTop: '8px' }}>
+                  <IonItem>
                     <IonLabel position="stacked">Systolique</IonLabel>
                     <IonInput value={vitalsForm.systolic} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, systolic: e.detail.value ?? '' }))} />
                   </IonItem>
-                  <IonItem lines="none">
+                  <IonItem>
                     <IonLabel position="stacked">Diastolique</IonLabel>
                     <IonInput value={vitalsForm.diastolic} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, diastolic: e.detail.value ?? '' }))} />
                   </IonItem>
-                  <IonItem lines="none">
+                  <IonItem>
                     <IonLabel position="stacked">Frequence cardiaque</IonLabel>
                     <IonInput value={vitalsForm.heart_rate} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, heart_rate: e.detail.value ?? '' }))} />
                   </IonItem>
-                  <IonItem lines="none">
+                  <IonItem>
                     <IonLabel position="stacked">Temperature (C)</IonLabel>
                     <IonInput value={vitalsForm.temperature_c} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, temperature_c: e.detail.value ?? '' }))} />
                   </IonItem>
-                  <IonItem lines="none">
+                  <IonItem>
                     <IonLabel position="stacked">SpO2 (%)</IonLabel>
                     <IonInput value={vitalsForm.spo2} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, spo2: e.detail.value ?? '' }))} />
                   </IonItem>
-                  <IonItem lines="none">
+                  <IonItem>
                     <IonLabel position="stacked">Glycemie (mg/dL)</IonLabel>
                     <IonInput value={vitalsForm.glucose_mg_dl} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, glucose_mg_dl: e.detail.value ?? '' }))} />
                   </IonItem>
-                  <IonItem lines="none">
+                  <IonItem>
                     <IonLabel position="stacked">Poids (kg)</IonLabel>
                     <IonInput value={vitalsForm.weight_kg} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, weight_kg: e.detail.value ?? '' }))} />
                   </IonItem>
                 </div>
-                <IonItem lines="none">
+                <IonItem style={{ marginTop: '8px' }}>
                   <IonLabel position="stacked">Note</IonLabel>
                   <IonTextarea
                     autoGrow
@@ -2846,6 +3095,28 @@ useEffect(() => {
             ) : null}
           </IonContent>
         </IonModal>
+
+        <AppointmentFormModal
+          isOpen={showAppointmentModal}
+          title={editingAppointmentId ? 'Modifier rendez-vous' : 'Ajouter rendez-vous'}
+          patientField={{
+            mode: 'readonly',
+            label: activePatientName,
+          }}
+          scheduledDate={appointmentForm.scheduled_date}
+          scheduledTime={appointmentForm.scheduled_time}
+          onScheduledDateChange={(value) => setAppointmentForm((prev) => ({ ...prev, scheduled_date: value }))}
+          onScheduledTimeChange={(value) => setAppointmentForm((prev) => ({ ...prev, scheduled_time: value }))}
+          note={appointmentForm.note}
+          onNoteChange={(value) => setAppointmentForm((prev) => ({ ...prev, note: value }))}
+          onSubmit={saveAppointment}
+          onClose={() => {
+            setShowAppointmentModal(false);
+            resetAppointmentForm();
+          }}
+          submitDisabled={!patientUserId}
+          errorMessage={appointmentError}
+        />
 
       </IonContent>
     </IonPage>

@@ -22,14 +22,15 @@ import {
   useIonViewWillEnter,
 } from '@ionic/react';
 import { addOutline } from 'ionicons/icons';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useParams } from 'react-router-dom';
 import AppointmentFormModal from '../components/AppointmentFormModal';
 import InstallBanner from '../components/InstallBanner';
 import { api, type ApiDoctorPatient } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
 
-type DoctorAppointmentEntry = {
+type SecretaryAppointmentEntry = {
   id: string;
   patient_id: number;
   created_by_secretary_id: number | null;
@@ -83,33 +84,68 @@ const formatDayHeading = (value: string) => {
   });
 };
 
-const DoctorMyAppointmentsPage: React.FC = () => {
+const SecretaryAppointmentsPage: React.FC = () => {
   const { token, user } = useAuth();
   const ionRouter = useIonRouter();
+  const location = useLocation();
+  const { patientId: routePatientId } = useParams<{ patientId?: string }>();
   const [query, setQuery] = useState('');
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('all');
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<'all' | 'past' | 'upcoming'>('all');
   const [patients, setPatients] = useState<ApiDoctorPatient[]>([]);
-  const [appointments, setAppointments] = useState<DoctorAppointmentEntry[]>([]);
+  const [appointments, setAppointments] = useState<SecretaryAppointmentEntry[]>([]);
+  const [relatedDoctors, setRelatedDoctors] = useState<Array<{ id: number; name: string }>>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [scheduledTime, setScheduledTime] = useState(() => new Date().toISOString().slice(11, 16));
   const [addForm, setAddForm] = useState({
     patient_id: '',
+    doctor_user_id: '',
     note: '',
   });
+  const hasAutoOpenedModal = useRef(false);
+  const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const preselectedPatientId = useMemo(() => {
+    const raw = queryParams.get('patientId') ?? routePatientId ?? '';
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [queryParams, routePatientId]);
+  const shouldOpenAddModalFromRoute = useMemo(() => {
+    return location.pathname.includes('/rendez-vous/new') || preselectedPatientId !== null;
+  }, [location.pathname, preselectedPatientId]);
 
   const loadData = useCallback(async () => {
-    if (!token || !user?.id) {
+    if (!token) {
       setPatients([]);
       setAppointments([]);
+      setRelatedDoctors([]);
       return;
     }
 
-    const patientRows = await api.getDoctorPatients(token).catch(() => []);
+    const [patientRows, accessRows] = await Promise.all([
+      api.getSecretaryPatients(token).catch(() => []),
+      api.getSecretaryAccessRequests(token).catch(() => [])
+    ]);
     setPatients(patientRows);
+    const relatedDoctorIds = new Set(
+      accessRows
+        .filter((row) => row.status === 'approved' && Number.isFinite(row.doctor_id))
+        .map((row) => row.doctor_id)
+    );
+    const doctorMap = new Map<number, string>();
+    accessRows.forEach((row) => {
+      if (row.status === 'approved' && Number.isFinite(row.doctor_id) && row.doctor_name) {
+        doctorMap.set(row.doctor_id, row.doctor_name);
+      }
+    });
+    setRelatedDoctors(
+      Array.from(doctorMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
+    );
 
-    const collected: DoctorAppointmentEntry[] = [];
+    const collected: SecretaryAppointmentEntry[] = [];
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
       if (!key || !key.startsWith('secretary-appointments-')) {
@@ -120,18 +156,23 @@ const DoctorMyAppointmentsPage: React.FC = () => {
         continue;
       }
       try {
-        const parsed = JSON.parse(raw) as DoctorAppointmentEntry[];
+        const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
         if (Array.isArray(parsed)) {
           collected.push(...parsed);
         }
       } catch {
-        // ignore invalid local cache
+        // ignore bad local data
       }
     }
 
-    const forDoctor = collected.filter((entry) => entry.doctor_user_id === user.id);
-    setAppointments(forDoctor.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()));
-  }, [token, user?.id]);
+    const filtered = collected.filter((entry) => {
+      if (relatedDoctorIds.size === 0) {
+        return false;
+      }
+      return relatedDoctorIds.has(entry.doctor_user_id);
+    });
+    setAppointments(filtered.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()));
+  }, [token]);
 
   useIonViewWillEnter(() => {
     void loadData();
@@ -145,10 +186,18 @@ const DoctorMyAppointmentsPage: React.FC = () => {
     return map;
   }, [patients]);
 
+  const doctorFilters = useMemo(() => {
+    const names = Array.from(new Set(appointments.map((entry) => entry.doctor_name).filter(Boolean)));
+    return names.sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }, [appointments]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const now = Date.now();
     return appointments.filter((entry) => {
+      if (selectedDoctor !== 'all' && entry.doctor_name !== selectedDoctor) {
+        return false;
+      }
       const isPast = new Date(entry.scheduled_at).getTime() < now;
       if (selectedTimeFilter === 'past' && !isPast) {
         return false;
@@ -159,25 +208,26 @@ const DoctorMyAppointmentsPage: React.FC = () => {
       if (!q) {
         return true;
       }
-      const patientName = patientNameById.get(entry.patient_id) ?? `Patient #${entry.patient_id}`;
-      return `${patientName} ${entry.note ?? ''} ${entry.doctor_name}`.toLowerCase().includes(q);
+      const patientName = patientNameById.get(entry.patient_id) ?? 'Patient';
+      return `${patientName} ${entry.doctor_name} ${entry.note ?? ''}`.toLowerCase().includes(q);
     });
-  }, [appointments, patientNameById, query, selectedTimeFilter]);
+  }, [appointments, patientNameById, query, selectedDoctor, selectedTimeFilter]);
 
   const summary = useMemo(() => {
     const now = Date.now();
     const dayKey = new Date().toLocaleDateString('fr-FR', DAY_KEY_OPTIONS);
-    const todayCount = appointments.filter((entry) => getDayKey(entry.scheduled_at) === dayKey).length;
-    const overdueCount = appointments.filter((entry) => new Date(entry.scheduled_at).getTime() < now).length;
-    const next24hCount = appointments.filter((entry) => {
+    const scoped = appointments.filter((entry) => selectedDoctor === 'all' || entry.doctor_name === selectedDoctor);
+    const todayCount = scoped.filter((entry) => getDayKey(entry.scheduled_at) === dayKey).length;
+    const overdueCount = scoped.filter((entry) => new Date(entry.scheduled_at).getTime() < now).length;
+    const next24hCount = scoped.filter((entry) => {
       const target = new Date(entry.scheduled_at).getTime();
       return target >= now && target <= now + 24 * 60 * 60 * 1000;
     }).length;
     return { todayCount, overdueCount, next24hCount };
-  }, [appointments]);
+  }, [appointments, selectedDoctor]);
 
   const groupedAppointments = useMemo(() => {
-    const groups = new Map<string, DoctorAppointmentEntry[]>();
+    const groups = new Map<string, SecretaryAppointmentEntry[]>();
     filtered.forEach((entry) => {
       const key = getDayKey(entry.scheduled_at);
       const existing = groups.get(key) ?? [];
@@ -189,7 +239,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
       .map(([key, items]) => ({ key, title: formatDayHeading(items[0].scheduled_at), items }));
   }, [filtered]);
 
-  const openAddModal = useCallback(() => {
+  const openAddModal = useCallback((patientIdToPrefill?: number | null) => {
     const now = new Date();
     const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
     const nextDate = localNow.toISOString().slice(0, 10);
@@ -197,21 +247,31 @@ const DoctorMyAppointmentsPage: React.FC = () => {
     setScheduledDate(nextDate);
     setScheduledTime(nextTime);
     setAddForm({
-      patient_id: '',
+      patient_id: patientIdToPrefill ? String(patientIdToPrefill) : '',
+      doctor_user_id: relatedDoctors[0] ? String(relatedDoctors[0].id) : '',
       note: '',
     });
     setAddError(null);
     setShowAddModal(true);
-  }, []);
+  }, [relatedDoctors]);
 
-  const saveAddedAppointment = useCallback(() => {
-    if (!user?.id) {
-      setAddError('Utilisateur introuvable.');
+  useEffect(() => {
+    if (!shouldOpenAddModalFromRoute || hasAutoOpenedModal.current || !token) {
       return;
     }
+    hasAutoOpenedModal.current = true;
+    openAddModal(preselectedPatientId);
+  }, [openAddModal, preselectedPatientId, shouldOpenAddModalFromRoute, token]);
+
+  const saveAddedAppointment = useCallback(() => {
     const patientId = Number(addForm.patient_id);
+    const doctorId = Number(addForm.doctor_user_id);
     if (!Number.isFinite(patientId) || patientId <= 0) {
       setAddError('Selectionnez un patient.');
+      return;
+    }
+    if (!Number.isFinite(doctorId) || doctorId <= 0) {
+      setAddError('Selectionnez un medecin.');
       return;
     }
     if (!scheduledDate || !scheduledTime) {
@@ -225,23 +285,24 @@ const DoctorMyAppointmentsPage: React.FC = () => {
       return;
     }
 
-    const next: DoctorAppointmentEntry = {
+    const doctorName = relatedDoctors.find((row) => row.id === doctorId)?.name ?? `Docteur #${doctorId}`;
+    const next: SecretaryAppointmentEntry = {
       id: `rdv-${Date.now()}`,
       patient_id: patientId,
-      created_by_secretary_id: null,
-      doctor_user_id: user.id,
-      doctor_name: user.name || `Docteur #${user.id}`,
+      created_by_secretary_id: user?.id ?? null,
+      doctor_user_id: doctorId,
+      doctor_name: doctorName,
       scheduled_at: scheduledAt,
       note: addForm.note.trim() || null,
       created_at: new Date().toISOString(),
     };
 
     const key = `secretary-appointments-${patientId}`;
-    let existing: DoctorAppointmentEntry[] = [];
+    let existing: SecretaryAppointmentEntry[] = [];
     const raw = localStorage.getItem(key);
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as DoctorAppointmentEntry[];
+        const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
         if (Array.isArray(parsed)) {
           existing = parsed;
         }
@@ -253,16 +314,16 @@ const DoctorMyAppointmentsPage: React.FC = () => {
     setShowAddModal(false);
     setAddError(null);
     void loadData();
-  }, [addForm, loadData, scheduledDate, scheduledTime, user?.id, user?.name]);
+  }, [addForm, loadData, relatedDoctors, scheduledDate, scheduledTime, user?.id]);
 
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
-            <IonBackButton defaultHref="/doctor" />
+            <IonBackButton defaultHref="/secretaire" />
           </IonButtons>
-          <IonTitle>Mes rendez-vous</IonTitle>
+          <IonTitle>Rendez-vous</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding app-content">
@@ -271,7 +332,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
           <IonCardContent>
             <IonSearchbar
               value={query}
-              placeholder="Rechercher par patient ou note..."
+              placeholder="Rechercher patient, medecin ou note..."
               onIonInput={(event) => setQuery(event.detail.value ?? '')}
             />
             <div
@@ -295,6 +356,35 @@ const DoctorMyAppointmentsPage: React.FC = () => {
                 <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>A venir (24h)</p>
                 <p style={{ margin: '2px 0 0 0', fontWeight: 700 }}>{summary.next24hCount}</p>
               </div>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                overflowX: 'auto',
+                paddingBottom: '6px',
+                marginTop: '6px',
+              }}
+            >
+              <IonButton
+                size="small"
+                fill={selectedDoctor === 'all' ? 'solid' : 'outline'}
+                onClick={() => setSelectedDoctor('all')}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                Tous
+              </IonButton>
+              {doctorFilters.map((doctorName) => (
+                <IonButton
+                  key={doctorName}
+                  size="small"
+                  fill={selectedDoctor === doctorName ? 'solid' : 'outline'}
+                  onClick={() => setSelectedDoctor(doctorName)}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {doctorName}
+                </IonButton>
+              ))}
             </div>
             <div
               style={{
@@ -332,7 +422,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
             </div>
             {filtered.length === 0 ? (
               <IonText color="medium">
-                <p>Aucun rendez-vous lie a votre compte.</p>
+                <p>Aucun rendez-vous pour cette secretaire.</p>
               </IonText>
             ) : (
               <>
@@ -360,7 +450,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
                             }}
                             onClick={() =>
                               ionRouter.push(
-                                `/doctor/patients/${appointment.patient_id}`,
+                                `/secretaire/patients/${appointment.patient_id}/rendez-vous/${appointment.id}/edit?patient=${encodeURIComponent(patientName)}`,
                                 'forward',
                                 'push'
                               )
@@ -374,6 +464,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
                                   </h3>
                                   <IonBadge color={statusUi.color}>{statusUi.label}</IonBadge>
                                 </div>
+                                <p style={{ margin: 0 }}><strong>Medecin:</strong> {appointment.doctor_name}</p>
                                 {appointment.note ? (
                                   <p style={{ margin: 0, fontSize: '0.92rem', color: '#64748b' }}>
                                     {appointment.note.length > 100 ? `${appointment.note.slice(0, 100)}...` : appointment.note}
@@ -393,7 +484,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
         </IonCard>
 
         <IonFab slot="fixed" vertical="bottom" horizontal="end">
-          <IonFabButton color="primary" onClick={openAddModal}>
+          <IonFabButton color="primary" onClick={() => openAddModal()}>
             <IonIcon icon={addOutline} />
           </IonFabButton>
         </IonFab>
@@ -407,6 +498,13 @@ const DoctorMyAppointmentsPage: React.FC = () => {
             options: patients.map((patient) => ({ value: String(patient.id), label: patient.name })),
             onChange: (value) => setAddForm((prev) => ({ ...prev, patient_id: value })),
             placeholder: 'Selectionner un patient',
+          }}
+          doctorField={{
+            mode: 'select',
+            value: addForm.doctor_user_id,
+            options: relatedDoctors.map((doctor) => ({ value: String(doctor.id), label: doctor.name })),
+            onChange: (value) => setAddForm((prev) => ({ ...prev, doctor_user_id: value })),
+            placeholder: 'Selectionner un medecin',
           }}
           scheduledDate={scheduledDate}
           scheduledTime={scheduledTime}
@@ -426,4 +524,4 @@ const DoctorMyAppointmentsPage: React.FC = () => {
   );
 };
 
-export default DoctorMyAppointmentsPage;
+export default SecretaryAppointmentsPage;

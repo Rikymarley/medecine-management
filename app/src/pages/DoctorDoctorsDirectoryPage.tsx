@@ -33,7 +33,9 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'tele'>('all');
   const lastLoadedAtRef = useRef(0);
-  const canManageAccountVerification = !!user?.can_verify_accounts;
+  const isDoctorContext = user?.role === 'doctor';
+  const basePath = isDoctorContext ? '/doctor' : '/secretaire';
+  const canManageAccountVerification = isDoctorContext && !!user?.can_verify_accounts;
 
   useEffect(() => {
     if (
@@ -48,14 +50,14 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
     if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
       return;
     }
-    if (!token) {
+    if (!token || !isDoctorContext) {
       await api.getDoctorsDirectory().then(setDoctors).catch(() => undefined);
       lastLoadedAtRef.current = Date.now();
       return;
     }
     await api.getDoctorsDirectoryForDoctor(token).then(setDoctors).catch(() => undefined);
     lastLoadedAtRef.current = Date.now();
-  }, [LOAD_TTL_MS, token]);
+  }, [LOAD_TTL_MS, isDoctorContext, token]);
 
   useEffect(() => {
     loadDoctors(true).catch(() => undefined);
@@ -104,7 +106,7 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
-            <IonBackButton defaultHref="/doctor" />
+            <IonBackButton defaultHref={basePath} />
           </IonButtons>
           <IonTitle>Annuaire medecins</IonTitle>
         </IonToolbar>
@@ -168,7 +170,7 @@ const DoctorDoctorsDirectoryPage: React.FC = () => {
                     key={doctor.id}
                     lines="full"
                     button
-                    onClick={() => ionRouter.push(`/doctor/doctors/${doctor.id}`, 'forward', 'push')}
+                    onClick={() => ionRouter.push(`${basePath}/doctors/${doctor.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
                       {doctor.profile_photo_url ? (

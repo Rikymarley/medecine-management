@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\DoctorSecretaryAccessRequest;
 use App\Models\User;
+use App\Models\Visit;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -216,7 +218,7 @@ class DoctorPatientController extends Controller
                     });
             })
             ->orderBy('name')
-            ->get(['id', 'created_by_doctor_id', 'name', 'phone', 'ninu', 'date_of_birth', 'address', 'age', 'gender', 'emergency_notes', 'created_at', 'updated_at']);
+            ->get(['id', 'created_by_doctor_id', 'name', 'phone', 'ninu', 'date_of_birth', 'address', 'age', 'gender', 'emergency_notes', 'profile_photo_url', 'created_at', 'updated_at']);
 
         return response()->json($rows->map(fn (User $row) => [
             'id' => $row->id,
@@ -229,9 +231,156 @@ class DoctorPatientController extends Controller
             'age' => $row->age,
             'gender' => $row->gender,
             'notes' => $row->emergency_notes,
+            'profile_photo_url' => $row->profile_photo_url,
             'created_at' => $row->created_at,
             'updated_at' => $row->updated_at,
         ])->values());
+    }
+
+    public function indexForSecretary(Request $request)
+    {
+        $secretaryId = (int) $request->user()->id;
+        $doctorIds = DoctorSecretaryAccessRequest::query()
+            ->where('secretary_user_id', $secretaryId)
+            ->where('status', 'approved')
+            ->pluck('doctor_user_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($doctorIds->isEmpty()) {
+            return response()->json([]);
+        }
+
+        $rows = User::query()
+            ->where('role', 'patient')
+            ->where(function ($query) use ($doctorIds) {
+                $query
+                    ->whereIn('created_by_doctor_id', $doctorIds)
+                    ->orWhereExists(function ($subQuery) use ($doctorIds) {
+                        $subQuery
+                            ->selectRaw('1')
+                            ->from('prescriptions')
+                            ->whereColumn('prescriptions.patient_user_id', 'users.id')
+                            ->whereIn('prescriptions.doctor_user_id', $doctorIds);
+                    })
+                    ->orWhereExists(function ($subQuery) use ($doctorIds) {
+                        $subQuery
+                            ->selectRaw('1')
+                            ->from('doctor_patient_access_requests')
+                            ->whereColumn('doctor_patient_access_requests.patient_user_id', 'users.id')
+                            ->whereIn('doctor_patient_access_requests.doctor_user_id', $doctorIds)
+                            ->where('doctor_patient_access_requests.status', 'approved');
+                    });
+            })
+            ->orderBy('name')
+            ->get(['id', 'created_by_doctor_id', 'name', 'phone', 'ninu', 'date_of_birth', 'address', 'age', 'gender', 'emergency_notes', 'profile_photo_url', 'created_at', 'updated_at']);
+
+        return response()->json($rows->map(fn (User $row) => [
+            'id' => $row->id,
+            'doctor_user_id' => $row->created_by_doctor_id,
+            'name' => $row->name,
+            'phone' => $row->phone,
+            'ninu' => $row->ninu,
+            'date_of_birth' => $row->date_of_birth,
+            'address' => $row->address,
+            'age' => $row->age,
+            'gender' => $row->gender,
+            'notes' => $row->emergency_notes,
+            'profile_photo_url' => $row->profile_photo_url,
+            'created_at' => $row->created_at,
+            'updated_at' => $row->updated_at,
+        ])->values());
+    }
+
+    public function showForSecretary(Request $request, User $patient)
+    {
+        if ($patient->role !== 'patient') {
+            return response()->json(['message' => 'Patient invalide.'], 422);
+        }
+
+        $secretaryId = (int) $request->user()->id;
+        $doctorIds = DoctorSecretaryAccessRequest::query()
+            ->where('secretary_user_id', $secretaryId)
+            ->where('status', 'approved')
+            ->pluck('doctor_user_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($doctorIds->isEmpty()) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        $hasAccess = User::query()
+            ->where('id', $patient->id)
+            ->where('role', 'patient')
+            ->where(function ($query) use ($doctorIds) {
+                $query
+                    ->whereIn('created_by_doctor_id', $doctorIds)
+                    ->orWhereExists(function ($subQuery) use ($doctorIds) {
+                        $subQuery
+                            ->selectRaw('1')
+                            ->from('prescriptions')
+                            ->whereColumn('prescriptions.patient_user_id', 'users.id')
+                            ->whereIn('prescriptions.doctor_user_id', $doctorIds);
+                    })
+                    ->orWhereExists(function ($subQuery) use ($doctorIds) {
+                        $subQuery
+                            ->selectRaw('1')
+                            ->from('doctor_patient_access_requests')
+                            ->whereColumn('doctor_patient_access_requests.patient_user_id', 'users.id')
+                            ->whereIn('doctor_patient_access_requests.doctor_user_id', $doctorIds)
+                            ->where('doctor_patient_access_requests.status', 'approved');
+                    });
+            })
+            ->exists();
+
+        if (!$hasAccess) {
+            return response()->json(['message' => 'Acces interdit.'], 403);
+        }
+
+        $visits = Visit::query()
+            ->where('patient_user_id', $patient->id)
+            ->whereIn('doctor_user_id', $doctorIds)
+            ->whereNull('family_member_id')
+            ->with('doctor:id,name')
+            ->orderByDesc('visit_date')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function (Visit $visit) {
+                $referenceDate = optional($visit->visit_date ?? $visit->created_at)->toDateString() ?? now()->toDateString();
+                $date = str_replace('-', '', $referenceDate);
+                $dailyIds = Visit::query()
+                    ->whereDate('visit_date', $referenceDate)
+                    ->orderBy('id')
+                    ->pluck('id')
+                    ->all();
+                $idx = array_search($visit->id, $dailyIds, true);
+                $seq = $idx === false ? 1 : ($idx + 1);
+
+                return [
+                    'id' => $visit->id,
+                    'visit_code' => 'VIS-' . $date . '-' . str_pad((string) $seq, 6, '0', STR_PAD_LEFT),
+                    'visit_date' => optional($visit->visit_date)->toIso8601String(),
+                    'visit_type' => $visit->visit_type,
+                    'status' => $visit->status,
+                    'doctor_name' => $visit->doctor?->name,
+                    'chief_complaint' => $visit->chief_complaint,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'id' => $patient->id,
+            'name' => $patient->name,
+            'phone' => $patient->phone,
+            'whatsapp' => $patient->whatsapp,
+            'recovery_whatsapp' => $patient->recovery_whatsapp,
+            'profile_photo_url' => $patient->profile_photo_url,
+            'date_of_birth' => $patient->date_of_birth,
+            'visits' => $visits,
+        ]);
     }
 
     public function store(Request $request)

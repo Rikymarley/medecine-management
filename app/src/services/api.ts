@@ -444,6 +444,7 @@ export type ApiDoctorPatient = {
   doctor_user_id: number;
   name: string;
   phone: string | null;
+  profile_photo_url?: string | null;
   ninu: string | null;
   date_of_birth: string | null;
   address: string | null;
@@ -452,6 +453,25 @@ export type ApiDoctorPatient = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ApiSecretaryPatientDetail = {
+  id: number;
+  name: string;
+  phone: string | null;
+  whatsapp: string | null;
+  recovery_whatsapp: string | null;
+  profile_photo_url?: string | null;
+  date_of_birth: string | null;
+  visits: Array<{
+    id: number;
+    visit_code: string;
+    visit_date: string | null;
+    visit_type: string | null;
+    status: string;
+    doctor_name: string | null;
+    chief_complaint: string | null;
+  }>;
 };
 
 export type ApiDoctorPatientAvailability = {
@@ -932,6 +952,8 @@ export const api = {
   getDoctorsDirectory: () => request<ApiDoctorDirectory[]>('/doctors'),
   getDoctorsDirectoryForDoctor: (token: string) => request<ApiDoctorDirectory[]>('/doctor/doctors-directory', { token }),
   getDoctorsDirectoryForPharmacy: (token: string) => request<ApiDoctorDirectory[]>('/pharmacy/doctors-directory', { token }),
+  getSecretariesDirectoryForSecretary: (token: string) =>
+    request<ApiSecretaryLookup[]>('/secretaire/secretaires-directory', { token }),
   updateDoctorProfile: (
     token: string,
     payload: Partial<{
@@ -1303,6 +1325,10 @@ export const api = {
   },
   getDoctorPatients: (token: string) =>
     request<ApiDoctorPatient[]>('/doctor/patients', { token }),
+  getSecretaryPatients: (token: string) =>
+    request<ApiDoctorPatient[]>('/secretaire/patients', { token }),
+  getSecretaryPatientDetail: (token: string, patientId: number) =>
+    request<ApiSecretaryPatientDetail>(`/secretaire/patients/${patientId}`, { token }),
   checkDoctorPatientAvailability: (
     token: string,
     payload: {

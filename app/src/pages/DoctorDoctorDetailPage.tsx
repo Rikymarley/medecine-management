@@ -30,6 +30,8 @@ type RouteParams = {
 
 const DoctorDoctorDetailPage: React.FC = () => {
   const { token, user, loading: authLoading } = useAuth();
+  const isDoctorContext = user?.role === 'doctor';
+  const basePath = isDoctorContext ? '/doctor' : '/secretaire';
   const { doctorId } = useParams<RouteParams>();
   const [doctor, setDoctor] = useState<ApiDoctorDirectory | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ const DoctorDoctorDetailPage: React.FC = () => {
     let active = true;
     setLoading(true);
 
-    const loader = token ? api.getDoctorsDirectoryForDoctor(token) : api.getDoctorsDirectory();
+    const loader = token && isDoctorContext ? api.getDoctorsDirectoryForDoctor(token) : api.getDoctorsDirectory();
 
     loader
       .then((rows) => {
@@ -74,9 +76,9 @@ const DoctorDoctorDetailPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [doctorId, token]);
+  }, [doctorId, isDoctorContext, token]);
 
-  const canVerify = !!user?.can_verify_accounts;
+  const canVerify = isDoctorContext && !!user?.can_verify_accounts;
 
   const canManageLicense = useMemo(() => {
     if (!permissionLoaded || !doctor || !user) {
@@ -166,7 +168,7 @@ const DoctorDoctorDetailPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
-            <IonBackButton defaultHref="/doctor/doctors" />
+            <IonBackButton defaultHref={`${basePath}/doctors`} />
           </IonButtons>
           <IonTitle>Detail medecin</IonTitle>
         </IonToolbar>

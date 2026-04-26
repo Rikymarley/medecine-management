@@ -139,7 +139,6 @@ const DoctorVisitDetailPage: React.FC = () => {
     if (!visit) {
       return;
     }
-    const patientRouteName = encodeURIComponent(visit.patient_name ?? patientName ?? 'Patient');
     const params = new URLSearchParams();
     params.set('patientUserId', String(visit.patient_user_id));
     params.set('visitId', String(visit.id));
@@ -150,14 +149,13 @@ const DoctorVisitDetailPage: React.FC = () => {
     if (visit.family_member_name) {
       params.set('familyMemberName', visit.family_member_name);
     }
-    ionRouter.push(`/doctor/patients/${patientRouteName}?${params.toString()}`, 'forward', 'push');
+    ionRouter.push(`/doctor/patients/${visit.patient_user_id}?${params.toString()}`, 'forward', 'push');
   };
 
   const goToCreateRehabFromVisit = () => {
     if (!visit) {
       return;
     }
-    const patientRouteName = encodeURIComponent(visit.patient_name ?? patientName ?? 'Patient');
     const params = new URLSearchParams();
     params.set('patientUserId', String(visit.patient_user_id));
     params.set('visitId', String(visit.id));
@@ -168,14 +166,13 @@ const DoctorVisitDetailPage: React.FC = () => {
     if (visit.family_member_name) {
       params.set('familyMemberName', visit.family_member_name);
     }
-    ionRouter.push(`/doctor/patients/${patientRouteName}?${params.toString()}`, 'forward', 'push');
+    ionRouter.push(`/doctor/patients/${visit.patient_user_id}?${params.toString()}`, 'forward', 'push');
   };
 
   const goToRehabDetailFromVisit = (rehabId: number | null) => {
     if (!visit || !rehabId) {
       return;
     }
-    const patientRouteName = encodeURIComponent(visit.patient_name ?? patientName ?? 'Patient');
     const params = new URLSearchParams();
     params.set('patientUserId', String(visit.patient_user_id));
     params.set('visitId', String(visit.id));
@@ -187,7 +184,7 @@ const DoctorVisitDetailPage: React.FC = () => {
     if (visit.family_member_name) {
       params.set('familyMemberName', visit.family_member_name);
     }
-    ionRouter.push(`/doctor/patients/${patientRouteName}?${params.toString()}`, 'forward', 'push');
+    ionRouter.push(`/doctor/patients/${visit.patient_user_id}?${params.toString()}`, 'forward', 'push');
   };
 
   const prescriptions = visit?.prescriptions ?? [];

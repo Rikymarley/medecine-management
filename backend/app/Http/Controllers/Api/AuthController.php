@@ -271,6 +271,37 @@ class AuthController extends Controller
         return response()->json($doctors);
     }
 
+    public function secretariesDirectoryForSecretary()
+    {
+        $secretarySelect = $this->existingUserColumns([
+            'id',
+            'name',
+            'email',
+            'phone',
+            'whatsapp',
+            'account_status',
+            'verification_status',
+        ]);
+
+        $secretaries = User::query()
+            ->where('role', 'secretaire')
+            ->where('verification_status', 'approved')
+            ->orderBy('name')
+            ->get($secretarySelect)
+            ->map(static fn (User $secretary) => [
+                'id' => $secretary->id,
+                'name' => $secretary->name,
+                'email' => $secretary->email,
+                'phone' => $secretary->phone,
+                'whatsapp' => $secretary->whatsapp,
+                'account_status' => $secretary->account_status,
+                'verification_status' => $secretary->verification_status,
+            ])
+            ->values();
+
+        return response()->json($secretaries);
+    }
+
     public function register(Request $request)
     {
         $data = $request->validate([

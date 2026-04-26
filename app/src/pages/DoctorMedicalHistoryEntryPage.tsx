@@ -139,8 +139,8 @@ const DoctorMedicalHistoryEntryPage: React.FC = () => {
   };
 
   const handleEdit = () => {
-    const routeName = patientNameParam || 'patient';
-    ionRouter.push(`/doctor/patients/${encodeURIComponent(routeName)}${contextParamsWith({ historyId: String(entry?.id ?? entryId) })}`, 'forward', 'push');
+    const routeId = patientUserId ? String(patientUserId) : encodeURIComponent(patientNameParam || 'patient');
+    ionRouter.push(`/doctor/patients/${routeId}${contextParamsWith({ historyId: String(entry?.id ?? entryId) })}`, 'forward', 'push');
   };
 
   const handlePrescriptionNavigation = (prescriptionId: number | null | undefined) => {

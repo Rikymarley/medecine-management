@@ -307,7 +307,7 @@ const DoctorPatientsPage: React.FC = () => {
       });
       setToastMessage('Patient ajoute.');
       await loadDoctorPatients();
-      ionRouter.push(`/doctor/patients/${encodeURIComponent(created.name)}?patientUserId=${created.id}`, 'forward', 'push');
+      ionRouter.push(`/doctor/patients/${created.id}`, 'forward', 'push');
     } catch (err) {
       setToastMessage(err instanceof Error ? err.message : "Echec de creation du patient.");
     } finally {
@@ -356,7 +356,7 @@ const DoctorPatientsPage: React.FC = () => {
                         style={compactItemStyle}
                         onClick={() =>
                           ionRouter.push(
-                            `/doctor/patients/${encodeURIComponent(row.name)}?patientUserId=${row.id}`,
+                            `/doctor/patients/${row.id}`,
                             'forward',
                             'push'
                           )
@@ -437,21 +437,17 @@ const DoctorPatientsPage: React.FC = () => {
                     button
                     detail
                     style={compactItemStyle}
-                    onClick={() =>
-                      ionRouter.push(
-                        `/doctor/patients/${encodeURIComponent(entry.patientName)}${
-                          entry.familyMemberId
-                            ? `?familyMemberId=${entry.familyMemberId}&familyMemberName=${encodeURIComponent(entry.label)}${
-                                entry.patientUserId ? `&patientUserId=${entry.patientUserId}` : ''
-                              }`
-                            : entry.patientUserId
-                              ? `?patientUserId=${entry.patientUserId}`
-                              : ''
-                        }`,
-                        'forward',
-                        'push'
-                      )
-                    }
+                    onClick={() => {
+                      const basePath = entry.patientUserId
+                        ? `/doctor/patients/${entry.patientUserId}`
+                        : `/doctor/patients/${encodeURIComponent(entry.patientName)}`;
+                      const suffix = entry.familyMemberId
+                        ? `?familyMemberId=${entry.familyMemberId}&familyMemberName=${encodeURIComponent(entry.label)}${
+                            entry.patientUserId ? `&patientUserId=${entry.patientUserId}` : ''
+                          }`
+                        : '';
+                      ionRouter.push(`${basePath}${suffix}`, 'forward', 'push');
+                    }}
                   >
                     {entry.photoUrl ? (
                       <img

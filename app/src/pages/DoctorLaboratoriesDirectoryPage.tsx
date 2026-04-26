@@ -34,7 +34,9 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'approved' | 'pending' | 'licensed' | 'unlicensed' | 'emergency'>('all');
   const lastLoadedAtRef = useRef(0);
-  const canManageAccountVerification = !!user?.can_verify_accounts;
+  const isDoctorContext = user?.role === 'doctor';
+  const basePath = isDoctorContext ? '/doctor' : '/secretaire';
+  const canManageAccountVerification = isDoctorContext && !!user?.can_verify_accounts;
 
   useEffect(() => {
     if (
@@ -49,14 +51,14 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
     if (!force && Date.now() - lastLoadedAtRef.current < LOAD_TTL_MS) {
       return;
     }
-    if (!token) {
+    if (!token || !isDoctorContext) {
       await api.getLaboratories().then(setLaboratories).catch(() => undefined);
       lastLoadedAtRef.current = Date.now();
       return;
     }
     await api.getLaboratoriesForDoctor(token).then(setLaboratories).catch(() => undefined);
     lastLoadedAtRef.current = Date.now();
-  }, [LOAD_TTL_MS, token]);
+  }, [LOAD_TTL_MS, isDoctorContext, token]);
 
   useEffect(() => {
     loadLaboratories(true).catch(() => undefined);
@@ -95,7 +97,7 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
-            <IonBackButton defaultHref="/doctor" />
+            <IonBackButton defaultHref={basePath} />
           </IonButtons>
           <IonTitle>Annuaire laboratoires</IonTitle>
         </IonToolbar>
@@ -152,7 +154,7 @@ const DoctorLaboratoriesDirectoryPage: React.FC = () => {
                     key={laboratory.id}
                     lines="full"
                     button
-                    onClick={() => ionRouter.push(`/doctor/laboratoires/${laboratory.id}`, 'forward', 'push')}
+                    onClick={() => ionRouter.push(`${basePath}/laboratoires/${laboratory.id}`, 'forward', 'push')}
                   >
                     <IonLabel>
                       {laboratory.logo_url ? (

@@ -24,13 +24,12 @@ import {
   calendarOutline,
   chevronDownOutline,
   chevronUpOutline,
-  documentTextOutline,
   imageOutline,
+  medkitOutline,
   peopleOutline,
   personCircleOutline,
   shieldCheckmarkOutline,
-  storefrontOutline,
-  walkOutline
+  storefrontOutline
 } from 'ionicons/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
@@ -48,7 +47,6 @@ const SecretaryDashboard: React.FC = () => {
   const [locationExpanded, setLocationExpanded] = useState(false);
   const [bioExpanded, setBioExpanded] = useState(false);
   const [networkExpanded, setNetworkExpanded] = useState(false);
-  const [accountExpanded, setAccountExpanded] = useState(false);
   const [passwordExpanded, setPasswordExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -153,10 +151,6 @@ const SecretaryDashboard: React.FC = () => {
         photoInputRef.current.value = '';
       }
     }
-  };
-
-  const openUpcomingModule = (moduleName: string) => {
-    setMessage(`${moduleName} sera disponible prochainement pour le role secretaire.`);
   };
 
   return (
@@ -379,7 +373,12 @@ const SecretaryDashboard: React.FC = () => {
           </IonCardHeader>
           <IonCardContent>
             <div className="dashboard-grid">
-              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Patients')}>
+              <IonCard
+                button
+                className="surface-card"
+                style={{ margin: 0 }}
+                onClick={() => ionRouter.push('/secretaire/patients', 'forward', 'push')}
+              >
                 <IonCardContent>
                   <div className="quick-icon quick-icon-rose">
                     <IonIcon icon={peopleOutline} />
@@ -388,7 +387,12 @@ const SecretaryDashboard: React.FC = () => {
                   <p className="muted-note">Acceder aux dossiers patients.</p>
                 </IonCardContent>
               </IonCard>
-              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Rendez-Vous')}>
+              <IonCard
+                button
+                className="surface-card"
+                style={{ margin: 0 }}
+                onClick={() => ionRouter.push('/secretaire/rendez-vous', 'forward', 'push')}
+              >
                 <IonCardContent>
                   <div className="quick-icon quick-icon-blue">
                     <IonIcon icon={calendarOutline} />
@@ -397,22 +401,18 @@ const SecretaryDashboard: React.FC = () => {
                   <p className="muted-note">Consulter les rendez-vous planifies.</p>
                 </IonCardContent>
               </IonCard>
-              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Ordonnances')}>
+              <IonCard
+                button
+                className="surface-card"
+                style={{ margin: 0 }}
+                onClick={() => ionRouter.push('/secretaire/access-requests', 'forward', 'push')}
+              >
                 <IonCardContent>
-                  <div className="quick-icon quick-icon-purple">
-                    <IonIcon icon={documentTextOutline} />
+                  <div className="quick-icon quick-icon-gold">
+                    <IonIcon icon={shieldCheckmarkOutline} />
                   </div>
-                  <h3>Ordonnances</h3>
-                  <p className="muted-note">Suivre le flux des ordonnances.</p>
-                </IonCardContent>
-              </IonCard>
-              <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Visites')}>
-                <IonCardContent>
-                  <div className="quick-icon quick-icon-green">
-                    <IonIcon icon={walkOutline} />
-                  </div>
-                  <h3>Visites</h3>
-                  <p className="muted-note">Consulter les visites enregistrees.</p>
+                  <h3>Demandes d'acces</h3>
+                  <p className="muted-note">Gerer les demandes en attente.</p>
                 </IonCardContent>
               </IonCard>
             </div>
@@ -421,98 +421,100 @@ const SecretaryDashboard: React.FC = () => {
 
         <IonCard className="surface-card">
           <IonCardHeader>
-            <IonCardTitle>Reseau & compte</IonCardTitle>
+            <IonCardTitle>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <IonIcon icon={medkitOutline} />
+                  Reseau professionnel
+                </span>
+                <IonButton
+                  fill="clear"
+                  size="small"
+                  onClick={() => setNetworkExpanded((prev) => !prev)}
+                >
+                  <IonIcon icon={networkExpanded ? chevronUpOutline : chevronDownOutline} />
+                </IonButton>
+              </div>
+            </IonCardTitle>
           </IonCardHeader>
-          <IonCardContent style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
-              <IonButton
-                expand="block"
-                fill="clear"
-                color="dark"
-                onClick={() => setNetworkExpanded((prev) => !prev)}
-                style={{ margin: 0 }}
-              >
-                Reseau
-                {networkExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
-              </IonButton>
-              {networkExpanded ? (
-                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
-                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Hopitaux')}>
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-red">
-                        <IonIcon icon={businessOutline} />
-                      </div>
-                      <h3>Hopitaux</h3>
-                      <p className="muted-note">Consulter les hopitaux partenaires.</p>
-                    </IonCardContent>
-                  </IonCard>
-                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Laboratoires')}>
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-purple">
-                        <IonIcon icon={beaker} />
-                      </div>
-                      <h3>Laboratoires</h3>
-                      <p className="muted-note">Consulter les laboratoires disponibles.</p>
-                    </IonCardContent>
-                  </IonCard>
-                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Pharmacies')}>
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-green">
-                        <IonIcon icon={storefrontOutline} />
-                      </div>
-                      <h3>Pharmacies</h3>
-                      <p className="muted-note">Consulter les pharmacies disponibles.</p>
-                    </IonCardContent>
-                  </IonCard>
-                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => openUpcomingModule('Medecins')}>
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-blue">
-                        <IonIcon icon={peopleOutline} />
-                      </div>
-                      <h3>Medecins</h3>
-                      <p className="muted-note">Consulter les medecins du reseau.</p>
-                    </IonCardContent>
-                  </IonCard>
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', overflow: 'hidden' }}>
-              <IonButton
-                expand="block"
-                fill="clear"
-                color="dark"
-                onClick={() => setAccountExpanded((prev) => !prev)}
-                style={{ margin: 0 }}
-              >
-                Compte
-                {accountExpanded ? <IonIcon slot="end" icon={chevronUpOutline} /> : <IonIcon slot="end" icon={chevronDownOutline} />}
-              </IonButton>
-              {accountExpanded ? (
-                <div className="dashboard-grid" style={{ padding: '0 10px 10px' }}>
-                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => setProfileCardExpanded(true)}>
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-gold">
-                        <IonIcon icon={personCircleOutline} />
-                      </div>
-                      <h3>Mon profil</h3>
-                      <p className="muted-note">Modifier les informations du compte.</p>
-                    </IonCardContent>
-                  </IonCard>
-                  <IonCard button className="surface-card" style={{ margin: 0 }} onClick={() => ionRouter.push('/secretaire/access-requests', 'forward', 'push')}>
-                    <IonCardContent>
-                      <div className="quick-icon quick-icon-gold">
-                        <IonIcon icon={shieldCheckmarkOutline} />
-                      </div>
-                      <h3>Demandes d'acces</h3>
-                      <p className="muted-note">Gerer les demandes en attente.</p>
-                    </IonCardContent>
-                  </IonCard>
-                </div>
-              ) : null}
-            </div>
-          </IonCardContent>
+          {networkExpanded ? (
+            <IonCardContent>
+              <div className="dashboard-grid">
+                <IonCard
+                  button
+                  className="surface-card"
+                  style={{ margin: 0 }}
+                  onClick={() => ionRouter.push('/secretaire/hopitaux', 'forward', 'push')}
+                >
+                  <IonCardContent>
+                    <div className="quick-icon quick-icon-red">
+                      <IonIcon icon={businessOutline} />
+                    </div>
+                    <h3>Hopitaux</h3>
+                    <p className="muted-note">Consulter les hopitaux partenaires.</p>
+                  </IonCardContent>
+                </IonCard>
+                <IonCard
+                  button
+                  className="surface-card"
+                  style={{ margin: 0 }}
+                  onClick={() => ionRouter.push('/secretaire/laboratoires', 'forward', 'push')}
+                >
+                  <IonCardContent>
+                    <div className="quick-icon quick-icon-purple">
+                      <IonIcon icon={beaker} />
+                    </div>
+                    <h3>Laboratoires</h3>
+                    <p className="muted-note">Consulter les laboratoires disponibles.</p>
+                  </IonCardContent>
+                </IonCard>
+                <IonCard
+                  button
+                  className="surface-card"
+                  style={{ margin: 0 }}
+                  onClick={() => ionRouter.push('/secretaire/pharmacies', 'forward', 'push')}
+                >
+                  <IonCardContent>
+                    <div className="quick-icon quick-icon-green">
+                      <IonIcon icon={storefrontOutline} />
+                    </div>
+                    <h3>Pharmacies</h3>
+                    <p className="muted-note">Consulter les pharmacies disponibles.</p>
+                  </IonCardContent>
+                </IonCard>
+                <IonCard
+                  button
+                  className="surface-card"
+                  style={{ margin: 0 }}
+                  onClick={() => ionRouter.push('/secretaire/doctors', 'forward', 'push')}
+                >
+                  <IonCardContent>
+                    <div className="quick-icon quick-icon-blue">
+                      <IonIcon icon={peopleOutline} />
+                    </div>
+                    <h3>Medecins</h3>
+                    <p className="muted-note">Consulter les medecins du reseau.</p>
+                  </IonCardContent>
+                </IonCard>
+                <IonCard
+                  button
+                  className="surface-card"
+                  style={{ margin: 0 }}
+                  onClick={() => ionRouter.push('/secretaire/secretaires', 'forward', 'push')}
+                >
+                  <IonCardContent>
+                    <div className="quick-icon quick-icon-rose">
+                      <IonIcon icon={personCircleOutline} />
+                    </div>
+                    <h3>Secretaires</h3>
+                    <p className="muted-note">Consulter les secretaires disponibles.</p>
+                  </IonCardContent>
+                </IonCard>
+              </div>
+            </IonCardContent>
+          ) : null}
         </IonCard>
+
       </IonContent>
     </IonPage>
   );

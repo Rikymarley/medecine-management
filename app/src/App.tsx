@@ -114,6 +114,12 @@ const HospitalDashboard = lazy(() => import('./pages/HospitalDashboard'));
 const LaboratoryDashboard = lazy(() => import('./pages/LaboratoryDashboard'));
 const SecretaryDashboard = lazy(() => import('./pages/SecretaryDashboard'));
 const SecretaryAccessRequestsPage = lazy(() => import('./pages/SecretaryAccessRequestsPage'));
+const SecretaryAppointmentsPage = lazy(() => import('./pages/SecretaryAppointmentsPage'));
+const SecretaryPatientsPage = lazy(() => import('./pages/SecretaryPatientsPage'));
+const SecretaryPatientDetailPage = lazy(() => import('./pages/SecretaryPatientDetailPage'));
+const SecretaryAppointmentCreatePage = lazy(() => import('./pages/SecretaryAppointmentCreatePage'));
+const SecretarySecretariesPage = lazy(() => import('./pages/SecretarySecretariesPage'));
+const SecretarySecretaryDetailPage = lazy(() => import('./pages/SecretarySecretaryDetailPage'));
 
 const isBlockedPendingUser = (
   user: ReturnType<typeof useAuth>['user']
@@ -232,6 +238,12 @@ const RoutePreloader: React.FC = () => {
         import('./pages/LaboratoryDashboard'),
         import('./pages/SecretaryDashboard'),
         import('./pages/SecretaryAccessRequestsPage'),
+        import('./pages/SecretaryAppointmentsPage'),
+        import('./pages/SecretaryPatientsPage'),
+        import('./pages/SecretaryPatientDetailPage'),
+        import('./pages/SecretaryAppointmentCreatePage'),
+        import('./pages/SecretarySecretariesPage'),
+        import('./pages/SecretarySecretaryDetailPage'),
       ]);
     };
 
@@ -744,6 +756,81 @@ const App: React.FC = () => (
           <Route exact path="/secretaire/access-requests">
             <RequireRole role="secretaire">
               <SecretaryAccessRequestsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/rendez-vous">
+            <RequireRole role="secretaire">
+              <SecretaryAppointmentsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/patients">
+            <RequireRole role="secretaire">
+              <SecretaryPatientsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/patients/:patientId">
+            <RequireRole role="secretaire">
+              <SecretaryPatientDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/patients/:patientId/rendez-vous/new">
+            <RequireRole role="secretaire">
+              <SecretaryAppointmentsPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/patients/:patientId/rendez-vous/:appointmentId/edit">
+            <RequireRole role="secretaire">
+              <SecretaryAppointmentCreatePage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/doctors">
+            <RequireRole role="secretaire">
+              <DoctorDoctorsDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/doctors/:doctorId">
+            <RequireRole role="secretaire">
+              <DoctorDoctorDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/pharmacies">
+            <RequireRole role="secretaire">
+              <DoctorPharmaciesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/pharmacies/:pharmacyId">
+            <RequireRole role="secretaire">
+              <DoctorPharmacyDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/hopitaux">
+            <RequireRole role="secretaire">
+              <DoctorHospitalsDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/hopitaux/:facilityId">
+            <RequireRole role="secretaire">
+              <DoctorHospitalDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/laboratoires">
+            <RequireRole role="secretaire">
+              <DoctorLaboratoriesDirectoryPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/laboratoires/:facilityId">
+            <RequireRole role="secretaire">
+              <DoctorLaboratoryDetailPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/secretaires">
+            <RequireRole role="secretaire">
+              <SecretarySecretariesPage />
+            </RequireRole>
+          </Route>
+          <Route exact path="/secretaire/secretaires/:secretaryId">
+            <RequireRole role="secretaire">
+              <SecretarySecretaryDetailPage />
             </RequireRole>
           </Route>
             <Route exact path="/">

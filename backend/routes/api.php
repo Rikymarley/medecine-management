@@ -38,6 +38,8 @@ Route::get('/doctor/doctors-directory', [AuthController::class, 'doctorsDirector
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/pharmacy/doctors-directory', [AuthController::class, 'doctorsDirectoryForDoctor'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
+Route::get('/secretaire/secretaires-directory', [AuthController::class, 'secretariesDirectoryForSecretary'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified']);
 
 Route::get('/pharmacies', [PharmacyController::class, 'index']);
 Route::get('/hospitals', [HospitalController::class, 'index']);
@@ -76,6 +78,10 @@ Route::get('/doctor/patients/search', [PrescriptionController::class, 'searchPat
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/patients', [DoctorPatientController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/secretaire/patients', [DoctorPatientController::class, 'indexForSecretary'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified']);
+Route::get('/secretaire/patients/{patient}', [DoctorPatientController::class, 'showForSecretary'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified']);
 Route::get('/doctor/patients/availability', [DoctorPatientController::class, 'availability'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::post('/doctor/patients', [DoctorPatientController::class, 'store'])

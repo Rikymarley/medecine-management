@@ -5,16 +5,17 @@ import { useAuth } from '../state/AuthState';
 
 const DoctorLaboratoryDetailPage: React.FC = () => {
   const { token, user } = useAuth();
+  const isDoctorContext = user?.role === 'doctor';
   return (
     <FacilityDetailView
       title="Detail laboratoire"
       emptyMessage="Laboratoire introuvable."
-      backHref="/doctor/laboratoires"
+      backHref={isDoctorContext ? '/doctor/laboratoires' : '/secretaire/laboratoires'}
       icon={beaker}
       loadPublic={api.getLaboratories}
       loadPrivate={api.getLaboratoriesForDoctor}
-      token={token}
-      showVerificationBadges={!!user?.can_verify_accounts}
+      token={isDoctorContext ? token : null}
+      showVerificationBadges={isDoctorContext && !!user?.can_verify_accounts}
     />
   );
 };

@@ -31,6 +31,8 @@ type RouteParams = {
 
 const DoctorPharmacyDetailPage: React.FC = () => {
   const { token, user, loading: authLoading } = useAuth();
+  const isDoctorContext = user?.role === 'doctor';
+  const basePath = isDoctorContext ? '/doctor' : '/secretaire';
   const { pharmacyId } = useParams<RouteParams>();
   const [pharmacy, setPharmacy] = useState<ApiPharmacy | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,15 +46,15 @@ const DoctorPharmacyDetailPage: React.FC = () => {
     if (authLoading) {
       return;
     }
-    setCanVerify(!!user?.can_verify_accounts);
+    setCanVerify(isDoctorContext && !!user?.can_verify_accounts);
     setPermissionLoaded(true);
-  }, [authLoading, user]);
+  }, [authLoading, isDoctorContext, user]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
 
-    const loader = token ? api.getPharmaciesForDoctor(token) : api.getPharmacies();
+    const loader = token && isDoctorContext ? api.getPharmaciesForDoctor(token) : api.getPharmacies();
 
     loader
       .then((rows) => {
@@ -72,7 +74,7 @@ const DoctorPharmacyDetailPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [pharmacyId, token]);
+  }, [isDoctorContext, pharmacyId, token]);
 
   const canManageLicense = useMemo(() => {
     if (!permissionLoaded || !pharmacy) {
@@ -148,7 +150,7 @@ const DoctorPharmacyDetailPage: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonButtons slot="start">
-            <IonBackButton defaultHref="/doctor/pharmacies" />
+            <IonBackButton defaultHref={`${basePath}/pharmacies`} />
           </IonButtons>
           <IonTitle>Detail pharmacie</IonTitle>
         </IonToolbar>

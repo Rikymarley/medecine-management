@@ -1,7 +1,6 @@
 import {
   IonBackButton,
   IonBadge,
-  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -155,41 +154,38 @@ const FacilityDetailView: React.FC<FacilityDetailViewProps> = ({
                   {facility.emergency_available ? <IonBadge color="warning">Urgence</IonBadge> : null}
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                  <IonButton size="small" fill="outline" disabled={!facility.phone} href={facility.phone ? `tel:${facility.phone}` : undefined}>
-                    <IonIcon icon={callOutline} slot="start" />
-                    Appeler
-                  </IonButton>
-                  <IonButton
-                    size="small"
-                    fill="outline"
-                    disabled={!facility.phone}
-                    href={facility.phone ? `https://wa.me/${toWhatsappPhone(facility.phone)}` : undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <IonIcon icon={logoWhatsapp} slot="start" />
-                    WhatsApp
-                  </IonButton>
-                  <IonButton
-                    size="small"
-                    fill="outline"
-                    disabled={!mapQuery}
-                    href={mapQuery ? `https://www.google.com/maps/search/?api=1&query=${mapQuery}` : undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <IonIcon icon={locateOutline} slot="start" />
-                    Localisation
-                  </IonButton>
-                </div>
-
                 <IonList>
                   <IonItem lines="full">
                     <IonLabel>
                       <h3>Telephone</h3>
                       <p>{facility.phone || 'N/D'}</p>
                     </IonLabel>
+                    <a
+                      href={facility.phone ? `tel:${facility.phone}` : undefined}
+                      style={{ pointerEvents: facility.phone ? 'auto' : 'none', opacity: facility.phone ? 1 : 0.5 }}
+                      slot="end"
+                    >
+                      <IonIcon icon={callOutline} />
+                    </a>
+                  </IonItem>
+                  <IonItem lines="full">
+                    <IonLabel>
+                      <h3>WhatsApp</h3>
+                      <p>{facility.recovery_whatsapp || facility.phone || 'N/D'}</p>
+                    </IonLabel>
+                    <a
+                      href={
+                        facility.recovery_whatsapp || facility.phone
+                          ? `https://wa.me/${toWhatsappPhone(facility.recovery_whatsapp || facility.phone || '')}`
+                          : undefined
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ pointerEvents: facility.recovery_whatsapp || facility.phone ? 'auto' : 'none', opacity: facility.recovery_whatsapp || facility.phone ? 1 : 0.5 }}
+                      slot="end"
+                    >
+                      <IonIcon icon={logoWhatsapp} />
+                    </a>
                   </IonItem>
                   <IonItem lines="full">
                     <IonLabel>
@@ -231,6 +227,15 @@ const FacilityDetailView: React.FC<FacilityDetailViewProps> = ({
                           : 'Licence non verifiee'}
                       </p>
                     </IonLabel>
+                    <a
+                      href={mapQuery ? `https://www.google.com/maps/search/?api=1&query=${mapQuery}` : undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ pointerEvents: mapQuery ? 'auto' : 'none', opacity: mapQuery ? 1 : 0.5 }}
+                      slot="end"
+                    >
+                      <IonIcon icon={locateOutline} />
+                    </a>
                   </IonItem>
                 </IonList>
               </>
