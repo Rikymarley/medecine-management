@@ -32,7 +32,7 @@ const PatientDoctorsPage: React.FC = () => {
   const [directoryDoctors, setDirectoryDoctors] = useState<ApiDoctorDirectory[]>([]);
   const [myDoctorNames, setMyDoctorNames] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'mine' | 'all' | 'licensed' | 'unlicensed' | 'tele'>('mine');
+  const [statusFilter, setStatusFilter] = useState<'mine' | 'all' | 'tele'>('mine');
   const lastLoadedAtRef = useRef(0);
 
   const loadDoctors = useCallback(async (force = false) => {
@@ -77,8 +77,6 @@ const PatientDoctorsPage: React.FC = () => {
 
     const rows = searched.filter((doctor) => {
       if (statusFilter === 'mine') return myDoctorNames.has(doctor.name.trim().toLowerCase());
-      if (statusFilter === 'licensed') return !!doctor.license_verified;
-      if (statusFilter === 'unlicensed') return !doctor.license_verified;
       if (statusFilter === 'tele') return !!doctor.teleconsultation_available;
       return true;
     });
@@ -110,8 +108,6 @@ const PatientDoctorsPage: React.FC = () => {
               <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 28px 8px 0' }}>
                 <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'mine' ? 'solid' : 'outline'} onClick={() => setStatusFilter('mine')}>Mes medecins</IonButton>
                 <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'all' ? 'solid' : 'outline'} onClick={() => setStatusFilter('all')}>Tous</IonButton>
-                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'licensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('licensed')}>Licence verifiee</IonButton>
-                <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'unlicensed' ? 'solid' : 'outline'} onClick={() => setStatusFilter('unlicensed')}>Licence non verifiee</IonButton>
                 <IonButton style={{ whiteSpace: 'nowrap' }} size="small" fill={statusFilter === 'tele' ? 'solid' : 'outline'} onClick={() => setStatusFilter('tele')}>Teleconsultation</IonButton>
               </div>
               <div
@@ -146,7 +142,7 @@ const PatientDoctorsPage: React.FC = () => {
                     button
                     detail
                     onClick={() =>
-                      ionRouter.push(`/patient/doctors/${encodeURIComponent(doctor.name)}`, 'forward', 'push')
+                      ionRouter.push(`/patient/doctors/${doctor.id}`, 'forward', 'push')
                     }
                   >
                     {doctor.profile_photo_url ? (
@@ -173,9 +169,6 @@ const PatientDoctorsPage: React.FC = () => {
                       </p>
                       <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                         {isMyDoctor ? <IonBadge color="success">Mon medecin</IonBadge> : null}
-                        <IonBadge color={doctor.license_verified ? 'success' : 'warning'}>
-                          {doctor.license_verified ? 'Licence verifiee' : 'Licence non verifiee'}
-                        </IonBadge>
                         {doctor.teleconsultation_available ? <IonBadge color="tertiary">Teleconsultation</IonBadge> : null}
                       </div>
                     </IonLabel>

@@ -27,7 +27,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useIonRouter } from '@ionic/react';
 import { useLocation, useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
-import { api } from '../services/api';
+import { api, type ApiAppointment } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
 
@@ -36,20 +36,9 @@ type RouteParams = {
   appointmentId?: string;
 };
 
-type SecretaryAppointmentEntry = {
-  id: string;
-  patient_id: number;
-  created_by_secretary_id: number | null;
-  doctor_user_id: number;
-  doctor_name: string;
-  scheduled_at: string;
-  note: string | null;
-  created_at: string;
-};
-
 const SecretaryAppointmentCreatePage: React.FC = () => {
   const ionRouter = useIonRouter();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const { patientId, appointmentId } = useParams<RouteParams>();
   const location = useLocation();
   const query = new URLSearchParams(location.search);
@@ -66,7 +55,11 @@ const SecretaryAppointmentCreatePage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkedDoctors, setLinkedDoctors] = useState<Array<{ id: number; name: string; specialty: string | null }>>([]);
-  const isEditMode = Boolean(appointmentId);
+  const parsedAppointmentId = useMemo(() => {
+    const value = Number(appointmentId ?? '');
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [appointmentId]);
+  const isEditMode = parsedAppointmentId !== null;
 
   useEffect(() => {
     let active = true;
@@ -107,44 +100,32 @@ const SecretaryAppointmentCreatePage: React.FC = () => {
 
   useEffect(() => {
     const parsedPatientId = Number(patientId);
-    if (!Number.isFinite(parsedPatientId) || !appointmentId) {
+    if (!token || !Number.isFinite(parsedPatientId) || !parsedAppointmentId) {
       return;
     }
-    const storageKey = `secretary-appointments-${parsedPatientId}`;
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return;
-    }
-    try {
-      const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-      const existing = parsed.find((row) => row.id === appointmentId);
-      if (!existing) {
-        return;
-      }
-      setDoctorId(String(existing.doctor_user_id));
-      const localDate = new Date(existing.scheduled_at);
-      if (!Number.isNaN(localDate.getTime())) {
-        const y = localDate.getFullYear();
-        const m = String(localDate.getMonth() + 1).padStart(2, '0');
-        const d = String(localDate.getDate()).padStart(2, '0');
-        const hh = String(localDate.getHours()).padStart(2, '0');
-        const mm = String(localDate.getMinutes()).padStart(2, '0');
-        setScheduledDate(`${y}-${m}-${d}`);
-        setScheduledTime(`${hh}:${mm}`);
-      }
-      setNote(existing.note ?? '');
-    } catch {
-      // ignore invalid local data
-    }
-  }, [appointmentId, patientId]);
-
-  const selectedDoctor = useMemo(
-    () => linkedDoctors.find((row) => String(row.id) === doctorId) ?? null,
-    [doctorId, linkedDoctors]
-  );
+    api.getSecretaryAppointments(token, { patient_id: parsedPatientId })
+      .then((rows) => {
+        const existing = rows.find((row) => row.id === parsedAppointmentId);
+        if (!existing) {
+          return;
+        }
+        setDoctorId(String(existing.doctor_user_id));
+        const localDate = new Date(existing.scheduled_at);
+        if (!Number.isNaN(localDate.getTime())) {
+          const y = localDate.getFullYear();
+          const m = String(localDate.getMonth() + 1).padStart(2, '0');
+          const d = String(localDate.getDate()).padStart(2, '0');
+          const hh = String(localDate.getHours()).padStart(2, '0');
+          const mm = String(localDate.getMinutes()).padStart(2, '0');
+          setScheduledDate(`${y}-${m}-${d}`);
+          setScheduledTime(`${hh}:${mm}`);
+        }
+        setNote(existing.note ?? '');
+      })
+      .catch(() => {
+        // keep defaults
+      });
+  }, [parsedAppointmentId, patientId, token]);
 
   const formattedDateLabel = useMemo(() => {
     if (!scheduledDate) {
@@ -192,41 +173,33 @@ const SecretaryAppointmentCreatePage: React.FC = () => {
     const localDateTime = `${scheduledDate}T${scheduledTime}:00`;
 
     const parsedDoctorId = Number(doctorId);
-    const nextEntry: SecretaryAppointmentEntry = {
-      id: appointmentId ?? `rdv-${Date.now()}`,
-      patient_id: parsedPatientId,
-      created_by_secretary_id: user?.id ?? null,
-      doctor_user_id: parsedDoctorId,
-      doctor_name: selectedDoctor?.name ?? `Docteur #${parsedDoctorId}`,
-      scheduled_at: new Date(localDateTime).toISOString(),
-      note: note.trim() || null,
-      created_at: new Date().toISOString(),
-    };
+
+    if (!token) {
+      setError('Session invalide.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
-    try {
-      const storageKey = `secretary-appointments-${parsedPatientId}`;
-      const raw = localStorage.getItem(storageKey);
-      let existing: SecretaryAppointmentEntry[] = [];
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
-          if (Array.isArray(parsed)) {
-            existing = parsed;
-          }
-        } catch {
-          existing = [];
-        }
-      }
-      const next = appointmentId
-        ? existing.map((row) => (row.id === appointmentId ? nextEntry : row))
-        : [...existing, nextEntry];
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      ionRouter.push(`/secretaire/patients/${parsedPatientId}`, 'back', 'pop');
-    } finally {
-      setSaving(false);
-    }
+    const payload = {
+      patient_id: parsedPatientId,
+      doctor_user_id: parsedDoctorId,
+      scheduled_at: new Date(localDateTime).toISOString(),
+      note: note.trim() || null,
+    };
+
+    const request = isEditMode && parsedAppointmentId
+      ? api.updateSecretaryAppointment(token, parsedAppointmentId, payload)
+      : api.createSecretaryAppointment(token, payload);
+
+    request
+      .then(() => {
+        ionRouter.push(`/secretaire/patients/${parsedPatientId}`, 'back', 'pop');
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Impossible d'enregistrer ce rendez-vous.");
+      })
+      .finally(() => setSaving(false));
   };
 
   return (

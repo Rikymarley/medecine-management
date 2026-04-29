@@ -673,7 +673,7 @@ const App: React.FC = () => (
               <PatientLaboratoryDetailPage />
             </RequireRole>
           </Route>
-          <Route exact path="/patient/doctors/:doctorName">
+          <Route exact path="/patient/doctors/:doctorId">
             <RequireRole role="patient">
               <PatientDoctorPrescriptionsPage />
             </RequireRole>

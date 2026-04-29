@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\PharmacyController;
 use App\Http\Controllers\Api\PharmacyResponseController;
 use App\Http\Controllers\Api\PrescriptionController;
+use App\Http\Controllers\Api\AppointmentController;
 use App\Http\Controllers\Api\AdminAccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmergencyContactController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Api\DoctorPatientAccessRequestController;
 use App\Http\Controllers\Api\DoctorSecretaryAccessRequestController;
 use App\Http\Controllers\Api\DoctorRehabController;
 use App\Http\Controllers\Api\DoctorVisitController;
+use App\Http\Controllers\Api\PatientVitalSignController;
 use App\Http\Controllers\Api\UserVerificationController;
 use App\Http\Controllers\Api\HospitalController;
 use App\Http\Controllers\Api\LaboratoryController;
@@ -40,6 +42,12 @@ Route::get('/pharmacy/doctors-directory', [AuthController::class, 'doctorsDirect
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 Route::get('/secretaire/secretaires-directory', [AuthController::class, 'secretariesDirectoryForSecretary'])
     ->middleware(['auth:sanctum', 'role:secretaire', 'verified']);
+Route::get('/secretaire/appointments', [AppointmentController::class, 'secretaryIndex'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified']);
+Route::post('/secretaire/appointments', [AppointmentController::class, 'secretaryStore'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified', 'throttle:60,1']);
+Route::patch('/secretaire/appointments/{appointment}', [AppointmentController::class, 'secretaryUpdate'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified', 'throttle:60,1']);
 
 Route::get('/pharmacies', [PharmacyController::class, 'index']);
 Route::get('/hospitals', [HospitalController::class, 'index']);
@@ -74,6 +82,12 @@ Route::get('/prescriptions', [PrescriptionController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:pharmacy', 'verified']);
 Route::get('/doctor/prescriptions', [PrescriptionController::class, 'mine'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::get('/doctor/appointments', [AppointmentController::class, 'doctorIndex'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::post('/doctor/appointments', [AppointmentController::class, 'doctorStore'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:60,1']);
+Route::patch('/doctor/appointments/{appointment}', [AppointmentController::class, 'doctorUpdate'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:60,1']);
 Route::get('/doctor/patients/search', [PrescriptionController::class, 'searchPatients'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::get('/doctor/patients', [DoctorPatientController::class, 'index'])
@@ -127,6 +141,8 @@ Route::patch('/secretaire/access-requests/{accessRequest}', [DoctorSecretaryAcce
     ->middleware(['auth:sanctum', 'role:secretaire']);
 Route::get('/patient/prescriptions', [PrescriptionController::class, 'mineForPatient'])
     ->middleware(['auth:sanctum', 'role:patient']);
+Route::get('/patient/appointments', [AppointmentController::class, 'patientIndex'])
+    ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/prescriptions', [PrescriptionController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 Route::patch('/patient/prescriptions/{prescription}/complete', [PrescriptionController::class, 'completeForPatient'])
@@ -158,6 +174,12 @@ Route::post('/patient/cabinet-items/{cabinetItem}/photo', [PatientMedicineCabine
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:20,1']);
 Route::delete('/patient/cabinet-items/{cabinetItem}', [PatientMedicineCabinetController::class, 'destroy'])
     ->middleware(['auth:sanctum', 'role:patient', 'throttle:30,1']);
+Route::get('/patient/vital-signs', [PatientVitalSignController::class, 'patientIndex'])
+    ->middleware(['auth:sanctum', 'role:patient']);
+Route::post('/patient/vital-signs', [PatientVitalSignController::class, 'patientStore'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:60,1']);
+Route::delete('/patient/vital-signs/{entry}', [PatientVitalSignController::class, 'patientDestroy'])
+    ->middleware(['auth:sanctum', 'role:patient', 'throttle:60,1']);
 Route::get('/patient/emergency-contacts', [EmergencyContactController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:patient']);
 Route::post('/patient/emergency-contacts', [EmergencyContactController::class, 'store'])
@@ -212,12 +234,20 @@ Route::patch('/doctor/patients/{patient}/medical-history/{entry}', [MedicalHisto
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/medical-history/{entry}/link-prescription', [MedicalHistoryController::class, 'doctorLinkPrescription'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:30,1']);
+Route::get('/doctor/patients/{patient}/vital-signs', [PatientVitalSignController::class, 'doctorIndex'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
+Route::post('/doctor/patients/{patient}/vital-signs', [PatientVitalSignController::class, 'doctorStore'])
+    ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'throttle:60,1']);
 Route::get('/doctor/patients/{patient}/rehab-entries', [DoctorRehabController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified']);
 Route::post('/doctor/patients/{patient}/rehab-entries', [DoctorRehabController::class, 'store'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
 Route::patch('/doctor/patients/{patient}/rehab-entries/{entry}', [DoctorRehabController::class, 'update'])
     ->middleware(['auth:sanctum', 'role:doctor', 'verified', 'doctor_license_verified', 'throttle:30,1']);
+Route::get('/secretaire/patients/{patient}/vital-signs', [PatientVitalSignController::class, 'secretaryIndex'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified']);
+Route::post('/secretaire/patients/{patient}/vital-signs', [PatientVitalSignController::class, 'secretaryStore'])
+    ->middleware(['auth:sanctum', 'role:secretaire', 'verified', 'throttle:60,1']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);

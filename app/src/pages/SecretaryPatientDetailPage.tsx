@@ -30,36 +30,12 @@ import { useIonRouter } from '@ionic/react';
 import { useParams } from 'react-router';
 import AppointmentFormModal from '../components/AppointmentFormModal';
 import InstallBanner from '../components/InstallBanner';
-import { api, type ApiSecretaryPatientDetail } from '../services/api';
+import { api, type ApiSecretaryPatientDetail, type ApiAppointment, type ApiVitalSign } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
 
 type RouteParams = {
   patientId: string;
-};
-
-type VitalSignEntry = {
-  id: string;
-  recorded_at: string;
-  systolic: number | null;
-  diastolic: number | null;
-  heart_rate: number | null;
-  temperature_c: number | null;
-  spo2: number | null;
-  glucose_mg_dl: number | null;
-  weight_kg: number | null;
-  note: string | null;
-};
-
-type SecretaryAppointmentEntry = {
-  id: string;
-  patient_id: number;
-  created_by_secretary_id: number | null;
-  doctor_user_id: number;
-  doctor_name: string;
-  scheduled_at: string;
-  note: string | null;
-  created_at: string;
 };
 
 const SecretaryPatientDetailPage: React.FC = () => {
@@ -68,14 +44,14 @@ const SecretaryPatientDetailPage: React.FC = () => {
   const { patientId } = useParams<RouteParams>();
   const [patient, setPatient] = useState<ApiSecretaryPatientDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [vitalsVersion, setVitalsVersion] = useState(0);
+  const [vitalSignEntries, setVitalSignEntries] = useState<ApiVitalSign[]>([]);
   const [isVitalModalOpen, setIsVitalModalOpen] = useState(false);
-  const [editingVitalId, setEditingVitalId] = useState<string | null>(null);
+  const [editingVitalId, setEditingVitalId] = useState<number | null>(null);
   const [isProfileCollapsed, setIsProfileCollapsed] = useState(false);
   const [isVitalsCollapsed, setIsVitalsCollapsed] = useState(true);
   const [isAppointmentsCollapsed, setIsAppointmentsCollapsed] = useState(true);
   const [isVisitsCollapsed, setIsVisitsCollapsed] = useState(true);
-  const [appointmentsVersion, setAppointmentsVersion] = useState(0);
+  const [appointmentEntries, setAppointmentEntries] = useState<ApiAppointment[]>([]);
   const [relatedDoctors, setRelatedDoctors] = useState<Array<{ id: number; name: string }>>([]);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [addAppointmentError, setAddAppointmentError] = useState<string | null>(null);
@@ -90,10 +66,15 @@ const SecretaryPatientDetailPage: React.FC = () => {
     systolic: '',
     diastolic: '',
     heart_rate: '',
+    respiratory_rate: '',
     temperature_c: '',
     spo2: '',
     glucose_mg_dl: '',
+    glucose_context: 'random',
     weight_kg: '',
+    height_cm: '',
+    pain_score: '',
+    measurement_context: 'rest',
     note: '',
   });
 
@@ -171,28 +152,23 @@ const SecretaryPatientDetailPage: React.FC = () => {
     };
   }, [token]);
 
-  const vitalSignEntries = useMemo(() => {
-    if (!patient) {
-      return [] as VitalSignEntry[];
-    }
-    const storageKey = `patient-vitals-${patient.id}`;
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return [] as VitalSignEntry[];
-    }
-    try {
-      const parsed = JSON.parse(raw) as VitalSignEntry[];
-      if (!Array.isArray(parsed)) {
-        return [] as VitalSignEntry[];
-      }
-      return [...parsed].sort(
-        (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
-      );
-    } catch {
-      return [] as VitalSignEntry[];
-    }
-  }, [patient, vitalsVersion]);
   const latestVitalSign = vitalSignEntries[0] ?? null;
+  useIonViewWillEnter(() => {
+    if (!token || !patient) {
+      setVitalSignEntries([]);
+      setAppointmentEntries([]);
+      return;
+    }
+
+    api.getSecretaryPatientVitalSigns(token, patient.id)
+      .then((rows) => setVitalSignEntries([...rows].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())))
+      .catch(() => setVitalSignEntries([]));
+
+    api.getSecretaryAppointments(token, { patient_id: patient.id })
+      .then((rows) => setAppointmentEntries([...rows].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())))
+      .catch(() => setAppointmentEntries([]));
+  });
+
   const appointmentEntries = useMemo(() => {
     if (!patient) {
       return [] as SecretaryAppointmentEntry[];
@@ -219,10 +195,6 @@ const SecretaryPatientDetailPage: React.FC = () => {
     }
   }, [appointmentsVersion, patient, user?.id]);
 
-  useIonViewWillEnter(() => {
-    setAppointmentsVersion((prev) => prev + 1);
-  });
-
   const handleOpenAddAppointmentModal = () => {
     const now = new Date();
     const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
@@ -239,7 +211,7 @@ const SecretaryPatientDetailPage: React.FC = () => {
   };
 
   const handleSaveAddedAppointment = () => {
-    if (!patient) {
+    if (!patient || !token) {
       setAddAppointmentError('Patient introuvable.');
       return;
     }
@@ -258,35 +230,20 @@ const SecretaryPatientDetailPage: React.FC = () => {
       return;
     }
 
-    const doctorName = relatedDoctors.find((row) => row.id === doctorId)?.name ?? `Docteur #${doctorId}`;
-    const next: SecretaryAppointmentEntry = {
-      id: `rdv-${Date.now()}`,
+    api.createSecretaryAppointment(token, {
       patient_id: patient.id,
-      created_by_secretary_id: user?.id ?? null,
       doctor_user_id: doctorId,
-      doctor_name: doctorName,
       scheduled_at: scheduledAt,
       note: addAppointmentForm.note.trim() || null,
-      created_at: new Date().toISOString(),
-    };
-
-    const key = `secretary-appointments-${patient.id}`;
-    let existing: SecretaryAppointmentEntry[] = [];
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
-        if (Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = [];
-      }
-    }
-    localStorage.setItem(key, JSON.stringify([...existing, next]));
-    setShowAddAppointmentModal(false);
-    setAddAppointmentError(null);
-    setAppointmentsVersion((prev) => prev + 1);
+    }).then(() => {
+      return api.getSecretaryAppointments(token, { patient_id: patient.id });
+    }).then((rows) => {
+      setAppointmentEntries([...rows].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()));
+      setShowAddAppointmentModal(false);
+      setAddAppointmentError(null);
+    }).catch((error: unknown) => {
+      setAddAppointmentError(error instanceof Error ? error.message : "Impossible d'ajouter ce rendez-vous.");
+    });
   };
 
   const handleOpenAddVitalModal = () => {
@@ -300,10 +257,15 @@ const SecretaryPatientDetailPage: React.FC = () => {
       systolic: '',
       diastolic: '',
       heart_rate: '',
+      respiratory_rate: '',
       temperature_c: '',
       spo2: '',
       glucose_mg_dl: '',
+      glucose_context: 'random',
       weight_kg: '',
+      height_cm: '',
+      pain_score: '',
+      measurement_context: 'rest',
       note: '',
     });
     setIsVitalModalOpen(true);
@@ -320,38 +282,30 @@ const SecretaryPatientDetailPage: React.FC = () => {
     return new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   };
 
-  const handleOpenEditVitalModal = (entry: VitalSignEntry) => {
+  const handleOpenEditVitalModal = (entry: ApiVitalSign) => {
     setEditingVitalId(entry.id);
     setVitalForm({
       recorded_at: toInputDateTime(entry.recorded_at),
       systolic: entry.systolic != null ? String(entry.systolic) : '',
       diastolic: entry.diastolic != null ? String(entry.diastolic) : '',
       heart_rate: entry.heart_rate != null ? String(entry.heart_rate) : '',
+      respiratory_rate: entry.respiratory_rate != null ? String(entry.respiratory_rate) : '',
       temperature_c: entry.temperature_c != null ? String(entry.temperature_c) : '',
       spo2: entry.spo2 != null ? String(entry.spo2) : '',
       glucose_mg_dl: entry.glucose_mg_dl != null ? String(entry.glucose_mg_dl) : '',
+      glucose_context: entry.glucose_context ?? 'random',
       weight_kg: entry.weight_kg != null ? String(entry.weight_kg) : '',
+      height_cm: entry.height_cm != null ? String(entry.height_cm) : '',
+      pain_score: entry.pain_score != null ? String(entry.pain_score) : '',
+      measurement_context: entry.measurement_context ?? 'rest',
       note: entry.note ?? '',
     });
     setIsVitalModalOpen(true);
   };
 
   const handleSaveVital = () => {
-    if (!patient) {
+    if (!patient || !token) {
       return;
-    }
-    const storageKey = `patient-vitals-${patient.id}`;
-    const raw = localStorage.getItem(storageKey);
-    let existing: VitalSignEntry[] = [];
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as VitalSignEntry[];
-        if (Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = [];
-      }
     }
 
     const toNullableNumber = (value: string) => {
@@ -362,27 +316,33 @@ const SecretaryPatientDetailPage: React.FC = () => {
       return Number.isFinite(parsed) ? parsed : null;
     };
 
-    const nextEntry: VitalSignEntry = {
-      id: editingVitalId ?? `vs-${Date.now()}`,
+    const payload = {
       recorded_at: vitalForm.recorded_at || new Date().toISOString(),
       systolic: toNullableNumber(vitalForm.systolic),
       diastolic: toNullableNumber(vitalForm.diastolic),
       heart_rate: toNullableNumber(vitalForm.heart_rate),
+      respiratory_rate: toNullableNumber(vitalForm.respiratory_rate),
       temperature_c: toNullableNumber(vitalForm.temperature_c),
       spo2: toNullableNumber(vitalForm.spo2),
       glucose_mg_dl: toNullableNumber(vitalForm.glucose_mg_dl),
+      glucose_context: (vitalForm.glucose_context as 'fasting' | 'post_meal' | 'random' | null) ?? 'random',
       weight_kg: toNullableNumber(vitalForm.weight_kg),
+      height_cm: toNullableNumber(vitalForm.height_cm),
+      pain_score: toNullableNumber(vitalForm.pain_score),
+      measurement_context: (vitalForm.measurement_context as 'rest' | 'after_exercise' | 'symptomatic' | null) ?? 'rest',
       note: vitalForm.note?.trim() || null,
     };
 
-    const nextList = editingVitalId
-      ? existing.map((row) => (row.id === editingVitalId ? nextEntry : row))
-      : [nextEntry, ...existing];
-
-    localStorage.setItem(storageKey, JSON.stringify(nextList));
-    setIsVitalModalOpen(false);
-    setEditingVitalId(null);
-    setVitalsVersion((prev) => prev + 1);
+    api.createSecretaryPatientVitalSign(token, patient.id, payload)
+      .then(() => api.getSecretaryPatientVitalSigns(token, patient.id))
+      .then((rows) => {
+        setVitalSignEntries([...rows].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()));
+        setIsVitalModalOpen(false);
+        setEditingVitalId(null);
+      })
+      .catch(() => {
+        // keep modal open
+      });
   };
 
   return (
@@ -595,7 +555,7 @@ const SecretaryPatientDetailPage: React.FC = () => {
                                   SpO2: {entry.spo2 ?? '-'}% • Temperature: {entry.temperature_c ?? '-'} C
                                 </p>
                                 <p>
-                                  Glycemie: {entry.glucose_mg_dl ?? '-'} mg/dL • Poids: {entry.weight_kg ?? '-'} kg
+                                  Glycemie: {entry.glucose_mg_dl ?? '-'} mg/dL ({entry.glucose_context === 'fasting' ? 'A jeun' : entry.glucose_context === 'post_meal' ? 'Post-prandiale' : 'Aleatoire'}) • Poids: {entry.weight_kg ?? '-'} kg • Taille: {entry.height_cm ?? '-'} cm • FR: {entry.respiratory_rate ?? '-'} /min • Douleur: {entry.pain_score ?? '-'} • Contexte: {entry.measurement_context === 'after_exercise' ? 'Apres effort' : entry.measurement_context === 'symptomatic' ? 'Symptomatique' : 'Repos'}
                                 </p>
                               </IonLabel>
                             </IonItem>
@@ -772,6 +732,15 @@ const SecretaryPatientDetailPage: React.FC = () => {
                             />
                           </IonItem>
                           <IonItem>
+                            <IonLabel position="stacked">Frequence respiratoire (/min)</IonLabel>
+                            <IonInput
+                              value={vitalForm.respiratory_rate}
+                              onIonInput={(event) =>
+                                setVitalForm((prev) => ({ ...prev, respiratory_rate: String(event.detail.value ?? '') }))
+                              }
+                            />
+                          </IonItem>
+                          <IonItem>
                             <IonLabel position="stacked">Temperature (C)</IonLabel>
                             <IonInput
                               value={vitalForm.temperature_c}
@@ -799,6 +768,19 @@ const SecretaryPatientDetailPage: React.FC = () => {
                             />
                           </IonItem>
                           <IonItem>
+                            <IonLabel position="stacked">Contexte glycemie</IonLabel>
+                            <IonSelect
+                              value={vitalForm.glucose_context}
+                              onIonChange={(event) =>
+                                setVitalForm((prev) => ({ ...prev, glucose_context: (event.detail.value as 'fasting' | 'post_meal' | 'random' | null) ?? 'random' }))
+                              }
+                            >
+                              <IonSelectOption value="fasting">A jeun</IonSelectOption>
+                              <IonSelectOption value="post_meal">Post-prandiale (2h)</IonSelectOption>
+                              <IonSelectOption value="random">Aleatoire</IonSelectOption>
+                            </IonSelect>
+                          </IonItem>
+                          <IonItem>
                             <IonLabel position="stacked">Poids (kg)</IonLabel>
                             <IonInput
                               value={vitalForm.weight_kg}
@@ -806,6 +788,37 @@ const SecretaryPatientDetailPage: React.FC = () => {
                                 setVitalForm((prev) => ({ ...prev, weight_kg: String(event.detail.value ?? '') }))
                               }
                             />
+                          </IonItem>
+                          <IonItem>
+                            <IonLabel position="stacked">Taille (cm)</IonLabel>
+                            <IonInput
+                              value={vitalForm.height_cm}
+                              onIonInput={(event) =>
+                                setVitalForm((prev) => ({ ...prev, height_cm: String(event.detail.value ?? '') }))
+                              }
+                            />
+                          </IonItem>
+                          <IonItem>
+                            <IonLabel position="stacked">Douleur (0-10)</IonLabel>
+                            <IonInput
+                              value={vitalForm.pain_score}
+                              onIonInput={(event) =>
+                                setVitalForm((prev) => ({ ...prev, pain_score: String(event.detail.value ?? '') }))
+                              }
+                            />
+                          </IonItem>
+                          <IonItem>
+                            <IonLabel position="stacked">Contexte mesure</IonLabel>
+                            <IonSelect
+                              value={vitalForm.measurement_context}
+                              onIonChange={(event) =>
+                                setVitalForm((prev) => ({ ...prev, measurement_context: (event.detail.value as 'rest' | 'after_exercise' | 'symptomatic' | null) ?? 'rest' }))
+                              }
+                            >
+                              <IonSelectOption value="rest">Repos</IonSelectOption>
+                              <IonSelectOption value="after_exercise">Apres effort</IonSelectOption>
+                              <IonSelectOption value="symptomatic">Symptomatique</IonSelectOption>
+                            </IonSelect>
                           </IonItem>
                         </div>
                         <IonItem style={{ marginTop: '8px' }}>

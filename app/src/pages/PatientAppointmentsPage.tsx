@@ -17,20 +17,11 @@ import {
   IonToolbar,
 } from '@ionic/react';
 import { useMemo, useState } from 'react';
+import { useIonViewWillEnter } from '@ionic/react';
 import InstallBanner from '../components/InstallBanner';
+import { api, type ApiAppointment } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
-
-type PatientAppointmentEntry = {
-  id: string;
-  patient_id: number;
-  created_by_secretary_id: number | null;
-  doctor_user_id: number;
-  doctor_name: string;
-  scheduled_at: string;
-  note: string | null;
-  created_at: string;
-};
 
 type AppointmentStatus = 'overdue' | 'soon' | 'upcoming';
 
@@ -76,33 +67,32 @@ const formatDayHeading = (value: string) => {
 };
 
 const PatientAppointmentsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { token } = useAuth();
   const [query, setQuery] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<string>('all');
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<'all' | 'past' | 'upcoming'>('all');
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
 
-  const appointments = useMemo(() => {
-    if (!user?.id) {
-      return [] as PatientAppointmentEntry[];
+  useIonViewWillEnter(() => {
+    if (!token) {
+      setAppointments([]);
+      return;
     }
-    const key = `secretary-appointments-${user.id}`;
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      return [] as PatientAppointmentEntry[];
-    }
-    try {
-      const parsed = JSON.parse(raw) as PatientAppointmentEntry[];
-      if (!Array.isArray(parsed)) {
-        return [] as PatientAppointmentEntry[];
-      }
-      return [...parsed].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-    } catch {
-      return [] as PatientAppointmentEntry[];
-    }
-  }, [user?.id]);
+    api.getPatientAppointments(token)
+      .then((rows) => {
+        setAppointments(rows.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()));
+      })
+      .catch(() => setAppointments([]));
+  });
 
   const doctorFilters = useMemo(() => {
-    const names = Array.from(new Set(appointments.map((entry) => entry.doctor_name).filter(Boolean)));
+    const names = Array.from(
+      new Set(
+        appointments
+          .map((entry) => entry.doctor_name ?? '')
+          .filter((name): name is string => name.trim().length > 0)
+      )
+    );
     return names.sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   }, [appointments]);
 
@@ -141,7 +131,7 @@ const PatientAppointmentsPage: React.FC = () => {
   }, [appointments, selectedDoctor]);
 
   const groupedAppointments = useMemo(() => {
-    const groups = new Map<string, PatientAppointmentEntry[]>();
+    const groups = new Map<string, ApiAppointment[]>();
     filtered.forEach((entry) => {
       const key = getDayKey(entry.scheduled_at);
       const existing = groups.get(key) ?? [];
@@ -216,7 +206,7 @@ const PatientAppointmentsPage: React.FC = () => {
                   key={doctorName}
                   size="small"
                   fill={selectedDoctor === doctorName ? 'solid' : 'outline'}
-                  onClick={() => setSelectedDoctor(doctorName)}
+                  onClick={() => setSelectedDoctor(doctorName ?? '')}
                   style={{ whiteSpace: 'nowrap' }}
                 >
                   {doctorName}

@@ -53,7 +53,9 @@ import {
   ApiMedicalHistoryEntry,
   ApiPrescription,
   ApiRehabEntry,
-  ApiVisit
+  ApiVisit,
+  ApiVitalSign,
+  ApiAppointment
 } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { getPrescriptionCode } from '../utils/prescriptionCode';
@@ -169,22 +171,16 @@ type VitalSignEntry = {
   systolic: number | null;
   diastolic: number | null;
   heart_rate: number | null;
+  respiratory_rate: number | null;
   temperature_c: number | null;
   spo2: number | null;
   glucose_mg_dl: number | null;
+  glucose_context: 'fasting' | 'post_meal' | 'random' | null;
   weight_kg: number | null;
+  height_cm: number | null;
+  pain_score: number | null;
+  measurement_context: 'rest' | 'after_exercise' | 'symptomatic' | null;
   note: string;
-};
-
-type AppointmentEntry = {
-  id: string;
-  patient_id: number;
-  created_by_secretary_id: number | null;
-  doctor_user_id: number;
-  doctor_name: string;
-  scheduled_at: string;
-  note: string | null;
-  created_at: string;
 };
 
 const DoctorPatientPrescriptionsPage: React.FC = () => {
@@ -199,17 +195,22 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [selectedFamilyMemberId, setSelectedFamilyMemberId] = useState<number | null>(null);
   const [medicalHistory, setMedicalHistory] = useState<ApiMedicalHistoryEntry[]>([]);
   const [rehabEntries, setRehabEntries] = useState<ApiRehabEntry[]>([]);
-  const [vitalSignEntries, setVitalSignEntries] = useState<VitalSignEntry[]>([]);
+  const [vitalSignEntries, setVitalSignEntries] = useState<ApiVitalSign[]>([]);
   const [showVitalsModal, setShowVitalsModal] = useState(false);
   const [vitalsForm, setVitalsForm] = useState({
     recorded_at: new Date().toISOString().slice(0, 16),
     systolic: '',
     diastolic: '',
     heart_rate: '',
+    respiratory_rate: '',
     temperature_c: '',
     spo2: '',
     glucose_mg_dl: '',
+    glucose_context: 'random',
     weight_kg: '',
+    height_cm: '',
+    pain_score: '',
+    measurement_context: 'rest',
     note: ''
   });
   const [vitalsError, setVitalsError] = useState<string | null>(null);
@@ -226,9 +227,9 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const [isVitalsCollapsed, setIsVitalsCollapsed] = useState(true);
   const [isAppointmentsCollapsed, setIsAppointmentsCollapsed] = useState(true);
   const [isStatsCollapsed, setIsStatsCollapsed] = useState(true);
-  const [appointments, setAppointments] = useState<AppointmentEntry[]>([]);
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
-  const [editingAppointmentId, setEditingAppointmentId] = useState<string | null>(null);
+  const [editingAppointmentId, setEditingAppointmentId] = useState<number | null>(null);
   const [appointmentError, setAppointmentError] = useState<string | null>(null);
   const [appointmentForm, setAppointmentForm] = useState({
     scheduled_date: '',
@@ -373,55 +374,33 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   const latestVitalSign = vitalSignEntries[0] ?? null;
 
   useEffect(() => {
-    if (!vitalTargetUserId) {
+    if (!token || !patientUserId) {
       setVitalSignEntries([]);
       return;
     }
-    const storageKey = `patient-vitals-${vitalTargetUserId}`;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) {
-        setVitalSignEntries([]);
-        return;
-      }
-      const parsed = JSON.parse(raw) as VitalSignEntry[];
-      if (!Array.isArray(parsed)) {
-        setVitalSignEntries([]);
-        return;
-      }
-      const sorted = [...parsed].sort(
-        (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
-      );
-      setVitalSignEntries(sorted);
-    } catch {
-      setVitalSignEntries([]);
+    const params: { family_member_id?: number | null } = {};
+    if (typeof effectiveFamilyMemberId === 'number') {
+      params.family_member_id = effectiveFamilyMemberId;
     }
-  }, [vitalTargetUserId]);
+    api.getDoctorPatientVitalSigns(token, patientUserId, params)
+      .then((rows) => {
+        setVitalSignEntries([...rows].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()));
+      })
+      .catch(() => setVitalSignEntries([]));
+  }, [effectiveFamilyMemberId, patientUserId, token]);
 
   useEffect(() => {
-    if (!patientUserId || !user?.id) {
+    if (!token || !patientUserId) {
       setAppointments([]);
       return;
     }
-    const storageKey = `secretary-appointments-${patientUserId}`;
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) {
-        setAppointments([]);
-        return;
-      }
-      const parsed = JSON.parse(raw) as AppointmentEntry[];
-      if (!Array.isArray(parsed)) {
-        setAppointments([]);
-        return;
-      }
-      const filtered = parsed.filter((entry) => entry.doctor_user_id === user.id);
-      const sorted = [...filtered].sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
-      setAppointments(sorted);
-    } catch {
-      setAppointments([]);
-    }
-  }, [patientUserId, user?.id]);
+    api.getDoctorAppointments(token, { patient_id: patientUserId })
+      .then((rows) => {
+        const sorted = [...rows].sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+        setAppointments(sorted);
+      })
+      .catch(() => setAppointments([]));
+  }, [patientUserId, token]);
 
   const resetVitalsForm = useCallback(() => {
     setVitalsForm({
@@ -429,10 +408,15 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       systolic: '',
       diastolic: '',
       heart_rate: '',
+      respiratory_rate: '',
       temperature_c: '',
       spo2: '',
       glucose_mg_dl: '',
+      glucose_context: 'random',
       weight_kg: '',
+      height_cm: '',
+      pain_score: '',
+      measurement_context: 'rest',
       note: ''
     });
     setVitalsError(null);
@@ -457,7 +441,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
     setShowAppointmentModal(true);
   }, [resetAppointmentForm]);
 
-  const openEditAppointmentModal = useCallback((entry: AppointmentEntry) => {
+  const openEditAppointmentModal = useCallback((entry: ApiAppointment) => {
     const localDate = new Date(entry.scheduled_at);
     const hasValidDate = !Number.isNaN(localDate.getTime());
     const year = hasValidDate ? localDate.getFullYear() : new Date().getFullYear();
@@ -476,7 +460,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
   }, []);
 
   const saveAppointment = useCallback(() => {
-    if (!patientUserId || !user?.id) {
+    if (!patientUserId || !user?.id || !token) {
       setAppointmentError('Patient introuvable.');
       return;
     }
@@ -492,46 +476,32 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       return;
     }
 
-    const storageKey = `secretary-appointments-${patientUserId}`;
-    let existing: AppointmentEntry[] = [];
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as AppointmentEntry[];
-        if (Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = [];
-      }
-    }
-
-    const nextEntry: AppointmentEntry = {
-      id: editingAppointmentId ?? `rdv-${Date.now()}`,
+    const payload = {
       patient_id: patientUserId,
-      created_by_secretary_id: null,
       doctor_user_id: user.id,
-      doctor_name: user.name ?? 'Docteur',
       scheduled_at: isoDateTime,
       note: appointmentForm.note.trim() || null,
-      created_at: new Date().toISOString()
     };
 
-    const nextRows = editingAppointmentId
-      ? existing.map((row) => (row.id === editingAppointmentId ? nextEntry : row))
-      : [...existing, nextEntry];
+    const request = editingAppointmentId
+      ? api.updateDoctorAppointment(token, editingAppointmentId, payload)
+      : api.createDoctorAppointment(token, payload);
 
-    localStorage.setItem(storageKey, JSON.stringify(nextRows));
-    const forDoctor = nextRows
-      .filter((entry) => entry.doctor_user_id === user.id)
-      .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
-    setAppointments(forDoctor);
-    setShowAppointmentModal(false);
-    resetAppointmentForm();
-  }, [appointmentForm, editingAppointmentId, patientUserId, resetAppointmentForm, user?.id, user?.name]);
+    request
+      .then(() => api.getDoctorAppointments(token, { patient_id: patientUserId }))
+      .then((rows) => {
+        const sorted = [...rows].sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+        setAppointments(sorted);
+        setShowAppointmentModal(false);
+        resetAppointmentForm();
+      })
+      .catch((error: unknown) => {
+        setAppointmentError(error instanceof Error ? error.message : 'Impossible d'enregistrer le rendez-vous.');
+      });
+  }, [appointmentForm, editingAppointmentId, patientUserId, resetAppointmentForm, token, user?.id]);
 
   const saveVitalsEntry = useCallback(() => {
-    if (!vitalTargetUserId) {
+    if (!token || !patientUserId) {
       setVitalsError('Patient introuvable.');
       return;
     }
@@ -539,41 +509,58 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
       setVitalsError('Date/heure requise.');
       return;
     }
-    const newEntry: VitalSignEntry = {
-      id: Date.now(),
+
+    const payload = {
+      family_member_id: typeof effectiveFamilyMemberId === 'number' ? effectiveFamilyMemberId : null,
       recorded_at: new Date(vitalsForm.recorded_at).toISOString(),
       systolic: parseVitalNumber(vitalsForm.systolic),
       diastolic: parseVitalNumber(vitalsForm.diastolic),
       heart_rate: parseVitalNumber(vitalsForm.heart_rate),
+      respiratory_rate: parseVitalNumber(vitalsForm.respiratory_rate),
       temperature_c: parseVitalNumber(vitalsForm.temperature_c),
       spo2: parseVitalNumber(vitalsForm.spo2),
       glucose_mg_dl: parseVitalNumber(vitalsForm.glucose_mg_dl),
+      glucose_context: (vitalsForm.glucose_context as 'fasting' | 'post_meal' | 'random' | null) ?? 'random',
       weight_kg: parseVitalNumber(vitalsForm.weight_kg),
-      note: vitalsForm.note.trim()
+      height_cm: parseVitalNumber(vitalsForm.height_cm),
+      pain_score: parseVitalNumber(vitalsForm.pain_score),
+      measurement_context: (vitalsForm.measurement_context as 'rest' | 'after_exercise' | 'symptomatic' | null) ?? 'rest',
+      note: vitalsForm.note.trim() || null,
     };
 
     if (
-      newEntry.systolic === null &&
-      newEntry.diastolic === null &&
-      newEntry.heart_rate === null &&
-      newEntry.temperature_c === null &&
-      newEntry.spo2 === null &&
-      newEntry.glucose_mg_dl === null &&
-      newEntry.weight_kg === null
+      payload.systolic === null &&
+      payload.diastolic === null &&
+      payload.heart_rate === null &&
+      payload.respiratory_rate === null &&
+      payload.temperature_c === null &&
+      payload.spo2 === null &&
+      payload.glucose_mg_dl === null &&
+      payload.weight_kg === null &&
+      payload.height_cm === null &&
+      payload.pain_score === null
     ) {
       setVitalsError('Ajoutez au moins une mesure.');
       return;
     }
 
-    const next = [newEntry, ...vitalSignEntries].sort(
-      (a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()
-    );
-    const storageKey = `patient-vitals-${vitalTargetUserId}`;
-    setVitalSignEntries(next);
-    localStorage.setItem(storageKey, JSON.stringify(next));
-    setShowVitalsModal(false);
-    resetVitalsForm();
-  }, [resetVitalsForm, vitalSignEntries, vitalTargetUserId, vitalsForm]);
+    api.createDoctorPatientVitalSign(token, patientUserId, payload)
+      .then(() => {
+        const params: { family_member_id?: number | null } = {};
+        if (typeof effectiveFamilyMemberId === 'number') {
+          params.family_member_id = effectiveFamilyMemberId;
+        }
+        return api.getDoctorPatientVitalSigns(token, patientUserId, params);
+      })
+      .then((rows) => {
+        setVitalSignEntries([...rows].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()));
+        setShowVitalsModal(false);
+        resetVitalsForm();
+      })
+      .catch((error: unknown) => {
+        setVitalsError(error instanceof Error ? error.message : 'Impossible d'enregistrer la mesure.');
+      });
+  }, [effectiveFamilyMemberId, patientUserId, resetVitalsForm, token, vitalsForm]);
 
   const loadPrescriptions = useCallback(async (force = false) => {
     if (!force && Date.now() - lastPrescriptionsLoadAtRef.current < LOAD_TTL_MS) {
@@ -1669,7 +1656,7 @@ useEffect(() => {
                                   <strong>SpO2:</strong> {entry.spo2 ?? '-'}% • <strong>Temperature:</strong> {entry.temperature_c ?? '-'} C
                                 </p>
                                 <p>
-                                  <strong>Glycemie:</strong> {entry.glucose_mg_dl ?? '-'} mg/dL • <strong>Poids:</strong> {entry.weight_kg ?? '-'} kg
+                                  <strong>Glycemie:</strong> {entry.glucose_mg_dl ?? '-'} mg/dL ({entry.glucose_context === 'fasting' ? 'A jeun' : entry.glucose_context === 'post_meal' ? 'Post-prandiale' : 'Aleatoire'}) • <strong>Poids:</strong> {entry.weight_kg ?? '-'} kg • <strong>Taille:</strong> {entry.height_cm ?? '-'} cm • <strong>FR:</strong> {entry.respiratory_rate ?? '-'} /min • <strong>Douleur:</strong> {entry.pain_score ?? '-'} • <strong>Contexte:</strong> {entry.measurement_context === 'after_exercise' ? 'Apres effort' : entry.measurement_context === 'symptomatic' ? 'Symptomatique' : 'Repos'}
                                 </p>
                                 {entry.note ? (
                                   <p style={{ marginBottom: 0 }}>
@@ -3035,6 +3022,10 @@ useEffect(() => {
                     <IonInput value={vitalsForm.heart_rate} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, heart_rate: e.detail.value ?? '' }))} />
                   </IonItem>
                   <IonItem>
+                    <IonLabel position="stacked">Frequence respiratoire (/min)</IonLabel>
+                    <IonInput value={vitalsForm.respiratory_rate} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, respiratory_rate: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem>
                     <IonLabel position="stacked">Temperature (C)</IonLabel>
                     <IonInput value={vitalsForm.temperature_c} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, temperature_c: e.detail.value ?? '' }))} />
                   </IonItem>
@@ -3047,8 +3038,32 @@ useEffect(() => {
                     <IonInput value={vitalsForm.glucose_mg_dl} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, glucose_mg_dl: e.detail.value ?? '' }))} />
                   </IonItem>
                   <IonItem>
+                    <IonLabel position="stacked">Contexte glycemie</IonLabel>
+                    <IonSelect value={vitalsForm.glucose_context} onIonChange={(e) => setVitalsForm((prev) => ({ ...prev, glucose_context: (e.detail.value as 'fasting' | 'post_meal' | 'random' | null) ?? 'random' }))}>
+                      <IonSelectOption value="fasting">A jeun</IonSelectOption>
+                      <IonSelectOption value="post_meal">Post-prandiale (2h)</IonSelectOption>
+                      <IonSelectOption value="random">Aleatoire</IonSelectOption>
+                    </IonSelect>
+                  </IonItem>
+                  <IonItem>
                     <IonLabel position="stacked">Poids (kg)</IonLabel>
                     <IonInput value={vitalsForm.weight_kg} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, weight_kg: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem>
+                    <IonLabel position="stacked">Taille (cm)</IonLabel>
+                    <IonInput value={vitalsForm.height_cm} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, height_cm: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem>
+                    <IonLabel position="stacked">Douleur (0-10)</IonLabel>
+                    <IonInput value={vitalsForm.pain_score} onIonInput={(e) => setVitalsForm((prev) => ({ ...prev, pain_score: e.detail.value ?? '' }))} />
+                  </IonItem>
+                  <IonItem>
+                    <IonLabel position="stacked">Contexte mesure</IonLabel>
+                    <IonSelect value={vitalsForm.measurement_context} onIonChange={(e) => setVitalsForm((prev) => ({ ...prev, measurement_context: (e.detail.value as 'rest' | 'after_exercise' | 'symptomatic' | null) ?? 'rest' }))}>
+                      <IonSelectOption value="rest">Repos</IonSelectOption>
+                      <IonSelectOption value="after_exercise">Apres effort</IonSelectOption>
+                      <IonSelectOption value="symptomatic">Symptomatique</IonSelectOption>
+                    </IonSelect>
                   </IonItem>
                 </div>
                 <IonItem style={{ marginTop: '8px' }}>

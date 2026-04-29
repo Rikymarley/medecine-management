@@ -11,9 +11,6 @@ import {
   IonHeader,
   IonIcon,
   IonButton,
-  IonItem,
-  IonLabel,
-  IonList,
   IonPage,
   IonText,
   IonTitle,
@@ -29,7 +26,6 @@ import {
   locationOutline,
   logoWhatsapp,
   medicalOutline,
-  shieldCheckmarkOutline,
   timeOutline,
   videocamOutline
 } from 'ionicons/icons';
@@ -38,20 +34,17 @@ import { useParams } from 'react-router';
 import InstallBanner from '../components/InstallBanner';
 import { api, ApiDoctorDirectory, ApiPrescription } from '../services/api';
 import { useAuth } from '../state/AuthState';
-import { getPrescriptionStatusClassName, getPrescriptionStatusLabel } from '../utils/prescriptionStatus';
 import { formatDateTime } from '../utils/time';
 
 const PatientDoctorPrescriptionsPage: React.FC = () => {
   const ionRouter = useIonRouter();
   const { token, user } = useAuth();
-  const { doctorName } = useParams<{ doctorName: string }>();
+  const { doctorId } = useParams<{ doctorId: string }>();
   const [prescriptions, setPrescriptions] = useState<ApiPrescription[]>([]);
   const [directoryDoctor, setDirectoryDoctor] = useState<ApiDoctorDirectory | null>(null);
-  const [doctorInfoExpanded, setDoctorInfoExpanded] = useState(true);
   const [contactExpanded, setContactExpanded] = useState(true);
   const [professionalExpanded, setProfessionalExpanded] = useState(false);
   const [consultationExpanded, setConsultationExpanded] = useState(false);
-  const [verificationExpanded, setVerificationExpanded] = useState(false);
   const [isDoctorBlocked, setIsDoctorBlocked] = useState(false);
   const [blockActionLoading, setBlockActionLoading] = useState(false);
   const [blockMessage, setBlockMessage] = useState<string | null>(null);
@@ -60,7 +53,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const cacheKey = user ? `patient-prescriptions-${user.id}` : null;
-  const decodedDoctorName = decodeURIComponent(doctorName);
+  const numericDoctorId = Number(doctorId);
 
   const loadPrescriptions = useCallback(async () => {
     if (!cacheKey) {
@@ -74,7 +67,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
         if (Array.isArray(cachedData)) {
           setPrescriptions(cachedData);
           const matchedDoctorRows = cachedData.filter(
-            (p) => p.doctor_name.trim().toLowerCase() === decodedDoctorName.trim().toLowerCase()
+            (p) => typeof p.doctor_user_id === 'number' && p.doctor_user_id === numericDoctorId
           );
           const hasDoctorProfileData = matchedDoctorRows.some(
             (p) =>
@@ -104,7 +97,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
     const data = await api.getPatientPrescriptions(token);
     setPrescriptions(data);
     localStorage.setItem(cacheKey, JSON.stringify(data));
-  }, [cacheKey, decodedDoctorName, token]);
+  }, [cacheKey, numericDoctorId, token]);
 
   useEffect(() => {
     loadPrescriptions().catch(() => undefined);
@@ -115,9 +108,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
     api.getDoctorsDirectory()
       .then((rows) => {
         if (!active) return;
-        const found = rows.find(
-          (row) => row.name.trim().toLowerCase() === decodedDoctorName.trim().toLowerCase()
-        ) ?? null;
+        const found = rows.find((row) => row.id === numericDoctorId) ?? null;
         setDirectoryDoctor(found);
       })
       .catch(() => {
@@ -127,13 +118,18 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [decodedDoctorName]);
+  }, [numericDoctorId]);
 
   const doctorPrescriptions = useMemo(() => {
     return prescriptions
-      .filter((p) => p.doctor_name.trim().toLowerCase() === decodedDoctorName.trim().toLowerCase())
+      .filter((p) => {
+        if (typeof p.doctor_user_id === 'number') {
+          return p.doctor_user_id === numericDoctorId;
+        }
+        return directoryDoctor ? p.doctor_name.trim().toLowerCase() === directoryDoctor.name.trim().toLowerCase() : false;
+      })
       .sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime());
-  }, [decodedDoctorName, prescriptions]);
+  }, [directoryDoctor, numericDoctorId, prescriptions]);
 
   const doctorInfo = useMemo(() => {
     const totalPrescriptions = doctorPrescriptions.length;
@@ -147,7 +143,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
     const doctorProfile = doctorPrescriptions.find((prescription) => prescription.doctor)?.doctor ?? null;
 
     return {
-      name: decodedDoctorName,
+      name: doctorProfile?.name ?? directoryDoctor?.name ?? 'Medecin',
       totalPrescriptions,
       totalMedicines,
       latestPrescriptionAt,
@@ -170,7 +166,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
       profilePhotoUrl: doctorProfile?.profile_photo_url ?? directoryDoctor?.profile_photo_url ?? null,
       profileBannerUrl: doctorProfile?.profile_banner_url ?? directoryDoctor?.profile_banner_url ?? null
     };
-  }, [decodedDoctorName, doctorPrescriptions, directoryDoctor]);
+  }, [doctorPrescriptions, directoryDoctor]);
 
   const doctorUserId = useMemo(() => {
     const fromPrescription = doctorPrescriptions.find((row) => Number.isFinite(row.doctor_user_id ?? NaN))?.doctor_user_id;
@@ -240,7 +236,7 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
           <IonButtons slot="start">
             <IonBackButton defaultHref="/patient/doctors" />
           </IonButtons>
-          <IonTitle>{decodedDoctorName}</IonTitle>
+          <IonTitle>{doctorInfo.name}</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent className="ion-padding app-content">
@@ -311,13 +307,10 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
                     Bloquer
                   </IonButton>
                 )}
-                <IonButton size="small" fill="clear" onClick={() => setDoctorInfoExpanded((prev) => !prev)}>
-                  <IonIcon icon={doctorInfoExpanded ? chevronUpOutline : chevronDownOutline} />
-                </IonButton>
               </div>
             </div>
           </IonCardHeader>
-          <IonCardContent style={{ display: doctorInfoExpanded ? 'block' : 'none' }}>
+          <IonCardContent>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
               {doctorInfo.licenseVerified ? <IonBadge color="success">Verifie</IonBadge> : <IonBadge color="medium">Non verifie</IonBadge>}
               {doctorInfo.teleconsultationAvailable ? <IonBadge color="primary">Teleconsultation</IonBadge> : null}
@@ -431,26 +424,6 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
               ) : null}
             </div>
 
-            <div style={{ border: '1px solid #dbe7ef', borderRadius: '12px', padding: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong>Verification</strong>
-                <IonButton fill="clear" size="small" onClick={() => setVerificationExpanded((prev) => !prev)}>
-                  <IonIcon icon={verificationExpanded ? chevronUpOutline : chevronDownOutline} />
-                </IonButton>
-              </div>
-              {verificationExpanded ? (
-                <>
-                  <p><IonIcon icon={shieldCheckmarkOutline} /> Licence: {doctorInfo.licenseNumber || 'N/D'}</p>
-                  <p>Statut: {doctorInfo.licenseVerified ? 'Verifiee' : 'Non verifiee'}</p>
-                  <p>Total ordonnances: {doctorInfo.totalPrescriptions}</p>
-                  <p>Total medicaments prescrits: {doctorInfo.totalMedicines}</p>
-                  <p>
-                    Derniere ordonnance:{' '}
-                    {doctorInfo.latestPrescriptionAt ? formatDateTime(doctorInfo.latestPrescriptionAt) : 'Aucune'}
-                  </p>
-                </>
-              ) : null}
-            </div>
           </IonCardContent>
         </IonCard>
         <IonAlert
@@ -490,40 +463,6 @@ const PatientDoctorPrescriptionsPage: React.FC = () => {
             }
           ]}
         />
-        <IonCard className="surface-card">
-          <IonCardHeader>
-            <IonCardTitle>Ordonnances</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            {doctorPrescriptions.length === 0 ? (
-              <IonText color="medium">
-                <p>Aucune ordonnance pour ce medecin.</p>
-              </IonText>
-            ) : (
-              <IonList>
-                {doctorPrescriptions.map((prescription) => (
-                  <IonItem
-                    key={prescription.id}
-                    lines="full"
-                    button
-                    detail
-                    onClick={() => ionRouter.push(`/patient/prescriptions/${prescription.id}`, 'forward', 'push')}
-                  >
-                    <IonLabel>
-                      <div className="status-row">
-                        <span>Statut:</span>
-                        <IonBadge className={getPrescriptionStatusClassName(prescription.status)}>
-                          {getPrescriptionStatusLabel(prescription.status)}
-                        </IonBadge>
-                      </div>
-                      <p>Demandee le {formatDateTime(prescription.requested_at)}</p>
-                    </IonLabel>
-                  </IonItem>
-                ))}
-              </IonList>
-            )}
-          </IonCardContent>
-        </IonCard>
       </IonContent>
     </IonPage>
   );

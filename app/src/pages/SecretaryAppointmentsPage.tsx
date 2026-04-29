@@ -26,20 +26,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import AppointmentFormModal from '../components/AppointmentFormModal';
 import InstallBanner from '../components/InstallBanner';
-import { api, type ApiDoctorPatient } from '../services/api';
+import { api, type ApiAppointment, type ApiDoctorPatient } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
-
-type SecretaryAppointmentEntry = {
-  id: string;
-  patient_id: number;
-  created_by_secretary_id: number | null;
-  doctor_user_id: number;
-  doctor_name: string;
-  scheduled_at: string;
-  note: string | null;
-  created_at: string;
-};
 
 type AppointmentStatus = 'overdue' | 'soon' | 'upcoming';
 
@@ -85,7 +74,7 @@ const formatDayHeading = (value: string) => {
 };
 
 const SecretaryAppointmentsPage: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
   const ionRouter = useIonRouter();
   const location = useLocation();
   const { patientId: routePatientId } = useParams<{ patientId?: string }>();
@@ -93,7 +82,7 @@ const SecretaryAppointmentsPage: React.FC = () => {
   const [selectedDoctor, setSelectedDoctor] = useState<string>('all');
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<'all' | 'past' | 'upcoming'>('all');
   const [patients, setPatients] = useState<ApiDoctorPatient[]>([]);
-  const [appointments, setAppointments] = useState<SecretaryAppointmentEntry[]>([]);
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
   const [relatedDoctors, setRelatedDoctors] = useState<Array<{ id: number; name: string }>>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -145,32 +134,8 @@ const SecretaryAppointmentsPage: React.FC = () => {
         .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
     );
 
-    const collected: SecretaryAppointmentEntry[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (!key || !key.startsWith('secretary-appointments-')) {
-        continue;
-      }
-      const raw = localStorage.getItem(key);
-      if (!raw) {
-        continue;
-      }
-      try {
-        const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
-        if (Array.isArray(parsed)) {
-          collected.push(...parsed);
-        }
-      } catch {
-        // ignore bad local data
-      }
-    }
-
-    const filtered = collected.filter((entry) => {
-      if (relatedDoctorIds.size === 0) {
-        return false;
-      }
-      return relatedDoctorIds.has(entry.doctor_user_id);
-    });
+    const rows = await api.getSecretaryAppointments(token).catch(() => [] as ApiAppointment[]);
+    const filtered = rows.filter((entry) => relatedDoctorIds.has(entry.doctor_user_id));
     setAppointments(filtered.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()));
   }, [token]);
 
@@ -187,7 +152,13 @@ const SecretaryAppointmentsPage: React.FC = () => {
   }, [patients]);
 
   const doctorFilters = useMemo(() => {
-    const names = Array.from(new Set(appointments.map((entry) => entry.doctor_name).filter(Boolean)));
+    const names = Array.from(
+      new Set(
+        appointments
+          .map((entry) => entry.doctor_name ?? '')
+          .filter((name): name is string => name.trim().length > 0)
+      )
+    );
     return names.sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
   }, [appointments]);
 
@@ -227,7 +198,7 @@ const SecretaryAppointmentsPage: React.FC = () => {
   }, [appointments, selectedDoctor]);
 
   const groupedAppointments = useMemo(() => {
-    const groups = new Map<string, SecretaryAppointmentEntry[]>();
+    const groups = new Map<string, ApiAppointment[]>();
     filtered.forEach((entry) => {
       const key = getDayKey(entry.scheduled_at);
       const existing = groups.get(key) ?? [];
@@ -285,36 +256,24 @@ const SecretaryAppointmentsPage: React.FC = () => {
       return;
     }
 
-    const doctorName = relatedDoctors.find((row) => row.id === doctorId)?.name ?? `Docteur #${doctorId}`;
-    const next: SecretaryAppointmentEntry = {
-      id: `rdv-${Date.now()}`,
+    if (!token) {
+      setAddError('Session invalide.');
+      return;
+    }
+
+    api.createSecretaryAppointment(token, {
       patient_id: patientId,
-      created_by_secretary_id: user?.id ?? null,
       doctor_user_id: doctorId,
-      doctor_name: doctorName,
       scheduled_at: scheduledAt,
       note: addForm.note.trim() || null,
-      created_at: new Date().toISOString(),
-    };
-
-    const key = `secretary-appointments-${patientId}`;
-    let existing: SecretaryAppointmentEntry[] = [];
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
-        if (Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = [];
-      }
-    }
-    localStorage.setItem(key, JSON.stringify([...existing, next]));
+    }).then(() => {
     setShowAddModal(false);
-    setAddError(null);
-    void loadData();
-  }, [addForm, loadData, relatedDoctors, scheduledDate, scheduledTime, user?.id]);
+      setAddError(null);
+      void loadData();
+    }).catch((error: unknown) => {
+      setAddError(error instanceof Error ? error.message : "Impossible d'ajouter ce rendez-vous.");
+    });
+  }, [addForm, loadData, scheduledDate, scheduledTime, token]);
 
   return (
     <IonPage>
@@ -379,7 +338,7 @@ const SecretaryAppointmentsPage: React.FC = () => {
                   key={doctorName}
                   size="small"
                   fill={selectedDoctor === doctorName ? 'solid' : 'outline'}
-                  onClick={() => setSelectedDoctor(doctorName)}
+                  onClick={() => setSelectedDoctor(doctorName ?? '')}
                   style={{ whiteSpace: 'nowrap' }}
                 >
                   {doctorName}

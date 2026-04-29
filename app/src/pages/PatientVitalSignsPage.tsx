@@ -18,6 +18,8 @@ import {
   IonTextarea,
   IonTitle,
   IonToolbar,
+  IonSelect,
+  IonSelectOption,
 } from '@ionic/react';
 import { pulseOutline, trashOutline } from 'ionicons/icons';
 import { useEffect, useMemo, useState } from 'react';
@@ -31,10 +33,15 @@ type VitalSignEntry = {
   systolic: number | null;
   diastolic: number | null;
   heart_rate: number | null;
+  respiratory_rate: number | null;
   temperature_c: number | null;
   spo2: number | null;
   glucose_mg_dl: number | null;
+  glucose_context: 'fasting' | 'post_meal' | 'random' | null;
   weight_kg: number | null;
+  height_cm: number | null;
+  pain_score: number | null;
+  measurement_context: 'rest' | 'after_exercise' | 'symptomatic' | null;
   note: string;
 };
 
@@ -58,6 +65,63 @@ const heartRateStatus = (hr: number | null) => {
   return { label: 'Normale', color: 'success' as const };
 };
 
+const spo2Status = (value: number | null) => {
+  if (value === null) return { label: 'N/D', color: 'medium' as const };
+  if (value < 90) return { label: 'Basse', color: 'danger' as const };
+  if (value < 95) return { label: 'Limite', color: 'warning' as const };
+  return { label: 'Normale', color: 'success' as const };
+};
+
+const temperatureStatus = (value: number | null) => {
+  if (value === null) return { label: 'N/D', color: 'medium' as const };
+  if (value < 36) return { label: 'Basse', color: 'warning' as const };
+  if (value <= 37.8) return { label: 'Normale', color: 'success' as const };
+  return { label: 'Elevee', color: 'danger' as const };
+};
+
+const respiratoryStatus = (value: number | null) => {
+  if (value === null) return { label: 'N/D', color: 'medium' as const };
+  if (value < 12 || value > 20) return { label: 'A surveiller', color: 'warning' as const };
+  return { label: 'Normale', color: 'success' as const };
+};
+
+const painStatus = (value: number | null) => {
+  if (value === null) return { label: 'N/D', color: 'medium' as const };
+  if (value <= 3) return { label: 'Legere', color: 'success' as const };
+  if (value <= 6) return { label: 'Moderee', color: 'warning' as const };
+  return { label: 'Importante', color: 'danger' as const };
+};
+
+const glucoseStatus = (value: number | null, context: VitalSignEntry['glucose_context']) => {
+  if (value === null) return { label: 'N/D', color: 'medium' as const };
+  if (context === 'fasting') {
+    if (value < 70) return { label: 'Basse', color: 'warning' as const };
+    if (value < 100) return { label: 'Normale', color: 'success' as const };
+    if (value <= 125) return { label: 'A surveiller', color: 'warning' as const };
+    return { label: 'Elevee', color: 'danger' as const };
+  }
+  if (context === 'post_meal') {
+    if (value < 70) return { label: 'Basse', color: 'warning' as const };
+    if (value < 140) return { label: 'Normale', color: 'success' as const };
+    return { label: 'Elevee', color: 'danger' as const };
+  }
+  if (value < 70) return { label: 'Basse', color: 'warning' as const };
+  if (value <= 180) return { label: 'A surveiller', color: 'warning' as const };
+  return { label: 'Elevee', color: 'danger' as const };
+};
+
+const bmiStatus = (weightKg: number | null, heightCm: number | null) => {
+  if (weightKg === null || heightCm === null || heightCm <= 0) {
+    return { bmi: null as number | null, label: 'N/D', color: 'medium' as const };
+  }
+  const heightM = heightCm / 100;
+  const bmi = Number((weightKg / (heightM * heightM)).toFixed(1));
+  if (bmi < 18.5) return { bmi, label: 'Insuffisance ponderale', color: 'warning' as const };
+  if (bmi < 25) return { bmi, label: 'Poids normal', color: 'success' as const };
+  if (bmi < 30) return { bmi, label: 'Surpoids', color: 'warning' as const };
+  return { bmi, label: 'Obesite', color: 'danger' as const };
+};
+
 const PatientVitalSignsPage: React.FC = () => {
   const { user } = useAuth();
   const storageKey = useMemo(() => `patient-vitals-${user?.id ?? 'anonymous'}`, [user?.id]);
@@ -67,10 +131,15 @@ const PatientVitalSignsPage: React.FC = () => {
   const [systolic, setSystolic] = useState('');
   const [diastolic, setDiastolic] = useState('');
   const [heartRate, setHeartRate] = useState('');
+  const [respiratoryRate, setRespiratoryRate] = useState('');
   const [temperatureC, setTemperatureC] = useState('');
   const [spo2, setSpo2] = useState('');
   const [glucose, setGlucose] = useState('');
+  const [glucoseContext, setGlucoseContext] = useState<VitalSignEntry['glucose_context']>('random');
   const [weight, setWeight] = useState('');
+  const [heightCm, setHeightCm] = useState('');
+  const [painScore, setPainScore] = useState('');
+  const [measurementContext, setMeasurementContext] = useState<VitalSignEntry['measurement_context']>('rest');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
@@ -89,6 +158,14 @@ const PatientVitalSignsPage: React.FC = () => {
   }, [storageKey]);
 
   const latest = useMemo(() => entries[0] ?? null, [entries]);
+  const latestBmi = useMemo(
+    () => bmiStatus(latest?.weight_kg ?? null, latest?.height_cm ?? null),
+    [latest?.height_cm, latest?.weight_kg]
+  );
+  const latestGlucose = useMemo(
+    () => glucoseStatus(latest?.glucose_mg_dl ?? null, latest?.glucose_context ?? 'random'),
+    [latest?.glucose_context, latest?.glucose_mg_dl]
+  );
 
   const sevenDayAvg = useMemo(() => {
     const now = Date.now();
@@ -106,10 +183,12 @@ const PatientVitalSignsPage: React.FC = () => {
       pressureS: avg(recent.map((r) => r.systolic)),
       pressureD: avg(recent.map((r) => r.diastolic)),
       hr: avg(recent.map((r) => r.heart_rate)),
+      rr: avg(recent.map((r) => r.respiratory_rate)),
       temp: avg(recent.map((r) => r.temperature_c)),
       spo2: avg(recent.map((r) => r.spo2)),
       glucose: avg(recent.map((r) => r.glucose_mg_dl)),
       weight: avg(recent.map((r) => r.weight_kg)),
+      height: avg(recent.map((r) => r.height_cm)),
     };
   }, [entries]);
 
@@ -129,10 +208,15 @@ const PatientVitalSignsPage: React.FC = () => {
       systolic: parseNum(systolic),
       diastolic: parseNum(diastolic),
       heart_rate: parseNum(heartRate),
+      respiratory_rate: parseNum(respiratoryRate),
       temperature_c: parseNum(temperatureC),
       spo2: parseNum(spo2),
       glucose_mg_dl: parseNum(glucose),
+      glucose_context: glucoseContext ?? 'random',
       weight_kg: parseNum(weight),
+      height_cm: parseNum(heightCm),
+      pain_score: parseNum(painScore),
+      measurement_context: measurementContext ?? 'rest',
       note: note.trim(),
     };
 
@@ -140,10 +224,13 @@ const PatientVitalSignsPage: React.FC = () => {
       newEntry.systolic === null &&
       newEntry.diastolic === null &&
       newEntry.heart_rate === null &&
+      newEntry.respiratory_rate === null &&
       newEntry.temperature_c === null &&
       newEntry.spo2 === null &&
       newEntry.glucose_mg_dl === null &&
-      newEntry.weight_kg === null
+      newEntry.weight_kg === null &&
+      newEntry.height_cm === null
+      && newEntry.pain_score === null
     ) {
       setMessage('Ajoutez au moins une mesure.');
       return;
@@ -157,10 +244,15 @@ const PatientVitalSignsPage: React.FC = () => {
     setSystolic('');
     setDiastolic('');
     setHeartRate('');
+    setRespiratoryRate('');
     setTemperatureC('');
     setSpo2('');
     setGlucose('');
+    setGlucoseContext('random');
     setWeight('');
+    setHeightCm('');
+    setPainScore('');
+    setMeasurementContext('rest');
     setNote('');
     setMessage('Mesure enregistree.');
   };
@@ -202,12 +294,32 @@ const PatientVitalSignsPage: React.FC = () => {
                   <div style={{ fontWeight: 700 }}>{latest.heart_rate ?? '-'} bpm</div>
                 </div>
                 <div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Frequence respiratoire</div>
+                  <div style={{ fontWeight: 700 }}>{latest.respiratory_rate ?? '-'} /min</div>
+                </div>
+                <div>
                   <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Temperature</div>
                   <div style={{ fontWeight: 700 }}>{latest.temperature_c ?? '-'} C</div>
                 </div>
                 <div>
                   <div style={{ fontSize: '0.78rem', color: '#64748b' }}>SpO2</div>
                   <div style={{ fontWeight: 700 }}>{latest.spo2 ?? '-'} %</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Glycemie</div>
+                  <div style={{ fontWeight: 700 }}>{latest.glucose_mg_dl ?? '-'} mg/dL</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Poids</div>
+                  <div style={{ fontWeight: 700 }}>{latest.weight_kg ?? '-'} kg</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Taille</div>
+                  <div style={{ fontWeight: 700 }}>{latest.height_cm ?? '-'} cm</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Douleur (0-10)</div>
+                  <div style={{ fontWeight: 700 }}>{latest.pain_score ?? '-'}</div>
                 </div>
               </div>
             ) : (
@@ -222,7 +334,24 @@ const PatientVitalSignsPage: React.FC = () => {
               <IonBadge color={heartRateStatus(latest?.heart_rate ?? null).color}>
                 Pouls {heartRateStatus(latest?.heart_rate ?? null).label}
               </IonBadge>
-              <IonBadge color="light">Moy. 7j FC {sevenDayAvg.hr ?? '-'} bpm</IonBadge>
+              <IonBadge color={respiratoryStatus(latest?.respiratory_rate ?? null).color}>
+                Respiration {respiratoryStatus(latest?.respiratory_rate ?? null).label}
+              </IonBadge>
+              <IonBadge color={temperatureStatus(latest?.temperature_c ?? null).color}>
+                Temperature {temperatureStatus(latest?.temperature_c ?? null).label}
+              </IonBadge>
+              <IonBadge color={spo2Status(latest?.spo2 ?? null).color}>
+                SpO2 {spo2Status(latest?.spo2 ?? null).label}
+              </IonBadge>
+              <IonBadge color={latestGlucose.color}>
+                Glycemie {latestGlucose.label}
+              </IonBadge>
+              <IonBadge color={latestBmi.color}>
+                IMC {latestBmi.bmi ?? '-'} · {latestBmi.label}
+              </IonBadge>
+              <IonBadge color={painStatus(latest?.pain_score ?? null).color}>
+                Douleur {painStatus(latest?.pain_score ?? null).label}
+              </IonBadge>
             </div>
           </IonCardContent>
         </IonCard>
@@ -250,6 +379,10 @@ const PatientVitalSignsPage: React.FC = () => {
                 <IonInput value={heartRate} onIonInput={(e) => setHeartRate(e.detail.value ?? '')} />
               </IonItem>
               <IonItem>
+                <IonLabel position="stacked">Frequence respiratoire (/min)</IonLabel>
+                <IonInput value={respiratoryRate} onIonInput={(e) => setRespiratoryRate(e.detail.value ?? '')} />
+              </IonItem>
+              <IonItem>
                 <IonLabel position="stacked">Temperature (C)</IonLabel>
                 <IonInput value={temperatureC} onIonInput={(e) => setTemperatureC(e.detail.value ?? '')} />
               </IonItem>
@@ -262,8 +395,32 @@ const PatientVitalSignsPage: React.FC = () => {
                 <IonInput value={glucose} onIonInput={(e) => setGlucose(e.detail.value ?? '')} />
               </IonItem>
               <IonItem>
+                <IonLabel position="stacked">Contexte glycemie</IonLabel>
+                <IonSelect value={glucoseContext} onIonChange={(e) => setGlucoseContext((e.detail.value as VitalSignEntry['glucose_context']) ?? 'random')}>
+                  <IonSelectOption value="fasting">A jeun</IonSelectOption>
+                  <IonSelectOption value="post_meal">Post-prandiale (2h)</IonSelectOption>
+                  <IonSelectOption value="random">Aleatoire</IonSelectOption>
+                </IonSelect>
+              </IonItem>
+              <IonItem>
                 <IonLabel position="stacked">Poids (kg)</IonLabel>
                 <IonInput value={weight} onIonInput={(e) => setWeight(e.detail.value ?? '')} />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Taille (cm)</IonLabel>
+                <IonInput value={heightCm} onIonInput={(e) => setHeightCm(e.detail.value ?? '')} />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Douleur (0-10)</IonLabel>
+                <IonInput value={painScore} onIonInput={(e) => setPainScore(e.detail.value ?? '')} />
+              </IonItem>
+              <IonItem>
+                <IonLabel position="stacked">Contexte mesure</IonLabel>
+                <IonSelect value={measurementContext} onIonChange={(e) => setMeasurementContext((e.detail.value as VitalSignEntry['measurement_context']) ?? 'rest')}>
+                  <IonSelectOption value="rest">Repos</IonSelectOption>
+                  <IonSelectOption value="after_exercise">Apres effort</IonSelectOption>
+                  <IonSelectOption value="symptomatic">Symptomatique</IonSelectOption>
+                </IonSelect>
               </IonItem>
             </div>
             <IonItem style={{ marginTop: '8px' }}>
@@ -301,10 +458,10 @@ const PatientVitalSignsPage: React.FC = () => {
                             {formatDateTime(entry.recorded_at)}
                           </div>
                           <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
-                            TA {entry.systolic ?? '-'} / {entry.diastolic ?? '-'} · FC {entry.heart_rate ?? '-'} · Temp {entry.temperature_c ?? '-'} C
+                            TA {entry.systolic ?? '-'} / {entry.diastolic ?? '-'} · FC {entry.heart_rate ?? '-'} · FR {entry.respiratory_rate ?? '-'} · Temp {entry.temperature_c ?? '-'} C
                           </div>
                           <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                            SpO2 {entry.spo2 ?? '-'}% · Glycemie {entry.glucose_mg_dl ?? '-'} · Poids {entry.weight_kg ?? '-'} kg
+                            SpO2 {entry.spo2 ?? '-'}% · Glycemie {entry.glucose_mg_dl ?? '-'} ({entry.glucose_context === 'fasting' ? 'A jeun' : entry.glucose_context === 'post_meal' ? 'Post-prandiale' : 'Aleatoire'}) · Poids {entry.weight_kg ?? '-'} kg · Taille {entry.height_cm ?? '-'} cm · Douleur {entry.pain_score ?? '-'} · Contexte {entry.measurement_context === 'after_exercise' ? 'Apres effort' : entry.measurement_context === 'symptomatic' ? 'Symptomatique' : 'Repos'}
                           </div>
                           {entry.note ? (
                             <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>

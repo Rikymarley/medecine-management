@@ -36,11 +36,12 @@ import {
   peopleOutline,
   personOutline,
   snowOutline,
+  timeOutline,
   warningOutline,
 } from 'ionicons/icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import InstallBanner from '../components/InstallBanner';
-import { api, type ApiFamilyMember, type ApiPatientMedicineCabinetItem } from '../services/api';
+import { api, type ApiFamilyMember, type ApiMedicine, type ApiPatientMedicineCabinetItem } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime as formatDateTimeLabel } from '../utils/time';
 
@@ -160,6 +161,17 @@ const normalizeReminderTimes = (existing: string[], count: number): string[] => 
   return Array.from({ length: count }, (_, index) => validExisting[index] ?? fallback[index] ?? '08:00');
 };
 
+const openNativePicker = async (inputRef: HTMLIonInputElement | null) => {
+  if (!inputRef) return;
+  const nativeInput = (await inputRef.getInputElement()) as HTMLInputElement;
+  const picker = (nativeInput as HTMLInputElement & { showPicker?: () => void }).showPicker;
+  if (typeof picker === 'function') {
+    picker.call(nativeInput);
+    return;
+  }
+  (nativeInput as HTMLInputElement).focus();
+};
+
 const PatientMedicationsPage: React.FC = () => {
   const { token } = useAuth();
   const ionRouter = useIonRouter();
@@ -185,6 +197,15 @@ const PatientMedicationsPage: React.FC = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [form, setForm] = useState<EditForm>(emptyForm);
   const [createForm, setCreateForm] = useState<CreateForm>(emptyCreateForm);
+  const [createPhotoFile, setCreatePhotoFile] = useState<File | null>(null);
+  const createPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const editExpirationInputRef = useRef<HTMLIonInputElement | null>(null);
+  const createExpirationInputRef = useRef<HTMLIonInputElement | null>(null);
+  const editReminderInputRefs = useRef<Record<number, HTMLIonInputElement | null>>({});
+  const createReminderInputRefs = useRef<Record<number, HTMLIonInputElement | null>>({});
+  const [medicineSuggestions, setMedicineSuggestions] = useState<ApiMedicine[]>([]);
+  const [searchingMedicines, setSearchingMedicines] = useState(false);
+  const [showMedicineSuggestions, setShowMedicineSuggestions] = useState(false);
 
   const loadItems = useCallback(async () => {
     if (!token) return;
@@ -213,6 +234,36 @@ const PatientMedicationsPage: React.FC = () => {
       .then(setFamilyMembers)
       .catch(() => setFamilyMembers([]));
   }, [token]);
+
+  useEffect(() => {
+    const q = createForm.medication_name.trim();
+    if (!isCreateModalOpen || q.length < 2) {
+      setMedicineSuggestions([]);
+      setSearchingMedicines(false);
+      return;
+    }
+
+    let active = true;
+    setSearchingMedicines(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const rows = await api.getMedicines({ q, limit: 6 });
+        if (!active) return;
+        setMedicineSuggestions(rows);
+      } catch {
+        if (!active) return;
+        setMedicineSuggestions([]);
+      } finally {
+        if (!active) return;
+        setSearchingMedicines(false);
+      }
+    }, 220);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [createForm.medication_name, isCreateModalOpen]);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -292,6 +343,9 @@ const PatientMedicationsPage: React.FC = () => {
     if (creating) return;
     setIsCreateModalOpen(false);
     setCreateForm(emptyCreateForm);
+    setCreatePhotoFile(null);
+    setMedicineSuggestions([]);
+    setShowMedicineSuggestions(false);
   };
 
   const saveDetails = async () => {
@@ -387,7 +441,16 @@ const PatientMedicationsPage: React.FC = () => {
         requires_refrigeration: createForm.requires_refrigeration,
         note: createForm.note.trim() || null,
       });
-      setItems((prev) => [response.item, ...prev]);
+      let nextItem = response.item;
+      if (createPhotoFile) {
+        try {
+          const uploadResponse = await api.uploadPatientCabinetItemPhoto(token, response.item.id, createPhotoFile);
+          nextItem = { ...response.item, photo_url: uploadResponse.photo_url };
+        } catch {
+          presentToast({ message: 'Medicament ajoute, mais la photo na pas pu etre envoyee.', duration: 2200, color: 'warning' });
+        }
+      }
+      setItems((prev) => [nextItem, ...prev]);
       presentToast({ message: response.message, duration: 1800, color: 'success' });
       closeCreateModal();
     } catch (err) {
@@ -712,11 +775,23 @@ const PatientMedicationsPage: React.FC = () => {
               ) : null}
               <IonItem>
                 <IonLabel position="stacked">Date expiration</IonLabel>
-                <IonInput
-                  type="date"
-                  value={form.expiration_date}
-                  onIonInput={(e) => setForm((prev) => ({ ...prev, expiration_date: e.detail.value ?? '' }))}
-                />
+                <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonInput
+                    ref={editExpirationInputRef}
+                    type="date"
+                    value={form.expiration_date}
+                    onIonInput={(e) => setForm((prev) => ({ ...prev, expiration_date: e.detail.value ?? '' }))}
+                  />
+                  <IonButton
+                    fill="clear"
+                    size="small"
+                    onClick={() => {
+                      void openNativePicker(editExpirationInputRef.current);
+                    }}
+                  >
+                    <IonIcon icon={calendarOutline} />
+                  </IonButton>
+                </div>
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Fabricant</IonLabel>
@@ -754,18 +829,32 @@ const PatientMedicationsPage: React.FC = () => {
                   {normalizeReminderTimes(form.reminder_times, editDailyDoseCount).map((time, index) => (
                     <IonItem key={`edit-reminder-${index}`}>
                       <IonLabel position="stacked">Prise {index + 1}</IonLabel>
-                      <IonInput
-                        type="time"
-                        value={time}
-                        onIonInput={(e) => {
-                          const nextValue = (e.detail.value ?? '').slice(0, 5);
-                          setForm((prev) => {
-                            const next = normalizeReminderTimes(prev.reminder_times, editDailyDoseCount);
-                            next[index] = nextValue;
-                            return { ...prev, reminder_times: next };
-                          });
-                        }}
-                      />
+                      <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <IonInput
+                          ref={(el) => {
+                            editReminderInputRefs.current[index] = el;
+                          }}
+                          type="time"
+                          value={time}
+                          onIonInput={(e) => {
+                            const nextValue = (e.detail.value ?? '').slice(0, 5);
+                            setForm((prev) => {
+                              const next = normalizeReminderTimes(prev.reminder_times, editDailyDoseCount);
+                              next[index] = nextValue;
+                              return { ...prev, reminder_times: next };
+                            });
+                          }}
+                        />
+                        <IonButton
+                          fill="clear"
+                          size="small"
+                          onClick={() => {
+                            void openNativePicker(editReminderInputRefs.current[index] ?? null);
+                          }}
+                        >
+                          <IonIcon icon={timeOutline} />
+                        </IonButton>
+                      </div>
                     </IonItem>
                   ))}
                 </>
@@ -887,9 +976,59 @@ const PatientMedicationsPage: React.FC = () => {
                 <IonLabel position="stacked">Nom du medicament</IonLabel>
                 <IonInput
                   value={createForm.medication_name}
-                  onIonInput={(e) => setCreateForm((prev) => ({ ...prev, medication_name: e.detail.value ?? '' }))}
+                  onIonFocus={() => setShowMedicineSuggestions(true)}
+                  onIonInput={(e) => {
+                    setShowMedicineSuggestions(true);
+                    setCreateForm((prev) => ({ ...prev, medication_name: e.detail.value ?? '' }));
+                  }}
                 />
               </IonItem>
+              {showMedicineSuggestions && createForm.medication_name.trim().length >= 2 ? (
+                <div
+                  style={{
+                    border: '1px solid #dbe7ef',
+                    borderRadius: '10px',
+                    background: '#fff',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {searchingMedicines ? (
+                    <p style={{ margin: '8px 10px', fontSize: '0.9rem', color: '#64748b' }}>Recherche...</p>
+                  ) : medicineSuggestions.length === 0 ? (
+                    <p style={{ margin: '8px 10px', fontSize: '0.9rem', color: '#64748b' }}>Aucune suggestion.</p>
+                  ) : (
+                    medicineSuggestions.map((medicine, index) => (
+                      <button
+                        key={medicine.id}
+                        type="button"
+                        onClick={() => {
+                          setCreateForm((prev) => ({
+                            ...prev,
+                            medication_name: medicine.name ?? prev.medication_name,
+                            form: medicine.form ?? prev.form,
+                            dosage_strength: medicine.strength ?? prev.dosage_strength,
+                          }));
+                          setShowMedicineSuggestions(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          border: 'none',
+                          borderBottom: index === medicineSuggestions.length - 1 ? 'none' : '1px solid #eef2f6',
+                          background: '#fff',
+                          textAlign: 'left',
+                          padding: '10px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#000' }}>{medicine.name}</div>
+                        <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                          {[medicine.strength, medicine.form].filter(Boolean).join(' · ') || 'Sans details'}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
               <IonItem>
                 <IonLabel position="stacked">Forme</IonLabel>
                 <IonSelect
@@ -968,29 +1107,55 @@ const PatientMedicationsPage: React.FC = () => {
                   {normalizeReminderTimes(createForm.reminder_times, createDailyDoseCount).map((time, index) => (
                     <IonItem key={`create-reminder-${index}`}>
                       <IonLabel position="stacked">Prise {index + 1}</IonLabel>
-                      <IonInput
-                        type="time"
-                        value={time}
-                        onIonInput={(e) => {
-                          const nextValue = (e.detail.value ?? '').slice(0, 5);
-                          setCreateForm((prev) => {
-                            const next = normalizeReminderTimes(prev.reminder_times, createDailyDoseCount);
-                            next[index] = nextValue;
-                            return { ...prev, reminder_times: next };
-                          });
-                        }}
-                      />
+                      <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <IonInput
+                          ref={(el) => {
+                            createReminderInputRefs.current[index] = el;
+                          }}
+                          type="time"
+                          value={time}
+                          onIonInput={(e) => {
+                            const nextValue = (e.detail.value ?? '').slice(0, 5);
+                            setCreateForm((prev) => {
+                              const next = normalizeReminderTimes(prev.reminder_times, createDailyDoseCount);
+                              next[index] = nextValue;
+                              return { ...prev, reminder_times: next };
+                            });
+                          }}
+                        />
+                        <IonButton
+                          fill="clear"
+                          size="small"
+                          onClick={() => {
+                            void openNativePicker(createReminderInputRefs.current[index] ?? null);
+                          }}
+                        >
+                          <IonIcon icon={timeOutline} />
+                        </IonButton>
+                      </div>
                     </IonItem>
                   ))}
                 </>
               ) : null}
               <IonItem>
                 <IonLabel position="stacked">Date expiration</IonLabel>
-                <IonInput
-                  type="date"
-                  value={createForm.expiration_date}
-                  onIonInput={(e) => setCreateForm((prev) => ({ ...prev, expiration_date: e.detail.value ?? '' }))}
-                />
+                <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <IonInput
+                    ref={createExpirationInputRef}
+                    type="date"
+                    value={createForm.expiration_date}
+                    onIonInput={(e) => setCreateForm((prev) => ({ ...prev, expiration_date: e.detail.value ?? '' }))}
+                  />
+                  <IonButton
+                    fill="clear"
+                    size="small"
+                    onClick={() => {
+                      void openNativePicker(createExpirationInputRef.current);
+                    }}
+                  >
+                    <IonIcon icon={calendarOutline} />
+                  </IonButton>
+                </div>
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Fabricant</IonLabel>
@@ -998,6 +1163,44 @@ const PatientMedicationsPage: React.FC = () => {
                   value={createForm.manufacturer}
                   onIonInput={(e) => setCreateForm((prev) => ({ ...prev, manufacturer: e.detail.value ?? '' }))}
                 />
+              </IonItem>
+              <IonItem lines="none">
+                <IonLabel position="stacked">Photo du medicament</IonLabel>
+                <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <input
+                    ref={createPhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      setCreatePhotoFile(file);
+                    }}
+                  />
+                  <IonButton fill="outline" size="small" onClick={() => createPhotoInputRef.current?.click()}>
+                    <IonIcon icon={cameraOutline} slot="start" />
+                    {createPhotoFile ? 'Changer la photo' : 'Ajouter une photo'}
+                  </IonButton>
+                  {createPhotoFile ? (
+                    <IonButton
+                      fill="clear"
+                      size="small"
+                      color="medium"
+                      onClick={() => {
+                        setCreatePhotoFile(null);
+                        if (createPhotoInputRef.current) {
+                          createPhotoInputRef.current.value = '';
+                        }
+                      }}
+                    >
+                      Retirer
+                    </IonButton>
+                  ) : null}
+                </div>
+                {createPhotoFile ? (
+                  <p style={{ margin: '6px 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>{createPhotoFile.name}</p>
+                ) : null}
               </IonItem>
               <IonItem>
                 <IonLabel position="stacked">Refrigeration</IonLabel>

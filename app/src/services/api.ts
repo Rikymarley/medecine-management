@@ -830,6 +830,47 @@ export type ApiVisitDetail = ApiVisit & {
   }>;
 };
 
+export type ApiVitalSign = {
+  id: number;
+  patient_user_id: number;
+  family_member_id: number | null;
+  family_member_name?: string | null;
+  recorded_by_user_id: number | null;
+  recorded_by_role: 'patient' | 'doctor' | 'secretaire' | string | null;
+  recorded_by_name?: string | null;
+  recorded_at: string;
+  systolic: number | null;
+  diastolic: number | null;
+  heart_rate: number | null;
+  respiratory_rate: number | null;
+  temperature_c: number | null;
+  spo2: number | null;
+  glucose_mg_dl: number | null;
+  glucose_context: 'fasting' | 'post_meal' | 'random' | null;
+  weight_kg: number | null;
+  height_cm: number | null;
+  pain_score: number | null;
+  measurement_context: 'rest' | 'after_exercise' | 'symptomatic' | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAppointment = {
+  id: number;
+  patient_id: number;
+  patient_name?: string | null;
+  doctor_user_id: number;
+  doctor_name?: string | null;
+  created_by_user_id: number | null;
+  created_by_role: 'doctor' | 'secretaire' | 'patient' | string | null;
+  scheduled_at: string;
+  note: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ApiRehabEntry = {
   id: number;
   patient_user_id: number;
@@ -1962,6 +2003,200 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : '';
     return request<ApiVisit[]>(`/patient/visits${suffix}`, { token });
   },
+  getPatientAppointments: (token: string) =>
+    request<ApiAppointment[]>('/patient/appointments', { token }),
+  getDoctorAppointments: (token: string, params?: { patient_id?: number | null }) => {
+    const search = new URLSearchParams();
+    if (typeof params?.patient_id === 'number') {
+      search.set('patient_id', String(params.patient_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiAppointment[]>(`/doctor/appointments${suffix}`, { token });
+  },
+  createDoctorAppointment: (
+    token: string,
+    payload: {
+      patient_id: number;
+      doctor_user_id: number;
+      scheduled_at: string;
+      note?: string | null;
+      status?: string | null;
+    }
+  ) =>
+    request<ApiAppointment>('/doctor/appointments', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updateDoctorAppointment: (
+    token: string,
+    appointmentId: number,
+    payload: {
+      patient_id: number;
+      doctor_user_id: number;
+      scheduled_at: string;
+      note?: string | null;
+      status?: string | null;
+    }
+  ) =>
+    request<ApiAppointment>(`/doctor/appointments/${appointmentId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  getSecretaryAppointments: (token: string, params?: { patient_id?: number | null }) => {
+    const search = new URLSearchParams();
+    if (typeof params?.patient_id === 'number') {
+      search.set('patient_id', String(params.patient_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiAppointment[]>(`/secretaire/appointments${suffix}`, { token });
+  },
+  createSecretaryAppointment: (
+    token: string,
+    payload: {
+      patient_id: number;
+      doctor_user_id: number;
+      scheduled_at: string;
+      note?: string | null;
+      status?: string | null;
+    }
+  ) =>
+    request<ApiAppointment>('/secretaire/appointments', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  updateSecretaryAppointment: (
+    token: string,
+    appointmentId: number,
+    payload: {
+      patient_id: number;
+      doctor_user_id: number;
+      scheduled_at: string;
+      note?: string | null;
+      status?: string | null;
+    }
+  ) =>
+    request<ApiAppointment>(`/secretaire/appointments/${appointmentId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  getPatientVitalSigns: (token: string, params?: { family_member_id?: number | null }) => {
+    const search = new URLSearchParams();
+    if (typeof params?.family_member_id === 'number') {
+      search.set('family_member_id', String(params.family_member_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiVitalSign[]>(`/patient/vital-signs${suffix}`, { token });
+  },
+  createPatientVitalSign: (
+    token: string,
+    payload: {
+      family_member_id?: number | null;
+      recorded_at: string;
+      systolic?: number | null;
+      diastolic?: number | null;
+      heart_rate?: number | null;
+      respiratory_rate?: number | null;
+      temperature_c?: number | null;
+      spo2?: number | null;
+      glucose_mg_dl?: number | null;
+      glucose_context?: 'fasting' | 'post_meal' | 'random' | null;
+      weight_kg?: number | null;
+      height_cm?: number | null;
+      pain_score?: number | null;
+      measurement_context?: 'rest' | 'after_exercise' | 'symptomatic' | null;
+      note?: string | null;
+    }
+  ) =>
+    request<{ message: string; entry: ApiVitalSign }>('/patient/vital-signs', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  deletePatientVitalSign: (token: string, id: number) =>
+    request<{ message: string }>(`/patient/vital-signs/${id}`, {
+      method: 'DELETE',
+      token
+    }),
+  getDoctorPatientVitalSigns: (
+    token: string,
+    patientUserId: number,
+    params?: { family_member_id?: number | null }
+  ) => {
+    const search = new URLSearchParams();
+    if (typeof params?.family_member_id === 'number') {
+      search.set('family_member_id', String(params.family_member_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiVitalSign[]>(`/doctor/patients/${patientUserId}/vital-signs${suffix}`, { token });
+  },
+  createDoctorPatientVitalSign: (
+    token: string,
+    patientUserId: number,
+    payload: {
+      family_member_id?: number | null;
+      recorded_at: string;
+      systolic?: number | null;
+      diastolic?: number | null;
+      heart_rate?: number | null;
+      respiratory_rate?: number | null;
+      temperature_c?: number | null;
+      spo2?: number | null;
+      glucose_mg_dl?: number | null;
+      glucose_context?: 'fasting' | 'post_meal' | 'random' | null;
+      weight_kg?: number | null;
+      height_cm?: number | null;
+      pain_score?: number | null;
+      measurement_context?: 'rest' | 'after_exercise' | 'symptomatic' | null;
+      note?: string | null;
+    }
+  ) =>
+    request<{ message: string; entry: ApiVitalSign }>(`/doctor/patients/${patientUserId}/vital-signs`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
+  getSecretaryPatientVitalSigns: (
+    token: string,
+    patientUserId: number,
+    params?: { family_member_id?: number | null }
+  ) => {
+    const search = new URLSearchParams();
+    if (typeof params?.family_member_id === 'number') {
+      search.set('family_member_id', String(params.family_member_id));
+    }
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<ApiVitalSign[]>(`/secretaire/patients/${patientUserId}/vital-signs${suffix}`, { token });
+  },
+  createSecretaryPatientVitalSign: (
+    token: string,
+    patientUserId: number,
+    payload: {
+      family_member_id?: number | null;
+      recorded_at: string;
+      systolic?: number | null;
+      diastolic?: number | null;
+      heart_rate?: number | null;
+      respiratory_rate?: number | null;
+      temperature_c?: number | null;
+      spo2?: number | null;
+      glucose_mg_dl?: number | null;
+      glucose_context?: 'fasting' | 'post_meal' | 'random' | null;
+      weight_kg?: number | null;
+      height_cm?: number | null;
+      pain_score?: number | null;
+      measurement_context?: 'rest' | 'after_exercise' | 'symptomatic' | null;
+      note?: string | null;
+    }
+  ) =>
+    request<{ message: string; entry: ApiVitalSign }>(`/secretaire/patients/${patientUserId}/vital-signs`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload)
+    }),
   createDoctorVisit: (
     token: string,
     payload: {

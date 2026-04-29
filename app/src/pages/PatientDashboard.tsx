@@ -97,6 +97,29 @@ const PatientDashboard: React.FC = () => {
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const idDocumentInputRef = useRef<HTMLInputElement | null>(null);
   const profileCacheKey = user ? `patient-profile-cache-${user.id}` : null;
+  const vitalsCacheKey = user ? `patient-vitals-${user.id}` : null;
+
+  const latestVitalsReference = useMemo(() => {
+    if (!vitalsCacheKey) {
+      return null as null | { recorded_at: string; weight_kg: number | null; height_cm: number | null };
+    }
+    try {
+      const raw = localStorage.getItem(vitalsCacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Array<{ recorded_at?: string; weight_kg?: number | null; height_cm?: number | null }>;
+      if (!Array.isArray(parsed) || parsed.length === 0) return null;
+      const sorted = [...parsed].sort((a, b) => new Date(b.recorded_at ?? '').getTime() - new Date(a.recorded_at ?? '').getTime());
+      const latest = sorted[0];
+      if (!latest) return null;
+      return {
+        recorded_at: latest.recorded_at ?? '',
+        weight_kg: typeof latest.weight_kg === 'number' ? latest.weight_kg : null,
+        height_cm: typeof latest.height_cm === 'number' ? latest.height_cm : null,
+      };
+    } catch {
+      return null;
+    }
+  }, [vitalsCacheKey]);
 
   const normalizeText = useCallback((value: unknown) => (value === null || value === undefined ? '' : String(value)), []);
   const normalizeDate = useCallback((value: unknown) => {
@@ -752,6 +775,14 @@ const PatientDashboard: React.FC = () => {
                       value={weightKg}
                       onIonInput={(e) => setWeightKg(e.detail.value ?? '')}
                     />
+                    {latestVitalsReference?.weight_kg != null ? (
+                      <IonText color="medium">
+                        <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem' }}>
+                          Dernier signe vital: {latestVitalsReference?.weight_kg} kg
+                          {latestVitalsReference?.recorded_at ? ` (${formatDateHaiti(latestVitalsReference.recorded_at)})` : ''}
+                        </p>
+                      </IonText>
+                    ) : null}
                   </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Taille (cm)</IonLabel>
@@ -763,6 +794,14 @@ const PatientDashboard: React.FC = () => {
                       value={heightCm}
                       onIonInput={(e) => setHeightCm(e.detail.value ?? '')}
                     />
+                    {latestVitalsReference?.height_cm != null ? (
+                      <IonText color="medium">
+                        <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem' }}>
+                          Dernier signe vital: {latestVitalsReference?.height_cm} cm
+                          {latestVitalsReference?.recorded_at ? ` (${formatDateHaiti(latestVitalsReference.recorded_at)})` : ''}
+                        </p>
+                      </IonText>
+                    ) : null}
                   </IonItem>
                   <IonItem lines="none">
                     <IonLabel position="stacked" style={{ fontSize: "20px", fontWeight: "bold" }}>Maladies chroniques</IonLabel>

@@ -25,20 +25,9 @@ import { addOutline } from 'ionicons/icons';
 import { useCallback, useMemo, useState } from 'react';
 import AppointmentFormModal from '../components/AppointmentFormModal';
 import InstallBanner from '../components/InstallBanner';
-import { api, type ApiDoctorPatient } from '../services/api';
+import { api, type ApiAppointment, type ApiDoctorPatient } from '../services/api';
 import { useAuth } from '../state/AuthState';
 import { formatDateTime } from '../utils/time';
-
-type DoctorAppointmentEntry = {
-  id: string;
-  patient_id: number;
-  created_by_secretary_id: number | null;
-  doctor_user_id: number;
-  doctor_name: string;
-  scheduled_at: string;
-  note: string | null;
-  created_at: string;
-};
 
 type AppointmentStatus = 'overdue' | 'soon' | 'upcoming';
 
@@ -89,7 +78,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
   const [query, setQuery] = useState('');
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<'all' | 'past' | 'upcoming'>('all');
   const [patients, setPatients] = useState<ApiDoctorPatient[]>([]);
-  const [appointments, setAppointments] = useState<DoctorAppointmentEntry[]>([]);
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -109,27 +98,8 @@ const DoctorMyAppointmentsPage: React.FC = () => {
     const patientRows = await api.getDoctorPatients(token).catch(() => []);
     setPatients(patientRows);
 
-    const collected: DoctorAppointmentEntry[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (!key || !key.startsWith('secretary-appointments-')) {
-        continue;
-      }
-      const raw = localStorage.getItem(key);
-      if (!raw) {
-        continue;
-      }
-      try {
-        const parsed = JSON.parse(raw) as DoctorAppointmentEntry[];
-        if (Array.isArray(parsed)) {
-          collected.push(...parsed);
-        }
-      } catch {
-        // ignore invalid local cache
-      }
-    }
-
-    const forDoctor = collected.filter((entry) => entry.doctor_user_id === user.id);
+    const rows = await api.getDoctorAppointments(token).catch(() => [] as ApiAppointment[]);
+    const forDoctor = rows.filter((entry) => entry.doctor_user_id === user.id);
     setAppointments(forDoctor.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()));
   }, [token, user?.id]);
 
@@ -177,7 +147,7 @@ const DoctorMyAppointmentsPage: React.FC = () => {
   }, [appointments]);
 
   const groupedAppointments = useMemo(() => {
-    const groups = new Map<string, DoctorAppointmentEntry[]>();
+    const groups = new Map<string, ApiAppointment[]>();
     filtered.forEach((entry) => {
       const key = getDayKey(entry.scheduled_at);
       const existing = groups.get(key) ?? [];
@@ -225,35 +195,24 @@ const DoctorMyAppointmentsPage: React.FC = () => {
       return;
     }
 
-    const next: DoctorAppointmentEntry = {
-      id: `rdv-${Date.now()}`,
+    if (!token) {
+      setAddError('Session invalide.');
+      return;
+    }
+
+    api.createDoctorAppointment(token, {
       patient_id: patientId,
-      created_by_secretary_id: null,
       doctor_user_id: user.id,
-      doctor_name: user.name || `Docteur #${user.id}`,
       scheduled_at: scheduledAt,
       note: addForm.note.trim() || null,
-      created_at: new Date().toISOString(),
-    };
-
-    const key = `secretary-appointments-${patientId}`;
-    let existing: DoctorAppointmentEntry[] = [];
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as DoctorAppointmentEntry[];
-        if (Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = [];
-      }
-    }
-    localStorage.setItem(key, JSON.stringify([...existing, next]));
-    setShowAddModal(false);
-    setAddError(null);
-    void loadData();
-  }, [addForm, loadData, scheduledDate, scheduledTime, user?.id, user?.name]);
+    }).then(() => {
+      setShowAddModal(false);
+      setAddError(null);
+      void loadData();
+    }).catch((error: unknown) => {
+      setAddError(error instanceof Error ? error.message : "Impossible d'ajouter ce rendez-vous.");
+    });
+  }, [addForm, loadData, scheduledDate, scheduledTime, token, user?.id]);
 
   return (
     <IonPage>
