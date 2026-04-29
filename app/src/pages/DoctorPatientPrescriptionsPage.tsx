@@ -496,7 +496,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         resetAppointmentForm();
       })
       .catch((error: unknown) => {
-        setAppointmentError(error instanceof Error ? error.message : 'Impossible d'enregistrer le rendez-vous.');
+        setAppointmentError(error instanceof Error ? error.message : "Impossible d'enregistrer le rendez-vous.");
       });
   }, [appointmentForm, editingAppointmentId, patientUserId, resetAppointmentForm, token, user?.id]);
 
@@ -558,7 +558,7 @@ const DoctorPatientPrescriptionsPage: React.FC = () => {
         resetVitalsForm();
       })
       .catch((error: unknown) => {
-        setVitalsError(error instanceof Error ? error.message : 'Impossible d'enregistrer la mesure.');
+        setVitalsError(error instanceof Error ? error.message : "Impossible d'enregistrer la mesure.");
       });
   }, [effectiveFamilyMemberId, patientUserId, resetVitalsForm, token, vitalsForm]);
 

@@ -247,11 +247,11 @@ const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
             <IonModal
               isOpen={isDatePickerOpen}
               onDidDismiss={() => setIsDatePickerOpen(false)}
-              breakpoints={[0, 0.5, 0.85]}
-              initialBreakpoint={0.5}
+              breakpoints={[0, 0.7, 0.95]}
+              initialBreakpoint={0.7}
               keepContentsMounted
             >
-              <IonContent className="ion-padding">
+              <IonContent className="ion-padding" style={{ '--padding-bottom': '20px' } as React.CSSProperties}>
                 <IonDatetime
                   presentation="date"
                   locale="fr-HT"
@@ -283,11 +283,11 @@ const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
             <IonModal
               isOpen={isTimePickerOpen}
               onDidDismiss={() => setIsTimePickerOpen(false)}
-              breakpoints={[0, 0.45, 0.75]}
-              initialBreakpoint={0.45}
+              breakpoints={[0, 0.65, 0.9]}
+              initialBreakpoint={0.65}
               keepContentsMounted
             >
-              <IonContent className="ion-padding">
+              <IonContent className="ion-padding" style={{ '--padding-bottom': '20px' } as React.CSSProperties}>
                 <IonDatetime
                   presentation="time"
                   locale="fr-HT"
@@ -349,4 +349,3 @@ const AppointmentFormModal: React.FC<AppointmentFormModalProps> = ({
 };
 
 export default AppointmentFormModal;
-

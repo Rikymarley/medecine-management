@@ -169,32 +169,6 @@ const SecretaryPatientDetailPage: React.FC = () => {
       .catch(() => setAppointmentEntries([]));
   });
 
-  const appointmentEntries = useMemo(() => {
-    if (!patient) {
-      return [] as SecretaryAppointmentEntry[];
-    }
-    const storageKey = `secretary-appointments-${patient.id}`;
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) {
-      return [] as SecretaryAppointmentEntry[];
-    }
-    try {
-      const parsed = JSON.parse(raw) as SecretaryAppointmentEntry[];
-      if (!Array.isArray(parsed)) {
-        return [] as SecretaryAppointmentEntry[];
-      }
-      const filtered = parsed.filter((entry) => {
-        if (!user?.id) {
-          return true;
-        }
-        return entry.created_by_secretary_id === user.id;
-      });
-      return [...filtered].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
-    } catch {
-      return [] as SecretaryAppointmentEntry[];
-    }
-  }, [appointmentsVersion, patient, user?.id]);
-
   const handleOpenAddAppointmentModal = () => {
     const now = new Date();
     const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
